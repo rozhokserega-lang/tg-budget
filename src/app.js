@@ -1056,12 +1056,25 @@
   }
 
   // Перерисовка сводки из кэша без запроса — нужна для раскрытия/сворачивания.
+  // render() сбрасывает прокрутку вверх, поэтому запоминаем позицию и
+  // держим раскрытую строку на том же месте экрана.
   function renderSummaryFromCache() {
     if (route.name !== 'summary') return;
     var s = st.summaryCache[st.month] || st.lastSummary;
     if (!s) return openSummary();
+
+    var sel = expandedCat
+      ? '[data-action="toggle-cat"][data-id="' + expandedCat.id + '"]'
+      : null;
+    var btn = sel ? el.screen.querySelector(sel) : null;
+    var scroll = el.screen.scrollTop;
+    // Насколько строка уже ушла вверх за пределы экрана: прокрутку уменьшаем на эту величину,
+    // чтобы заголовок категории оказался виден вместе с раскрытым списком.
+    var hiddenAbove = btn ? Math.max(0, -btn.getBoundingClientRect().top + 8) : 0;
+
     render(Views.renderSummary(s, st.plans, expandedCat));
     if (State.isExpired()) banner('Пробный период закончился — новые записи недоступны.');
+    el.screen.scrollTop = Math.max(0, scroll - hiddenAbove);
   }
 
   // Категория на сводке: открыть траты по ней, фильтр выставляем до загрузки списка.
