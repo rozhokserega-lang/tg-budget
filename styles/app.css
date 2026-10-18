@@ -945,6 +945,11 @@ textarea.input {
   color: var(--c-hint);
 }
 
+.legal-link {
+  color: var(--c-accent);
+  text-decoration: none;
+}
+
 /* --- Настройки --- */
 
 .settings-row {

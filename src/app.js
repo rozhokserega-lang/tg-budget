@@ -475,6 +475,34 @@
     });
   }
 
+  // --- Удаление аккаунта ---
+
+  function deleteAccount() {
+    if (st.deleting) return;
+    dialog('Удалить аккаунт вместе со всей семьёй и записями? Это необратимо.', 'Удалить').then(function (ok) {
+      if (!ok) return;
+      st.deleting = true;
+      if (route.name === 'settings') render(Views.renderSettings());
+      Api.call('delete_my_account').then(function () {
+        root.Tg.haptic('success');
+        State.reset();
+        st.member = null;
+        st.plans = null;
+        st.promo = [];
+        st.tariffs = null;
+        st.deleting = false;
+        onboarding = { tab: 'create', member_name: '', code: '', household_name: '' };
+        toast('Аккаунт удалён');
+        render(Views.renderOnboarding(onboarding));
+      }).catch(function (err) {
+        st.deleting = false;
+        if (route.name === 'settings') render(Views.renderSettings());
+        root.Tg.haptic('error');
+        toast(err.message || 'Не удалось удалить аккаунт');
+      });
+    });
+  }
+
   // --- Промокод ---
 
   function redeemPromo(code) {
@@ -647,6 +675,7 @@
       case 'go-plans': openPlans(); break;
       case 'go-settings': openSettings(); break;
       case 'buy': buyTariff(actionBtn.getAttribute('data-buy')); break;
+      case 'delete-account': deleteAccount(); break;
       case 'plans-tab': plansTab = actionBtn.getAttribute('data-plans'); openPlans(); break;
       case 'plan-add': openPlanForm(actionBtn.getAttribute('data-kind') || plansTab); break;
       case 'onb-tab':

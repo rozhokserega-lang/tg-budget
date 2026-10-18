@@ -405,6 +405,17 @@
 
   // --- Настройки ---
 
+  // Документы и управление данными: ссылки на оферту/политику и удаление аккаунта.
+  function legalCard(busy) {
+    return '<div class="section"><div class="section__head"><span class="section__title">Документы и данные</span></div>' +
+      '<div class="card">' +
+      '<div class="settings-row"><a class="settings-row__label legal-link" href="legal/terms.html" target="_blank" rel="noopener">Условия использования</a><span class="settings-row__value">›</span></div>' +
+      '<div class="settings-row"><a class="settings-row__label legal-link" href="legal/privacy.html" target="_blank" rel="noopener">Политика конфиденциальности</a><span class="settings-row__value">›</span></div>' +
+      '<p class="small muted mt-8">Удаление аккаунта удаляет семью, траты, цели и долги безвозвратно. История платежей сохраняется обезличенной по требованию закона.</p>' +
+      '<button type="button" class="btn btn--sm btn--danger mt-8" data-action="delete-account"' + (busy ? ' disabled' : '') + '>Удалить аккаунт</button>' +
+      '</div></div>';
+  }
+
   // Тарифы за Telegram Stars: показываются, если сервер их прислал (нет в демо — не рисуем).
   function starsCard(tariffs, busy) {
     if (!tariffs || !tariffs.length) return '';
@@ -457,6 +468,7 @@
       '</div>' +
       starsCard(st.tariffs, st.buying) +
       promoCard(st.promo) +
+      legalCard(st.deleting) +
       '<div class="section"><div class="section__head"><span class="section__title">Приглашение</span></div>' +
       '<div class="card"><p class="small muted">Передайте код партнёру — в приложении он выберет «Подключиться» и введёт его.</p>' +
       '<div class="invite"><span class="invite__code">' + e(h.invite_code || '—') + '</span>' +
@@ -528,6 +540,7 @@
     renderForm: renderForm,
     renderSettings: renderSettings,
     starsCard: starsCard,
+    legalCard: legalCard,
     renderOnboarding: renderOnboarding,
     renderInvite: renderInvite,
     renderError: renderError,

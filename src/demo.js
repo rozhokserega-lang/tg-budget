@@ -227,6 +227,13 @@
       state.wishes = state.wishes.filter(function (x) { return x.id !== p.id; });
       return { ok: true };
     },
+    delete_my_account: function () {
+      state.member = null;
+      state.goals = [];
+      state.debts = [];
+      state.wishes = [];
+      return { ok: true };
+    },
     plans: function () {
       return [
         { code: 'month', title: '1 месяц', days: 30, stars: 150 },

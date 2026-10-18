@@ -9,6 +9,7 @@
     promo: [],
     tariffs: null,
     buying: false,
+    deleting: false,
     month: Fmt.currentMonth(),
     summaryCache: {},
     txCache: {},
