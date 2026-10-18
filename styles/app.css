@@ -962,6 +962,76 @@ textarea.input {
   text-decoration: none;
 }
 
+/* --- Лимиты --- */
+
+.limits-head {
+  text-align: center;
+}
+
+.limits-total {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+.limits {
+  padding: 0 14px;
+}
+
+.limit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--c-border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.limit:last-child {
+  border-bottom: 0;
+}
+
+.limit:active {
+  background: var(--c-card-strong);
+}
+
+.limit__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.limit__value {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.limit__chev {
+  flex: none;
+  color: var(--c-hint);
+}
+
+.settings-row--link {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--c-card);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
 /* --- Настройки --- */
 
 .settings-row {

@@ -89,7 +89,7 @@
     var over = plan > 0 && fact > plan;
     var barCls = over ? ' progress__bar--over' : pct >= 85 ? ' progress__bar--warn' : '';
     return (
-      '<button type="button" class="cat" data-action="edit-cat" data-id="' + e(c.id) + '">' +
+      '<div class="cat">' +
       '<div class="cat__top">' +
       '<span class="cat__icon">' + e(c.icon || '🏷️') + '</span>' +
       '<span class="cat__name">' + e(c.name) + '</span>' +
@@ -99,7 +99,7 @@
         ? '<div class="progress"><div class="progress__bar' + barCls + '" style="width:' + Math.min(100, pct) + '%"></div></div>' +
           '<div class="cat__meta"><span>из ' + e(money(plan)) + '</span><span class="' + (over ? 'amount--neg' : '') + '">' + pct + '%</span></div>'
         : '<div class="cat__meta"><span>без лимита</span></div>') +
-      '</button>'
+      '</div>'
     );
   }
 
@@ -145,9 +145,7 @@
       '</div>' +
       plansTeaser(plans) +
       (partners ? '<div class="section"><div class="section__head"><span class="section__title">Между партнёрами</span></div>' + partners + '</div>' : '') +
-      '<div class="section"><div class="section__head"><span class="section__title">Категории</span>' +
-      '<button type="button" class="section__action" data-action="add-cat">+ Категория</button></div>' +
-      '<div class="card">' + cats + '</div></div>'
+      '<div class="section"><div class="section__head"><span class="section__title">Категории</span></div><div class="card">' + cats + '</div></div>'
     );
   }
 
@@ -448,6 +446,49 @@
 
   // --- Настройки ---
 
+  // Лимиты: полный список категорий с планом. Отдельный экран, чтобы сводку
+  // можно было спокойно листать — там строки не реагируют на нажатие.
+  function renderLimits() {
+    var cats = (State.get().categories || []).filter(function (c) { return !c.archived; });
+    var expenses = cats.filter(function (c) { return c.kind === 'expense'; })
+      .sort(function (a, b) { return (a.sort || 0) - (b.sort || 0); });
+    var incomes = cats.filter(function (c) { return c.kind === 'income'; })
+      .sort(function (a, b) { return (a.sort || 0) - (b.sort || 0); });
+    var totalPlan = expenses.reduce(function (s, c) { return s + (Number(c.plan_monthly) || 0); }, 0);
+
+    function row(c) {
+      var plan = Number(c.plan_monthly) || 0;
+      return '<button type="button" class="limit" data-action="edit-cat" data-id="' + e(c.id) + '">' +
+        '<span class="cat__icon">' + e(c.icon || '🏷️') + '</span>' +
+        '<span class="limit__name">' + e(c.name) + '</span>' +
+        '<span class="limit__value' + (plan > 0 ? '' : ' muted') + '">' + (plan > 0 ? e(money(plan)) : 'без лимита') + '</span>' +
+        '<span class="limit__chev">›</span>' +
+        '</button>';
+    }
+
+    return (
+      '<div class="card limits-head"><span class="muted small">Расходы в месяц по плану</span>' +
+      '<div class="limits-total">' + e(money(totalPlan)) + '</div></div>' +
+      '<div class="section"><div class="section__head"><span class="section__title">Расходы</span>' +
+      '<button type="button" class="section__action" data-action="add-cat" data-kind="expense">+ Категория</button></div>' +
+      '<div class="card limits">' + (expenses.length ? expenses.map(row).join('') : '<div class="empty">Категорий пока нет</div>') + '</div></div>' +
+      '<div class="section"><div class="section__head"><span class="section__title">Доходы</span>' +
+      '<button type="button" class="section__action" data-action="add-cat" data-kind="income">+ Категория</button></div>' +
+      '<div class="card limits">' + (incomes.length ? incomes.map(row).join('') : '<div class="empty">Категорий пока нет</div>') + '</div></div>' +
+      '<p class="small muted mt-16">Лимит — это план на месяц. Сводка показывает, сколько уже потрачено из него.</p>'
+    );
+  }
+
+  function limitsCard() {
+    var cats = ((State.get().categories) || []).filter(function (c) { return c.kind === 'expense' && !c.archived; });
+    var total = cats.reduce(function (s, c) { return s + (Number(c.plan_monthly) || 0); }, 0);
+    return '<div class="section"><div class="section__head"><span class="section__title">Лимиты</span></div>' +
+      '<button type="button" class="settings-row settings-row--link" data-action="go-limits">' +
+      '<span class="settings-row__label">Лимиты по категориям</span>' +
+      '<span class="settings-row__value">' + (total > 0 ? e(money(total)) + ' ›' : 'настроить ›') + '</span></button>' +
+      '</div>';
+  }
+
   // Документы и управление данными: ссылки на оферту/политику и удаление аккаунта.
   function legalCard(busy) {
     return '<div class="section"><div class="section__head"><span class="section__title">Документы и данные</span></div>' +
@@ -509,6 +550,7 @@
       '<div class="settings-row"><span class="settings-row__label">Доступ</span><span class="settings-row__value' + (left !== null && left < 0 ? ' amount--neg' : '') + '">' + e(planText) +
         (untilText ? ' · до ' + e(untilText) : '') + '</span></div>' +
       '</div>' +
+      limitsCard() +
       starsCard(st.tariffs, st.buying) +
       promoCard(st.promo) +
       legalCard(st.deleting) +
@@ -594,6 +636,7 @@
     renderPlans: renderPlans,
     renderPlanForm: renderPlanForm,
     renderCategoryForm: renderCategoryForm,
+    renderLimits: renderLimits,
     renderTxList: renderTxList,
     renderForm: renderForm,
     renderSettings: renderSettings,

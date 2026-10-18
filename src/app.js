@@ -82,7 +82,10 @@
 
   // Системная «Назад» ведёт из формы добавления на сводку, из остальных мест — недоступна.
   function syncBackButton() {
-    root.Tg.backButton(route.name === 'add' && !!st.member ? goHome : null);
+    if (route.name === 'add') return root.Tg.backButton(goHome);
+    // Лимиты — подэкран настроек: «Назад» возвращает к ним.
+    if (route.name === 'limits') return root.Tg.backButton(openSettings);
+    root.Tg.backButton(null);
   }
 
   function applyRouteUi() {
@@ -316,6 +319,10 @@
       if (route.name === 'settings') render(Views.renderSettings());
     });
     loadTariffs();
+    // Категории нужны для счётчика лимитов в настройках и экрана лимитов.
+    loadCategories().then(function () {
+      if (route.name === 'settings') render(Views.renderSettings());
+    }).catch(function () {});
     render(Views.renderSettings());
   }
 
@@ -506,11 +513,14 @@
 
   // --- Категории и лимиты ---
 
-  // id = null → создание новой категории.
-  function openCategoryForm(id) {
+  // id = null → создание новой категории, kind задаёт начальный тип.
+  function openCategoryForm(id, kind) {
     if (!id) {
-      catKind = 'expense';
+      catKind = kind === 'income' ? 'income' : 'expense';
       openSheet(Views.renderCategoryForm(null));
+      el.sheetBody.querySelectorAll('[data-action="cat-kind"]').forEach(function (b) {
+        b.classList.toggle('segment--active', b.getAttribute('data-kind') === catKind);
+      });
       var nameInput = el.sheetBody.querySelector('input[name="name"]');
       if (nameInput) setTimeout(function () { nameInput.focus(); }, 250);
       return;
@@ -545,7 +555,8 @@
         st.summaryCache = {};
         closeSheet();
         toast(id ? 'Лимит сохранён' : 'Категория добавлена');
-        openSummary();
+        if (route.name === 'limits') openLimits();
+        else openSummary();
       })
       .catch(function (err) {
         btn.disabled = false;
@@ -567,11 +578,23 @@
         st.txCache = {};
         closeSheet();
         toast(res.archived ? 'Категория скрыта' : 'Категория удалена');
-        openSummary();
+        if (route.name === 'limits') openLimits();
+        else openSummary();
       }).catch(function (err) {
         root.Tg.haptic('error');
         toast(err.message || 'Не удалось удалить');
       });
+    });
+  }
+
+  function openLimits() {
+    route = { name: 'limits' };
+    render(Views.skeletonList());
+    loadCategories().then(function () {
+      if (route.name !== 'limits') return;
+      render(Views.renderLimits());
+    }).catch(function (err) {
+      fail(err);
     });
   }
 
@@ -750,7 +773,8 @@
       case 'buy': buyTariff(actionBtn.getAttribute('data-buy')); break;
       case 'delete-account': deleteAccount(); break;
       case 'edit-cat': openCategoryForm(actionBtn.getAttribute('data-id')); break;
-      case 'add-cat': openCategoryForm(null); break;
+      case 'add-cat': openCategoryForm(null, actionBtn.getAttribute('data-kind')); break;
+      case 'go-limits': openLimits(); break;
       case 'cat-kind':
         catKind = actionBtn.getAttribute('data-kind');
         el.sheetBody.querySelectorAll('[data-action="cat-kind"]').forEach(function (b) {
