@@ -175,7 +175,7 @@
       var c = state.categories.find(function (x) { return x.id === p.category_id; });
       if (!c) throw new Error('bad_category');
       if (!(Number(p.amount) > 0)) throw new Error('bad_amount');
-      var tx = { id: id(), member_id: state.member.id, category_id: c.id, amount: Number(p.amount),
+      var tx = { id: p.local_id || id(), member_id: state.member.id, category_id: c.id, amount: Number(p.amount),
         is_shared: !!p.is_shared, note: p.note || null,
         occurred_on: p.occurred_on || Fmt.todayIso(), created_at: new Date().toISOString() };
       state.tx.push(tx);
@@ -248,6 +248,15 @@
       return { ok: true };
     },
     save_category: function (p) {
+      if (p.id && String(p.id).indexOf('local-') === 0) {
+        // Локальная категория: сервер ещё не выдал id — присваиваем реальный.
+        var local = state.categories.find(function (x) { return x.id === p.id; });
+        if (local) {
+          local.id = id();
+          local._local = false;
+        }
+        return local || { ok: true };
+      }
       if (!p.id) {
         if (state.categories.some(function (x) { return x.name === p.name; })) throw new Error('category_exists');
         var created = cat(p.name, p.kind === 'income' ? 'income' : 'expense', Number(p.plan_monthly) || 0,

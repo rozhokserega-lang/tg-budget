@@ -25,6 +25,7 @@
   var reqSeq = 0;
   var dialogResolve = null;
   var catKind = 'expense';
+  var pendingAdds = {};
 
   var TABS = [
     { id: 'summary', icon: '📊', label: 'Сводка' },
@@ -211,16 +212,22 @@
     });
   }
 
+  // Нет очереди — можно отдать кэш; иначе запрашиваем свежее (сервер уже учёл запись).
+  function fresh() {
+    return !(root.Queue && Queue.size());
+  }
+
   function loadSummary(month) {
-    if (st.summaryCache[month]) return Promise.resolve(st.summaryCache[month]);
+    if (fresh() && st.summaryCache[month]) return Promise.resolve(st.summaryCache[month]);
     return Api.call('summary', { month: month }).then(function (s) {
       st.summaryCache[month] = s;
+      st.lastSummary = s;
       return s;
     });
   }
 
   function loadTx(month) {
-    if (st.txCache[month]) return Promise.resolve(st.txCache[month]);
+    if (fresh() && st.txCache[month]) return Promise.resolve(st.txCache[month]);
     return Api.call('list_tx', { month: month }).then(function (list) {
       st.txCache[month] = Array.isArray(list) ? list : [];
       return st.txCache[month];
@@ -248,6 +255,14 @@
       });
     }).catch(function (err) {
       if (seq !== reqSeq) return;
+      // Сеть недоступна: показываем кэш (если он есть) и плашку «нет связи»,
+      // чтобы только что добавленная запись не исчезла.
+      var cached = st.summaryCache[month] || st.lastSummary;
+      if (cached) {
+        render(Views.renderSummary(cached));
+        banner('Нет связи с сервером — показываем сохранённое');
+        return;
+      }
       fail(err);
     });
   }
@@ -416,22 +431,43 @@
     if (!v.name.value.trim()) return badInput('Введите название', v.name);
     if (!(amt > 0)) return badInput('Укажите сумму', v.amount);
     if (!(day >= 1 && day <= 31)) return badInput('День от 1 до 31', v.day);
-    var btn = formEl.querySelector('[type="submit"]');
-    btn.disabled = true;
-    Api.call('save_recurring', {
-      id: id, name: v.name.value, amount: amt, day_of_month: day,
-      category_id: v.category_id && v.category_id.value ? v.category_id.value : null,
-    }).then(function () {
-      root.Tg.haptic('success');
+    var catId = v.category_id && v.category_id.value ? v.category_id.value : null;
+    // Оптимистично: платёж появляется в списке сразу.
+    var plans = st.plans || { goals: [], debts: [], wishes: [], recurring: [] };
+    var cat = (st.categories || []).find(function (c) { return c.id === catId; });
+    var row = {
+      id: id || 'local-' + Math.random().toString(36).slice(2),
+      _local: !id,
+      name: v.name.value,
+      amount: amt,
+      day_of_month: day,
+      category_id: catId,
+      active: true,
+      categories: cat ? { name: cat.name, icon: cat.icon } : null,
+    };
+    st.plans = Object.assign({}, plans, {
+      recurring: id
+        ? (plans.recurring || []).map(function (r) { return r.id === id ? Object.assign({}, r, row) : r; })
+        : (plans.recurring || []).concat([row]),
+    });
+    root.Tg.haptic('success');
+    closeSheet();
+    toast('Платёж сохранён');
+    openPlans();
+
+    var op = Queue.push('save_recurring', { id: id, name: v.name.value, amount: amt, day_of_month: day, category_id: catId });
+    root.addEventListener('queue-sent', function onSent(ev) {
+      if (ev.detail.id !== op.id) return;
+      root.removeEventListener('queue-sent', onSent);
       st.plans = null;
-      closeSheet();
-      toast('Платёж сохранён');
-      openPlans();
-    }).catch(function (err) {
-      btn.disabled = false;
+    });
+    root.addEventListener('queue-failed', function onFailed(ev) {
+      if (ev.detail.op.id !== op.id) return;
+      root.removeEventListener('queue-failed', onFailed);
+      st.plans = null;
       root.Tg.haptic('error');
-      if (err.code === 'subscription_expired') { closeSheet(); return fail(err); }
-      toast(err.message || 'Не удалось сохранить');
+      toast(ev.detail.error && ev.detail.error.message || 'Не сохранилось');
+      openPlans();
     });
   }
 
@@ -549,6 +585,73 @@
     });
   }
 
+  // Добавляем запись в локальный кэш месяца и пересчитываем сводку без сети.
+  // Сервер знает запись по local_id — убираем локальную копию и оставляем серверную.
+  function reconcileTx(list) {
+    var ids = {};
+    list.forEach(function (t) { ids[t.id] = true; });
+    return list.filter(function (t) { return !t._local || !ids[t.id]; });
+  }
+
+  function applyLocalTx(tx) {
+    var month = String(tx.occurred_on || '').slice(0, 7);
+    var list = st.txCache[month];
+    if (Array.isArray(list)) st.txCache[month] = [tx].concat(list);
+
+    var s = st.summaryCache[month];
+    if (!s) return;
+    var cat = (st.categories || []).find(function (c) { return c.id === tx.category_id; }) || {};
+    var isIncome = cat.kind === 'income';
+    var next = Object.assign({}, s);
+    next.income = Number(s.income || 0) + (isIncome ? tx.amount : 0);
+    next.expense = Number(s.expense || 0) + (isIncome ? 0 : tx.amount);
+    next.balance = next.income - next.expense;
+    next.categories = (s.categories || []).map(function (c) {
+      return c.id === tx.category_id ? Object.assign({}, c, { fact: Number(c.fact || 0) + tx.amount }) : c;
+    });
+    var members = (s.members || []).map(function (m) {
+      if (m.id !== tx.member_id) return m;
+      var paid = Number(m.paid_shared || 0) + (!isIncome && tx.is_shared ? tx.amount : 0);
+      var personal = Number(m.personal || 0) + (!isIncome && !tx.is_shared ? tx.amount : 0);
+      return Object.assign({}, m, {
+        income: Number(m.income || 0) + (isIncome ? tx.amount : 0),
+        paid_shared: paid,
+        personal: personal,
+        balance: paid - Number(m.share || 0),
+      });
+    });
+    next.members = members;
+    st.summaryCache[month] = next;
+    st.lastSummary = next;
+  }
+
+  // Убирает запись из кэшей и пересчитывает сводку на месте (без запроса).
+  function removeOptimisticTx(tx) {
+    removeLocalTx(tx.id);
+    var month = String(tx.occurred_on || '').slice(0, 7);
+    var s = st.lastSummary;
+    if (!s || month !== st.month) return;
+    var isIncome = (tx.categories && tx.categories.kind) === 'income';
+    var next = Object.assign({}, s);
+    next.income = Math.max(0, Number(s.income || 0) - (isIncome ? tx.amount : 0));
+    next.expense = Math.max(0, Number(s.expense || 0) - (isIncome ? 0 : tx.amount));
+    next.balance = next.income - next.expense;
+    next.categories = (s.categories || []).map(function (c) {
+      return c.id === tx.category_id ? Object.assign({}, c, { fact: Math.max(0, Number(c.fact || 0) - tx.amount) }) : c;
+    });
+    st.summaryCache[st.month] = next;
+    st.lastSummary = next;
+  }
+
+  // Убираем запись из локальных кэшей: для оптимистичного удаления и после отправки.
+  function removeLocalTx(id) {
+    Object.keys(st.txCache).forEach(function (m) {
+      var list = st.txCache[m];
+      if (Array.isArray(list)) st.txCache[m] = list.filter(function (t) { return t.id !== id; });
+    });
+    st.summaryCache = {};
+  }
+
   // --- Категории и лимиты ---
 
   // id = null → создание новой категории, kind задаёт начальный тип.
@@ -585,24 +688,49 @@
     var btn = formEl.querySelector('[type="submit"]');
     if (isNaN(plan) || plan < 0) return badInput('Проверьте лимит', v.plan);
     if (!id && !v.name.value.trim()) return badInput('Введите название', v.name);
-    btn.disabled = true;
-    Api.call('save_category', { id: id, kind: id ? undefined : catKind, name: v.name.value, icon: v.icon.value, plan_monthly: plan })
-      .then(function () {
-        root.Tg.haptic('success');
-        st.categories = null;
-        st.summaryCache = {};
-        closeSheet();
-        toast(id ? 'Лимит сохранён' : 'Категория добавлена');
-        if (route.name === 'limits') openLimits();
-        else openSummary();
-      })
-      .catch(function (err) {
-        btn.disabled = false;
-        root.Tg.haptic('error');
-        if (err.code === 'subscription_expired') { closeSheet(); return fail(err); }
-        if (err.code === 'category_exists') return toast('Такая категория уже есть');
-        toast(err.message || 'Не удалось сохранить');
+    // Оптимистично: обновляем локальную копию и закрываем панель сразу.
+    var categories = st.categories || [];
+    if (id) {
+      categories = categories.map(function (c) {
+        return c.id === id ? Object.assign({}, c, { name: v.name.value || c.name, icon: v.icon.value || c.icon, plan_monthly: plan }) : c;
       });
+    } else {
+      categories = categories.concat([{
+        id: 'local-' + Math.random().toString(36).slice(2),
+        _local: true,
+        kind: catKind,
+        name: v.name.value,
+        icon: v.icon.value || '🏷️',
+        plan_monthly: plan,
+        sort: 999,
+      }]);
+    }
+    st.categories = categories;
+    st.summaryCache = {};
+    root.Tg.haptic('success');
+    closeSheet();
+    toast(id ? 'Лимит сохранён' : 'Категория добавлена');
+    if (route.name === 'limits') openLimits();
+    else openSummary();
+
+    var payload = { id: id, kind: id ? undefined : catKind, name: v.name.value, icon: v.icon.value, plan_monthly: plan };
+    var op = Queue.push('save_category', payload);
+    root.addEventListener('queue-sent', function onSent(ev) {
+      if (ev.detail.id !== op.id) return;
+      root.removeEventListener('queue-sent', onSent);
+      st.categories = null;   // подтянем реальные id с сервера
+    });
+    root.addEventListener('queue-failed', function onFailed(ev) {
+      if (ev.detail.op.id !== op.id) return;
+      root.removeEventListener('queue-failed', onFailed);
+      var code = ev.detail.error && ev.detail.error.code;
+      st.categories = null;      // перечитаем с сервера — локальная правка откатилась
+      st.summaryCache = {};
+      root.Tg.haptic('error');
+      if (code === 'category_exists') toast('Такая категория уже есть');
+      else toast(ev.detail.error && ev.detail.error.message || 'Не сохранилось');
+      if (route.name === 'limits') openLimits();
+    });
   }
 
   function removeRecurring(id) {
@@ -637,12 +765,14 @@
     });
   }
 
-  function openLimits() {
+  // focusId: сразу открыть редактор нужной категории (переход из списка трат).
+  function openLimits(focusId) {
     route = { name: 'limits' };
     render(Views.skeletonList());
     loadCategories().then(function () {
       if (route.name !== 'limits') return;
       render(Views.renderLimits());
+      if (focusId) openCategoryForm(focusId);
     }).catch(function (err) {
       fail(err);
     });
@@ -726,36 +856,90 @@
       occurred_on: occurred,
       is_shared: values.kind === 'expense' ? values.is_shared : false,
     };
+    // Оптимистично: форма закрывается сразу, запись уже на экране.
+    var local = optimisticTx(payload);
+    applyLocalTx(local);
+    st.month = occurred.slice(0, 7);
+    form = {};
     btn.disabled = true;
-    Api.call('add_tx', payload).then(function () {
-      root.Tg.haptic('success');
-      State.remember('add_tx', payload);
-      st.month = occurred.slice(0, 7);
-      form = {};
-      toast('Записано');
-      openSummary();
-    }).catch(function (err) {
-      btn.disabled = false;
-      root.Tg.haptic('error');
-      if (err.code === 'subscription_expired') fail(err);
-      else toast(err.message || 'Не получилось сохранить');
+    root.Tg.haptic('success');
+    toast('Записано');
+    openSummary();
+
+    var op = Queue.push('add_tx', Object.assign({ local_id: local.id }, payload));
+    pendingAdds[op.id] = local;
+
+    root.addEventListener('queue-sent', function onSent(ev) {
+      if (ev.detail.id !== op.id) return;
+      root.removeEventListener('queue-sent', onSent);
+      delete pendingAdds[op.id];
+      var tx = ev.detail.result;
+      if (tx && tx.id) local._serverId = tx.id;
+      st.summaryCache = {};
+      st.txCache = {};
+      // Сервер подтвердил — перерисовываем, чтобы убрать «отправляется».
+      if (route.name === 'summary') openSummary();
+      if (route.name === 'tx') openTx();
     });
+
+    root.addEventListener('queue-failed', function onFailed(ev) {
+      if (ev.detail.op.id !== op.id) return;
+      root.removeEventListener('queue-failed', onFailed);
+      delete pendingAdds[op.id];
+      root.Tg.haptic('error');
+      var code = ev.detail.error && ev.detail.error.code;
+      // Откатываем локальную запись: сервер её не принял.
+      removeOptimisticTx(local);
+      if (code === 'subscription_expired') fail(ev.detail.error);
+      else toast('Не сохранилось: ' + ((ev.detail.error && ev.detail.error.message) || 'ошибка'));
+      if (route.name === 'summary') openSummary();
+      if (route.name === 'tx') openTx();
+    });
+  }
+
+  // Локальная копия записи: показывается сразу, пока сервер не подтвердил.
+  function optimisticTx(payload) {
+    var cat = (st.categories || []).find(function (c) { return c.id === payload.category_id; }) || {};
+    var me = st.member || {};
+    return {
+      id: 'local-' + Math.random().toString(36).slice(2),
+      _local: true,
+      amount: payload.amount,
+      category_id: payload.category_id,
+      is_shared: !!payload.is_shared,
+      note: payload.note,
+      occurred_on: payload.occurred_on,
+      member_id: me.id,
+      categories: { name: cat.name, icon: cat.icon, kind: cat.kind },
+      members: { name: me.name },
+    };
   }
 
   function deleteTx(id) {
     dialog('Удалить эту запись?', 'Удалить').then(function (ok) {
       if (!ok) return;
-      Api.call('delete_tx', { id: id }).then(function () {
-        root.Tg.haptic('success');
-        State.remember('delete_tx', {});
-        toast('Удалено');
-        closeSwipes();
-        if (route.name === 'tx') openTx();
-        else openSummary();
-      }).catch(function (err) {
+      // Оптимистично: убираем из кэшей сразу, сервер догонит.
+      var removed = null;
+      Object.keys(st.txCache).forEach(function (m) {
+        (st.txCache[m] || []).forEach(function (t) { if (t.id === id) removed = t; });
+      });
+      if (removed) removeOptimisticTx(removed);
+      else removeLocalTx(id);
+      root.Tg.haptic('success');
+      toast('Удалено');
+      closeSwipes();
+      if (route.name === 'tx') openTx();
+      else openSummary();
+
+      var op = Queue.push('delete_tx', { id: id });
+      root.addEventListener('queue-failed', function onFailed(ev) {
+        if (ev.detail.op.id !== op.id) return;
+        root.removeEventListener('queue-failed', onFailed);
         root.Tg.haptic('error');
-        if (err.code === 'subscription_expired') fail(err);
-        else toast(err.message || 'Не удалось удалить');
+        toast('Не удалилось: ' + ((ev.detail.error && ev.detail.error.message) || 'ошибка'));
+        st.txCache = {};
+        st.summaryCache = {};
+        if (route.name === 'tx') openTx();
       });
     });
   }
@@ -847,6 +1031,7 @@
       case 'buy': buyTariff(actionBtn.getAttribute('data-buy')); break;
       case 'delete-account': deleteAccount(); break;
       case 'edit-cat': openCategoryForm(actionBtn.getAttribute('data-id')); break;
+      case 'open-cat': openLimits(actionBtn.getAttribute('data-id')); break;
       case 'add-cat': openCategoryForm(null, actionBtn.getAttribute('data-kind')); break;
       case 'go-limits': openLimits(); break;
       case 'cat-kind':
@@ -919,6 +1104,16 @@
     else if (kind === 'create' || kind === 'join') submitOnboarding(f, kind);
   });
 
+  // Тап по названию категории в тратах ведёт к её лимиту в настройках.
+  el.screen.addEventListener('click', function (ev) {
+    var catBtn = ev.target.closest('[data-cat-link]');
+    if (catBtn) {
+      ev.stopPropagation();
+      openLimits(catBtn.getAttribute('data-cat-link'));
+      return;
+    }
+  }, true);
+
   el.screen.addEventListener('click', function (ev) {
     // Карточка повторяющегося платежа: «···» удаляет, кнопка проводит оплату.
     var recCard = ev.target.closest('[data-recurring]');
@@ -937,17 +1132,20 @@
         });
       }
       if (ev.target.closest('[data-recurring-pay]')) {
-        Api.call('pay_recurring', { id: recId }).then(function () {
-          root.Tg.haptic('success');
-          st.plans = null;
-          st.summaryCache = {};
-          st.txCache = {};
-          toast('Оплата записана');
-          openPlans();
-        }).catch(function (err) {
+        // Оптимистично: платеж уходит в очередь, список обновляется сразу.
+        root.Tg.haptic('success');
+        st.summaryCache = {};
+        st.txCache = {};
+        toast('Оплата записана');
+        var payOp = Queue.push('pay_recurring', { id: recId });
+        root.addEventListener('queue-failed', function onFailed(e2) {
+          if (e2.detail.op.id !== payOp.id) return;
+          root.removeEventListener('queue-failed', onFailed);
           root.Tg.haptic('error');
-          toast(err.message || 'Не удалось записать');
+          toast(e2.detail.error && e2.detail.error.message || 'Не удалось записать');
         });
+        st.plans = null;
+        openPlans();
       }
       return;
     }

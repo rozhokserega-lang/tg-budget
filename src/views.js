@@ -5,6 +5,14 @@
 
 (function (root) {
   var e = Fmt.escapeHtml;
+
+  // Локальные (ещё не отправленные) записи заменяем серверными, когда те пришли.
+  function reconcileList(list) {
+    if (!Array.isArray(list)) return list;
+    var real = {};
+    list.forEach(function (t) { if (!t._local) real[t.id] = true; });
+    return list.filter(function (t) { return !t._local || !real[t.id]; });
+  }
   var money = Fmt.money;
 
   function initLetter(name) {
@@ -191,7 +199,9 @@
       '<div class="tx__row" data-tx-row>' +
       '<span class="cat__icon">' + e(c.icon || '🏷️') + '</span>' +
       '<div class="tx__body">' +
-      '<div class="tx__head"><span class="tx__name">' + e(c.name || 'Без категории') + '</span>' +
+      '<div class="tx__head"><button type="button" class="tx__name tx__name--link" data-cat-link="' + e(t.category_id) + '">' +
+      e(c.name || 'Без категории') +
+      (t._local ? ' <span class="badge">отправляется</span>' : '') + '</button>' +
       '<span class="amount ' + (isIncome ? 'amount--pos' : '') + '">' + e(Fmt.signedMoney(t.amount, isIncome)) + '</span></div>' +
       (meta.length ? '<div class="tx__meta"><span class="tx__meta-inline">' + meta.join('<span>·</span>') + '</span></div>' : '') +
       '</div>' +
@@ -218,6 +228,7 @@
 
   function renderTxList(list) {
     var st = State.get();
+    list = reconcileList(list);
     var body;
     if (!list || !list.length) {
       body = empty('🧾', 'Записей нет', 'За ' + Fmt.monthTitle(st.month) + ' пока ничего не записано.', '<button type="button" class="btn btn--primary" data-action="go-add">Добавить запись</button>');
@@ -226,7 +237,8 @@
         return '<div class="tx-group"><div class="tx-group__title">' + e(Fmt.dayLabel(g.day)) + '</div>' + g.items.map(txRow).join('') + '</div>';
       }).join('');
     }
-    return monthNav(st.month) + body;
+    var pending = (root.Queue && Queue.size()) ? '<div class="sync-note">Изменения отправятся, когда появится связь</div>' : '';
+    return monthNav(st.month) + pending + body;
   }
 
   // --- Форма добавления ---
