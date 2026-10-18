@@ -145,7 +145,9 @@
       '</div>' +
       plansTeaser(plans) +
       (partners ? '<div class="section"><div class="section__head"><span class="section__title">Между партнёрами</span></div>' + partners + '</div>' : '') +
-      '<div class="section"><div class="section__head"><span class="section__title">Категории</span></div><div class="card">' + cats + '</div></div>'
+      '<div class="section"><div class="section__head"><span class="section__title">Категории</span>' +
+      '<button type="button" class="section__action" data-action="add-cat">+ Категория</button></div>' +
+      '<div class="card">' + cats + '</div></div>'
     );
   }
 
@@ -359,7 +361,26 @@
     );
   }
 
+  // c === null — создание новой категории.
   function renderCategoryForm(c) {
+    if (!c) {
+      return (
+        '<form data-form="category" novalidate>' +
+        '<div class="sheet__title">Новая категория</div>' +
+        '<div class="segments">' +
+        '<button type="button" class="segment segment--active" data-action="cat-kind" data-kind="expense">Расход</button>' +
+        '<button type="button" class="segment" data-action="cat-kind" data-kind="income">Доход</button>' +
+        '</div>' +
+        '<label class="field"><span class="field__label">Название</span>' +
+        '<input class="input" name="name" maxlength="40" placeholder="Например: Дети" autocomplete="off"></label>' +
+        '<label class="field"><span class="field__label">Иконка (эмодзи)</span>' +
+        '<input class="input input--center" name="icon" maxlength="8" value="🏷️"></label>' +
+        '<label class="field"><span class="field__label">Лимит на месяц</span>' +
+        '<input class="input" name="plan" inputmode="decimal" placeholder="0 ₽"></label>' +
+        '<div class="actions"><button type="submit" class="btn btn--primary btn--full">Добавить</button></div>' +
+        '</form>'
+      );
+    }
     var kindTitle = c.kind === 'income' ? 'Доход' : 'Расход';
     return (
       '<form data-form="category" data-id="' + e(c.id) + '" novalidate>' +

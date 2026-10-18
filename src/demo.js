@@ -235,6 +235,13 @@
       return { ok: true };
     },
     save_category: function (p) {
+      if (!p.id) {
+        if (state.categories.some(function (x) { return x.name === p.name; })) throw new Error('category_exists');
+        var created = cat(p.name, p.kind === 'income' ? 'income' : 'expense', Number(p.plan_monthly) || 0,
+          p.icon || '🏷️', state.categories.length + 1);
+        state.categories.push(created);
+        return created;
+      }
       var c = state.categories.find(function (x) { return x.id === p.id; });
       if (!c) throw new Error('not_found');
       c.plan_monthly = Number(p.plan_monthly) || 0;

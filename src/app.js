@@ -24,6 +24,7 @@
   var onboarding = { tab: 'create', member_name: '', code: '', household_name: '', mode: 'pair' };
   var reqSeq = 0;
   var dialogResolve = null;
+  var catKind = 'expense';
 
   var TABS = [
     { id: 'summary', icon: '📊', label: 'Сводка' },
@@ -505,7 +506,15 @@
 
   // --- Категории и лимиты ---
 
+  // id = null → создание новой категории.
   function openCategoryForm(id) {
+    if (!id) {
+      catKind = 'expense';
+      openSheet(Views.renderCategoryForm(null));
+      var nameInput = el.sheetBody.querySelector('input[name="name"]');
+      if (nameInput) setTimeout(function () { nameInput.focus(); }, 250);
+      return;
+    }
     var cat = (st.categories || []).find(function (c) { return c.id === id; });
     // st.categories мог ещё не загрузиться — ищем в сводке.
     if (!cat) {
@@ -521,26 +530,28 @@
   }
 
   function submitCategory(formEl) {
-    var id = formEl.getAttribute('data-id');
+    var id = formEl.getAttribute('data-id') || undefined;
     var v = formEl.elements;
     var raw = String(v.plan.value || '').trim();
     var plan = raw ? Fmt.parseAmount(raw) : 0;
     var btn = formEl.querySelector('[type="submit"]');
     if (isNaN(plan) || plan < 0) return badInput('Проверьте лимит', v.plan);
+    if (!id && !v.name.value.trim()) return badInput('Введите название', v.name);
     btn.disabled = true;
-    Api.call('save_category', { id: id, name: v.name.value, icon: v.icon.value, plan_monthly: plan })
+    Api.call('save_category', { id: id, kind: id ? undefined : catKind, name: v.name.value, icon: v.icon.value, plan_monthly: plan })
       .then(function () {
         root.Tg.haptic('success');
         st.categories = null;
         st.summaryCache = {};
         closeSheet();
-        toast('Лимит сохранён');
+        toast(id ? 'Лимит сохранён' : 'Категория добавлена');
         openSummary();
       })
       .catch(function (err) {
         btn.disabled = false;
         root.Tg.haptic('error');
         if (err.code === 'subscription_expired') { closeSheet(); return fail(err); }
+        if (err.code === 'category_exists') return toast('Такая категория уже есть');
         toast(err.message || 'Не удалось сохранить');
       });
   }
@@ -739,6 +750,13 @@
       case 'buy': buyTariff(actionBtn.getAttribute('data-buy')); break;
       case 'delete-account': deleteAccount(); break;
       case 'edit-cat': openCategoryForm(actionBtn.getAttribute('data-id')); break;
+      case 'add-cat': openCategoryForm(null); break;
+      case 'cat-kind':
+        catKind = actionBtn.getAttribute('data-kind');
+        el.sheetBody.querySelectorAll('[data-action="cat-kind"]').forEach(function (b) {
+          b.classList.toggle('segment--active', b === actionBtn);
+        });
+        break;
       case 'delete-cat': deleteCategory(actionBtn.getAttribute('data-id')); break;
       case 'plans-tab': plansTab = actionBtn.getAttribute('data-plans'); openPlans(); break;
       case 'plan-add': openPlanForm(actionBtn.getAttribute('data-kind') || plansTab); break;
