@@ -97,7 +97,7 @@
     var over = plan > 0 && fact > plan;
     var barCls = over ? ' progress__bar--over' : pct >= 85 ? ' progress__bar--warn' : '';
     return (
-      '<div class="cat">' +
+      '<button type="button" class="cat" data-action="open-cat-tx" data-id="' + e(c.id) + '">' +
       '<div class="cat__top">' +
       '<span class="cat__icon">' + e(c.icon || '🏷️') + '</span>' +
       '<span class="cat__name">' + e(c.name) + '</span>' +
@@ -107,7 +107,7 @@
         ? '<div class="progress"><div class="progress__bar' + barCls + '" style="width:' + Math.min(100, pct) + '%"></div></div>' +
           '<div class="cat__meta"><span>из ' + e(money(plan)) + '</span><span class="' + (over ? 'amount--neg' : '') + '">' + pct + '%</span></div>'
         : '<div class="cat__meta"><span>без лимита</span></div>') +
-      '</div>'
+      '</button>'
     );
   }
 
@@ -226,19 +226,31 @@
     return groups;
   }
 
-  function renderTxList(list) {
+  function renderTxList(list, filterId) {
     var st = State.get();
     list = reconcileList(list);
+    var cat = filterId ? (st.categories || []).find(function (c) { return c.id === filterId; }) : null;
+    // category_id в записях есть всегда; для истории берём имя из первой записи, если категории уже нет.
+    if (filterId && !cat && list[0] && list[0].categories) {
+      cat = { id: filterId, name: list[0].categories.name, icon: list[0].categories.icon };
+    }
     var body;
     if (!list || !list.length) {
-      body = empty('🧾', 'Записей нет', 'За ' + Fmt.monthTitle(st.month) + ' пока ничего не записано.', '<button type="button" class="btn btn--primary" data-action="go-add">Добавить запись</button>');
+      body = filterId
+        ? empty('🧾', 'В этой категории пусто', 'За ' + Fmt.monthTitle(st.month) + ' записей нет.', '<button type="button" class="btn" data-action="tx-clear-filter">Показать все траты</button>')
+        : empty('🧾', 'Записей нет', 'За ' + Fmt.monthTitle(st.month) + ' пока ничего не записано.', '<button type="button" class="btn btn--primary" data-action="go-add">Добавить запись</button>');
     } else {
       body = groupByDay(list).map(function (g) {
         return '<div class="tx-group"><div class="tx-group__title">' + e(Fmt.dayLabel(g.day)) + '</div>' + g.items.map(txRow).join('') + '</div>';
       }).join('');
     }
     var pending = (root.Queue && Queue.size()) ? '<div class="sync-note">Изменения отправятся, когда появится связь</div>' : '';
-    return monthNav(st.month) + pending + body;
+    var filterBar = filterId
+      ? '<div class="filter-bar"><span class="filter-bar__chip">' + e((cat && cat.icon) || '🏷️') + ' ' +
+        e((cat && cat.name) || 'Категория') + '</span>' +
+        '<button type="button" class="btn btn--sm btn--ghost" data-action="tx-clear-filter">Все траты</button></div>'
+      : '';
+    return monthNav(st.month) + pending + filterBar + body;
   }
 
   // --- Форма добавления ---

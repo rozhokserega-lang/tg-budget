@@ -11,6 +11,7 @@
     buying: false,
     deleting: false,
     month: Fmt.currentMonth(),
+    txFilter: null,
     summaryCache: {},
     txCache: {},
   };

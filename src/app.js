@@ -281,14 +281,17 @@
     openSummary();
   }
 
-  function openTx() {
+  // categoryId — показать только записи этой категории (переход со сводки).
+  function openTx(categoryId) {
     route = { name: 'tx' };
+    if (categoryId !== undefined) st.txFilter = categoryId || null;
     render(Views.skeletonList());
     var seq = ++reqSeq;
     var month = st.month;
-    loadTx(month).then(function (list) {
+    loadTx(month).then(function (all) {
       if (seq !== reqSeq) return;
-      render(Views.renderTxList(list));
+      var list = filterTx(all, st.txFilter);
+      render(Views.renderTxList(list, st.txFilter));
       if (State.isExpired()) banner('Пробный период закончился — новые записи недоступны.');
     }).catch(function (err) {
       if (seq !== reqSeq) return;
@@ -643,6 +646,18 @@
     st.lastSummary = next;
   }
 
+  // Показываем только выбранную категорию, если фильтр включён.
+  function filterTx(list, categoryId) {
+    if (!categoryId) return list;
+    return (list || []).filter(function (t) { return t.category_id === categoryId; });
+  }
+
+  // Сброс фильтра: кнопка «Все траты» в шапке списка.
+  function clearTxFilter() {
+    st.txFilter = null;
+    openTx();
+  }
+
   // Убираем запись из локальных кэшей: для оптимистичного удаления и после отправки.
   function removeLocalTx(id) {
     Object.keys(st.txCache).forEach(function (m) {
@@ -825,7 +840,7 @@
   function openTab(tab) {
     if (!st.member) return;
     if (tab === 'summary') openSummary();
-    else if (tab === 'tx') openTx();
+    else if (tab === 'tx') openTx(null);
     else if (tab === 'plans') openPlans();
     else if (tab === 'add') openAdd();
     else if (tab === 'settings') openSettings();
@@ -1014,7 +1029,12 @@
     switch (action) {
       case 'month-prev': changeMonth(-1); break;
       case 'month-next': changeMonth(1); break;
-      case 'go-tx': openTx(); break;
+      case 'go-tx': openTx(null); break;
+      case 'tx-clear-filter': clearTxFilter(); break;
+      // Категория на сводке: открыть траты по ней, фильтр выставляем до загрузки списка.
+      case 'open-cat-tx':
+        openTx(actionBtn.getAttribute('data-id'));
+        break;
       case 'go-add': openAdd(); break;
       case 'refresh':
         st.summaryCache = {};
