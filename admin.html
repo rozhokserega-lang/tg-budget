@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Админка · Бюджет пары</title>
+<style>
+  :root {
+    --bg: #f5f6fa;
+    --card: #ffffff;
+    --text: #17181c;
+    --muted: #7b7f8a;
+    --border: #e6e8ee;
+    --accent: #007aff;
+    --good: #1f9d55;
+    --warn: #c47f00;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px 16px 40px;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+  h1 { font-size: 22px; margin: 0; }
+  .stamp { color: var(--muted); font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+  .card__label { color: var(--muted); font-size: 12px; }
+  .card__value { font-size: 26px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .card__hint { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin: 26px 0 10px; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 14px; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+  tr:last-child td { border-bottom: 0; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .bars { display: flex; align-items: flex-end; gap: 6px; height: 120px; padding: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
+  .bar { flex: 1; max-width: 56px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; min-width: 0; }
+  .bar__fill { width: 100%; background: var(--accent); border-radius: 4px 4px 0 0; min-height: 2px; opacity: .85; }
+  .bar__label { font-size: 10px; color: var(--muted); white-space: nowrap; }
+  .bar--empty .bar__fill { background: var(--border); }
+  .state { padding: 40px 10px; text-align: center; color: var(--muted); }
+  .state b { display: block; color: var(--text); font-size: 17px; margin-bottom: 6px; }
+  .err { color: #b3261e; }
+  .muted { color: var(--muted); }
+  .empty { padding: 14px; color: var(--muted); }
+</style>
+<script src="https://telegram.org/js/telegram-web-app.js" async></script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Админка · Бюджет пары</h1>
+    <span class="stamp" id="stamp"></span>
+  </header>
+
+  <div id="root">
+    <div class="state">Загрузка…</div>
+  </div>
+</div>
+
+<script>
+  // Адрес Edge Function `admin`. Можно переопределить: admin.html?api=https://…
+  var ADMIN_API = new URLSearchParams(location.search).get('api')
+    || 'https://iqbbjkjzxtdqtuwhiadj.supabase.co/functions/v1/admin';
+
+  var root = document.getElementById('root');
+  var stamp = document.getElementById('stamp');
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function card(label, value, hint) {
+    return '<div class="card"><div class="card__label">' + esc(label) + '</div>' +
+      '<div class="card__value">' + esc(value) + '</div>' +
+      (hint ? '<div class="card__hint">' + esc(hint) + '</div>' : '') + '</div>';
+  }
+
+  function bars(daily) {
+    var max = Math.max.apply(null, daily.map(function (d) { return d.transactions; }).concat([1]));
+    return '<div class="bars">' + daily.map(function (d) {
+      var h = Math.round((d.transactions / max) * 84);
+      var label = d.day.slice(8) + '.' + d.day.slice(5, 7);
+      return '<div class="bar' + (d.transactions ? '' : ' bar--empty') + '" title="' + esc(d.day + ': ' + d.transactions + ' записей') + '">' +
+        '<div class="bar__fill" style="height:' + Math.max(2, h) + 'px"></div>' +
+        '<div class="bar__label">' + esc(label) + '</div></div>';
+    }).join('') + '</div>';
+  }
+
+  function table(head, rows, emptyText) {
+    if (!rows.length) return '<div class="card empty">' + esc(emptyText) + '</div>';
+    return '<table><thead><tr>' + head.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr>' + r.map(function (c, i) {
+          return '<td' + (i ? ' class="num"' : '') + '>' + esc(c) + '</td>';
+        }).join('') + '</tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  function render(s) {
+    var d = new Date(s.generated_at);
+    stamp.textContent = 'обновлено ' + d.toLocaleString('ru-RU');
+
+    var promoRows = (s.promo_breakdown || []).map(function (p) { return [p.code, p.uses]; });
+    var planNames = { month: '1 месяц', quarter: '3 месяца', year: 'Год' };
+    var planRows = (s.plan_breakdown || []).map(function (p) {
+      return [planNames[p.plan] || p.plan, p.count, p.stars + ' ⭐'];
+    });
+
+    root.innerHTML =
+      '<div class="grid">' +
+        card('Семьи', s.households, 'вдвоём: ' + s.households_pair + ' · один: ' + s.households_solo) +
+        card('Участники', s.members) +
+        card('Новые за 7 дней', s.new_households_7d, 'за 30 дней: ' + s.new_households_30d) +
+        card('Активны за 7 дней', s.active_households_7d, 'писали хотя бы одну запись') +
+        card('Записей всего', s.transactions_total, 'за 7 дней: ' + s.transactions_7d) +
+        card('Покупок', s.payments_paid, s.stars_total + ' ⭐ · ожидают: ' + s.payments_pending) +
+      '</div>' +
+      '<h2>Записей по дням (14 дней)</h2>' + bars(s.daily || []) +
+      '<h2>Промокоды</h2>' + table(['Код', 'Активаций'], promoRows, 'Промокоды ещё не активировали') +
+      '<h2>Тарифы</h2>' + table(['Тариф', 'Покупок', 'Звёзд'], planRows, 'Платных покупок пока нет') +
+      '<h2>Уведомления</h2>' +
+      '<div class="grid">' +
+        card('Напоминания, 7 дней', s.notifications_sent_7d) +
+        card('Алертов лимитов, 7 дней', s.limit_alerts_7d) +
+        card('Регулярных платежей', s.recurring_total) +
+        card('Активаций кодов', s.promo_redemptions) +
+      '</div>' +
+      '<p class="muted" style="margin-top:22px;font-size:13px">' +
+        'Показаны только счётчики: суммы бюджетов, заметки и профили пользователей в панель не попадают.</p>';
+  }
+
+  function fail(html) {
+    root.innerHTML = '<div class="state">' + html + '</div>';
+  }
+
+  function send() {
+    // SDK грузится async; после 5 секунд без него считаем, что Telegram недоступен.
+    var started = Date.now();
+    (function waitSdk() {
+      var tg = window.Telegram && window.Telegram.WebApp;
+      if ((tg && tg.initData) || Date.now() - started > 5000) return request(tg);
+      setTimeout(waitSdk, 100);
+    })();
+  }
+
+  function request(tg) {
+    var initData = (tg && tg.initData) || '';
+    if (!initData) {
+      fail('<b>Открыть через Telegram</b>Панель работает только из Mini App: откройте адрес из бота. ' +
+        '<br><span class="muted">Без входа данные не отдаются.</span>');
+      return;
+    }
+    if (tg.ready) tg.ready();
+    fetch(ADMIN_API, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ initData: initData }),
+    })
+      .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
+      .then(function (res) {
+        if (res.status === 401) return fail('<b>Нужен вход через Telegram</b>Сессия не подтверждена, откройте панель заново из бота.');
+        if (res.status === 403) return fail('<b>Нет доступа</b>Ваш Telegram-аккаунт не в списке администраторов.');
+        if (!res.body || !res.body.stats) return fail('<b class="err">Ошибка</b>Не удалось получить статистику.');
+        render(res.body.stats);
+      })
+      .catch(function () {
+        fail('<b class="err">Нет связи</b>Проверьте интернет и обновите страницу.');
+      });
+  }
+
+  send();
+</script>
+</body>
+</html>
