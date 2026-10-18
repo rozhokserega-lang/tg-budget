@@ -5,6 +5,8 @@
     member: null,
     memberName: '',
     categories: null,
+    plans: null,
+    promo: [],
     month: Fmt.currentMonth(),
     summaryCache: {},
     txCache: {},
@@ -21,9 +23,10 @@
     return Math.ceil((new Date(until).getTime() - Date.now()) / 86400000);
   }
 
+  // Сравниваем точное время, а не дни: Math.ceil съедает до суток.
   function isExpired() {
-    var left = planDaysLeft();
-    return left !== null && left < 0;
+    var until = state.member && state.member.households && state.member.households.plan_until;
+    return !!until && new Date(until).getTime() < Date.now();
   }
 
   function splitModeLabel() {

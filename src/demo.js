@@ -12,7 +12,12 @@
 
   // ?onboarding — демо начинается без семьи, чтобы проверить создание и вступление.
   var state = fresh();
-  if (new URLSearchParams(root.location.search).has('onboarding')) state.member = null;
+  var query = new URLSearchParams(root.location.search);
+  if (query.has('onboarding')) state.member = null;
+  if (query.has('expired') && state.member) {
+    state.member.households = Object.assign({}, state.member.households,
+      { plan_until: new Date(Date.now() - 86400000).toISOString() });
+  }
 
   function fresh() {
     var categories = [
@@ -55,8 +60,25 @@
     add('m1', 'Здоровье', 1250, false, 'аптека', daysAgo(0));
     add('m2', 'Подработка', 15000, false, 'фриланс', daysAgo(10));
     add('m1', 'Кафе и рестораны', 350, false, 'кофе', daysAgo(0));
+    var goals = [
+      { id: 'g1', household_id: 'h1', name: 'Отпуск в Турцию', target: 120000, saved: 45000, monthly: 15000 },
+      { id: 'g2', household_id: 'h1', name: 'Новый ноутбук', target: 90000, saved: 90000, monthly: 0 },
+    ];
+    var debts = [
+      { id: 'd1', household_id: 'h1', name: 'Кредитная карта', creditor: 'Тинькофф', total: 60000, remaining: 24000, monthly: 5000 },
+      { id: 'd2', household_id: 'h1', name: 'Ремонт у друга', creditor: 'Максим', total: 10000, remaining: 0, monthly: 0 },
+    ];
+    var wishes = [
+      { id: 'w1', household_id: 'h1', name: 'Робот-пылесос', price: 35000, priority: 'high', goal_id: null, purchased: false },
+      { id: 'w2', household_id: 'h1', name: 'Абонемент в зал', price: 24000, priority: 'medium', goal_id: null, purchased: true },
+    ];
     return {
       me: { id: 'm1', household_id: 'h1', name: 'Аня', telegram_id: 1, households: null },
+      goals: goals,
+      debts: debts,
+      wishes: wishes,
+      promo: [],
+      promoUsed: {},
       member: { id: 'm1', household_id: 'h1', name: 'Аня', telegram_id: 1,
         households: { id: 'h1', name: 'Наша семья', split_mode: 'proportional', invite_code: 'demo1234',
           plan_until: new Date(Date.now() + (new URLSearchParams(root.location.search).has('expired') ? -86400000 : 12 * 86400000)).toISOString() } },
@@ -112,7 +134,9 @@
   var handlers = {
     // API отвечает `{}`, пока пользователь не в семье.
     me: function () {
-      return state.member ? { member: Object.assign({}, state.member.me, { households: state.member.households }) } : {};
+      return state.member
+        ? { member: Object.assign({}, state.member.me, { households: state.member.households }), promo: state.promo || [] }
+        : {};
     },
     summary: function (p) {
       return summary(p.month);
@@ -156,7 +180,85 @@
       state.member = joinDemo(p.member_name);
       return { ok: true };
     },
+
+    // --- Планы ---
+
+    list_plans: function () {
+      return { goals: state.goals, debts: state.debts, wishes: state.wishes };
+    },
+    save_goal: function (p) {
+      return save('goals', p);
+    },
+    add_to_goal: function (p) {
+      var g = state.goals.find(function (x) { return x.id === p.id; });
+      if (!g) throw new Error('not_found');
+      g.saved = Math.min(Number(g.target), Number(g.saved) + Number(p.amount));
+      return g;
+    },
+    delete_goal: function (p) {
+      state.goals = state.goals.filter(function (x) { return x.id !== p.id; });
+      state.wishes.forEach(function (w) { if (w.goal_id === p.id) w.goal_id = null; });
+      return { ok: true };
+    },
+    save_debt: function (p) {
+      if (p.remaining == null) p.remaining = p.total;
+      return save('debts', p);
+    },
+    pay_debt: function (p) {
+      var d = state.debts.find(function (x) { return x.id === p.id; });
+      if (!d) throw new Error('not_found');
+      d.remaining = Math.max(0, Math.round((Number(d.remaining) - Number(p.amount)) * 100) / 100);
+      return d;
+    },
+    delete_debt: function (p) {
+      state.debts = state.debts.filter(function (x) { return x.id !== p.id; });
+      return { ok: true };
+    },
+    save_wish: function (p) {
+      return save('wishes', p);
+    },
+    buy_wish: function (p) {
+      var w = state.wishes.find(function (x) { return x.id === p.id; });
+      if (!w) throw new Error('not_found');
+      w.purchased = true;
+      return w;
+    },
+    delete_wish: function (p) {
+      state.wishes = state.wishes.filter(function (x) { return x.id !== p.id; });
+      return { ok: true };
+    },
+    redeem_promo: function (p) {
+      var code = String(p.code || '').trim().toUpperCase();
+      if (!code) throw new Error('bad_promo');
+      if (code !== 'FRIENDS2026') throw new Error('bad_promo');
+      if (state.promoUsed[code]) throw new Error('promo_used');
+      state.promoUsed[code] = true;
+      var before = new Date(state.member.households.plan_until).getTime();
+      var until = new Date(Math.max(before, Date.now()) + 365 * 86400000).toISOString();
+      state.member.households.plan_until = until;
+      state.promo.unshift({ code: code, created_at: new Date().toISOString() });
+      return { ok: true, code: code, days: 365, plan_until: until };
+    },
   };
+
+  // Создание/редактирование строки плана — как в API: id есть → заменить, нет → добавить.
+  function save(collection, p) {
+    var list = state[collection];
+    var row = Object.assign({}, p);
+    delete row.id;
+    if (collection === 'debts' && !row.creditor) row.creditor = null;
+    if (collection === 'wishes' && !row.goal_id) row.goal_id = null;
+    if (p.id) {
+      var cur = list.find(function (x) { return x.id === p.id; });
+      if (!cur) throw new Error('not_found');
+      Object.assign(cur, row);
+      return cur;
+    }
+    var item = Object.assign({ id: id() }, row);
+    if (collection === 'wishes') item.purchased = false;
+    list.push(item);
+    return item;
+  }
 
   // Возвращает демо-участника в семью (то, что делает me после create/join на реальном API).
   function joinDemo(name) {
@@ -169,11 +271,12 @@
     return new Promise(function (resolve, reject) {
       setTimeout(function () {
         var h = handlers[action];
-        if (!h) return reject(new Error('unknown_action'));
+        if (!h) return reject(Object.assign(new Error('unknown_action'), { code: 'unknown_action' }));
         try {
           resolve(h(payload || {}));
         } catch (e) {
-          reject(e);
+          // Код ошибки, как у ApiError: приложение смотрит на err.code.
+          reject(Object.assign(new Error(e.message), { code: e.message }));
         }
       }, 120);
     });
@@ -183,5 +286,6 @@
     state = fresh();
   }
 
-  root.DEMO_API = { call: call, reset: reset };
+  // Для отладки из консоли браузера: DEMO_API.state() показывает текущие данные.
+  root.DEMO_API = { call: call, reset: reset, state: function () { return state; } };
 })(window);

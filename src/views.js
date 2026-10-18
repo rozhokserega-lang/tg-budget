@@ -103,9 +103,26 @@
     );
   }
 
-  function renderSummary(s) {
+  // Краткая строка о планах на сводке: показываем только если что-то заведено.
+  function plansTeaser(plans) {
+    if (!plans) return '';
+    var goals = (plans.goals || []).length;
+    var debts = (plans.debts || []).filter(function (d) { return Number(d.remaining) > 0; }).length;
+    var wishes = (plans.wishes || []).filter(function (w) { return !w.purchased; }).length;
+    if (!goals && !debts && !wishes) return '';
+    var parts = [];
+    if (goals) parts.push('Цели: ' + goals);
+    if (debts) parts.push('Долги: ' + debts);
+    if (wishes) parts.push('Желания: ' + wishes);
+    return '<button type="button" class="plans-teaser" data-action="go-plans">' +
+      '<span class="plans-teaser__title">📈 Планы</span>' +
+      '<span class="plans-teaser__meta">' + e(parts.join(' · ')) + ' ›</span></button>';
+  }
+
+  function renderSummary(s, plans) {
     var st = State.get();
     s = s || { income: 0, expense: 0, balance: 0, categories: [], members: [] };
+    plans = plans || st.plans;
     var balance = Number(s.balance) || 0;
     var partners = s.members && s.members.length
       ? '<div class="card">' + s.members.map(partnerRow).join('') +
@@ -125,6 +142,7 @@
       '<div class="hero__item"><span class="hero__item-label">Расходы</span><span class="hero__item-value">' + e(money(s.expense)) + '</span></div>' +
       '</div>' +
       '</div>' +
+      plansTeaser(plans) +
       (partners ? '<div class="section"><div class="section__head"><span class="section__title">Между партнёрами</span></div>' + partners + '</div>' : '') +
       '<div class="section"><div class="section__head"><span class="section__title">Категории</span></div><div class="card">' + cats + '</div></div>'
     );
@@ -225,13 +243,190 @@
     );
   }
 
+  // --- Планы: цели, долги, желания ---
+
+  var PLANS_TABS = [
+    { id: 'goals', label: 'Цели' },
+    { id: 'debts', label: 'Долги' },
+    { id: 'wishes', label: 'Желания' },
+  ];
+  var PRIORITY = { high: 'высокий', medium: 'средний', low: 'низкий' };
+
+  function monthsLeft(remaining, monthly) {
+    if (!(monthly > 0)) return '';
+    var m = Math.ceil(remaining / monthly);
+    return ' · ~' + m + ' ' + Fmt.plural(m, 'мес.', 'мес.', 'мес.');
+  }
+
+  function goalRow(g) {
+    var target = Number(g.target) || 0;
+    var saved = Number(g.saved) || 0;
+    var pct = target > 0 ? Math.round((saved / target) * 100) : 0;
+    var left = Math.max(0, target - saved);
+    var done = left < 0.01;
+    return (
+      '<div class="plan" data-plan="goal" data-id="' + e(g.id) + '">' +
+      '<div class="plan__top"><span class="plan__name">' + e(g.name) + '</span>' +
+      '<span class="plan__amount' + (done ? ' amount--pos' : '') + '">' + e(money(saved)) + ' / ' + e(money(target)) + '</span>' +
+      '<button type="button" class="plan__more" data-plan-more>···</button></div>' +
+      '<div class="progress"><div class="progress__bar' + (done ? ' progress__bar--done' : '') + '" style="width:' + Math.min(100, pct) + '%"></div></div>' +
+      '<div class="plan__meta">' +
+      (done ? 'Готово! Подкоплено на цель' :
+        'Осталось ' + e(money(left)) + (Number(g.monthly) > 0 ? ' · ' + e(money(g.monthly)) + '/мес' + monthsLeft(left, Number(g.monthly)) : '')) +
+      '</div>' +
+      '<div class="plan__actions"><button type="button" class="btn btn--sm btn--ghost" data-plan-add>+ Пополнить</button></div>' +
+      '<div class="plan__confirm" hidden>' +
+      '<div class="plan__confirm-row"><input class="input" inputmode="decimal" placeholder="Сумма" data-plan-amount>' +
+      '<button type="button" class="btn btn--sm" data-plan-cancel>Отмена</button>' +
+      '<button type="button" class="btn btn--sm btn--primary" data-plan-save>OK</button></div>' +
+      '</div>' +
+      '</div>'
+    );
+  }
+
+  function debtRow(d) {
+    var total = Number(d.total) || 0;
+    var remaining = Number(d.remaining) || 0;
+    var paid = Math.max(0, total - remaining);
+    var pct = total > 0 ? Math.round((paid / total) * 100) : 0;
+    var closed = remaining <= 0;
+    return (
+      '<div class="plan" data-plan="debt" data-id="' + e(d.id) + '" data-remaining="' + remaining + '">' +
+      '<div class="plan__top"><span class="plan__name">' + e(d.name) + (d.creditor ? ' · ' + e(d.creditor) : '') + '</span>' +
+      '<span class="plan__amount' + (closed ? ' amount--pos' : '') + '">' + e(money(paid)) + ' / ' + e(money(total)) + '</span>' +
+      '<button type="button" class="plan__more" data-plan-more>···</button></div>' +
+      '<div class="progress"><div class="progress__bar' + (closed ? ' progress__bar--done' : '') + '" style="width:' + Math.min(100, pct) + '%"></div></div>' +
+      '<div class="plan__meta">' +
+      (closed ? 'Долг закрыт 🎉' :
+        'Осталось ' + e(money(remaining)) + (Number(d.monthly) > 0 ? ' · ' + e(money(d.monthly)) + '/мес' + monthsLeft(remaining, Number(d.monthly)) : '')) +
+      '</div>' +
+      (closed ? '' :
+        '<div class="plan__actions">' +
+        '<button type="button" class="btn btn--sm btn--ghost" data-debt-pay="1000">− 1 000</button>' +
+        '<button type="button" class="btn btn--sm btn--ghost" data-debt-pay="5000">− 5 000</button>' +
+        '<button type="button" class="btn btn--sm btn--ghost" data-debt-pay="all">Весь остаток</button>' +
+        '</div>' +
+        '<div class="plan__confirm" hidden>' +
+        '<div class="plan__confirm-row"><input class="input" inputmode="decimal" placeholder="Сумма" data-plan-amount>' +
+        '<button type="button" class="btn btn--sm" data-plan-cancel>Отмена</button>' +
+        '<button type="button" class="btn btn--sm btn--primary" data-plan-save>OK</button></div>' +
+        '</div>') +
+      '</div>'
+    );
+  }
+
+  function wishRow(w) {
+    var cls = w.purchased ? ' plan--done' : '';
+    return (
+      '<div class="plan' + cls + '" data-plan="wish" data-id="' + e(w.id) + '">' +
+      '<div class="plan__top"><span class="plan__name">' + e(w.name) + '</span>' +
+      '<span class="plan__amount">' + e(money(w.price)) + '</span>' +
+      '<button type="button" class="plan__more" data-plan-more>···</button></div>' +
+      '<div class="plan__meta"><span class="badge">' + e(PRIORITY[w.priority] || w.priority) + ' приоритет</span>' +
+      (w.purchased ? ' <span class="amount--pos">куплено</span>' : '') + '</div>' +
+      (w.purchased ? '' : '<div class="plan__actions"><button type="button" class="btn btn--sm btn--ghost" data-wish-buy>Купить</button></div>') +
+      '</div>'
+    );
+  }
+
+  function renderPlans(plans, tab) {
+    plans = plans || { goals: [], debts: [], wishes: [] };
+    tab = tab || 'goals';
+    var list = plans[tab] || [];
+    var body;
+    if (!list.length) {
+      var titles = {
+        goals: ['🎯', 'Целей пока нет', 'Например, отпуск или новая техника'],
+        debts: ['💳', 'Долгов нет', 'Отлично!'],
+        wishes: ['✨', 'Список желаний пуст', 'Добавьте то, что хочется купить'],
+      };
+      var t = titles[tab];
+      body = '<div class="empty"><div class="empty__icon">' + t[0] + '</div><div class="empty__title">' + t[1] + '</div><p>' + t[2] + '</p>' +
+        '<button type="button" class="btn btn--primary" data-action="plan-add" data-kind="' + tab + '">Добавить</button></div>';
+    } else {
+      var row = { goals: goalRow, debts: debtRow, wishes: wishRow }[tab];
+      body = list.map(row).join('');
+    }
+    return (
+      '<div class="segments">' +
+      PLANS_TABS.map(function (t) {
+        return '<button type="button" class="segment' + (t.id === tab ? ' segment--active' : '') + '" data-action="plans-tab" data-plans="' + t.id + '">' + t.label + '</button>';
+      }).join('') +
+      '</div>' +
+      '<div class="plans">' + body + '</div>' +
+      (list.length ? '<div class="actions"><button type="button" class="btn btn--primary btn--full" data-action="plan-add" data-kind="' + tab + '">Добавить</button></div>' : '')
+    );
+  }
+
+  // Форма добавления/редактирования в нижнем шите.
+  function renderPlanForm(kind, opts) {
+    opts = opts || {};
+    var title = { goals: 'Новая цель', debts: 'Новый долг', wishes: 'Новое желание' }[kind] || 'Добавить';
+    var idAttr = opts.id ? ' data-id="' + e(opts.id) + '"' : '';
+    var name = '<label class="field"><span class="field__label">Название</span>' +
+      '<input class="input" name="name" maxlength="80" placeholder="' + e(opts.name_placeholder || 'Название') + '" value="' + e(opts.name || '') + '"></label>';
+    var moneyField = function (nameKey, label, value) {
+      return '<label class="field"><span class="field__label">' + label + '</span>' +
+        '<input class="input" name="' + nameKey + '" inputmode="decimal" placeholder="0 ₽" value="' + e(value || '') + '"></label>';
+    };
+    var fields = '', extra = '';
+    if (kind === 'goals') {
+      fields = moneyField('target', 'Сколько нужно', opts.target) + moneyField('saved', 'Уже накоплено (необязательно)', opts.saved) +
+        moneyField('monthly', 'Откладывать в месяц (необязательно)', opts.monthly);
+    } else if (kind === 'debts') {
+      fields = moneyField('total', 'Сумма долга', opts.total) + moneyField('remaining', 'Осталось выплатить (по умолчанию — вся сумма)', opts.remaining) +
+        moneyField('monthly', 'Платить в месяц (необязательно)', opts.monthly) +
+        '<label class="field"><span class="field__label">Кому (необязательно)</span>' +
+        '<input class="input" name="creditor" maxlength="80" placeholder="Банк, человек" value="' + e(opts.creditor || '') + '"></label>';
+    } else if (kind === 'wishes') {
+      fields = moneyField('price', 'Цена', opts.price);
+      var goals = State.get().plans && State.get().plans.goals || [];
+      extra = '<label class="field"><span class="field__label">Приоритет</span>' +
+        '<select class="input" name="priority">' +
+        ['high', 'medium', 'low'].map(function (p) {
+          return '<option value="' + p + '"' + ((opts.priority || 'medium') === p ? ' selected' : '') + '>' + PRIORITY[p] + '</option>';
+        }).join('') + '</select></label>';
+      if (goals.length) {
+        extra += '<label class="field"><span class="field__label">Копим на цель (необязательно)</span>' +
+          '<select class="input" name="goal_id"><option value="">— без цели —</option>' +
+          goals.map(function (g) {
+            return '<option value="' + e(g.id) + '"' + (opts.goal_id === g.id ? ' selected' : '') + '>' + e(g.name) + '</option>';
+          }).join('') + '</select></label>';
+      }
+    }
+    return (
+      '<form data-form="plan" data-kind="' + e(kind) + '"' + idAttr + ' novalidate>' +
+      '<div class="sheet__title">' + e(title) + '</div>' +
+      name + fields + extra +
+      '<div class="actions"><button type="submit" class="btn btn--primary btn--full">Сохранить</button></div>' +
+      '</form>'
+    );
+  }
+
   // --- Настройки ---
+
+  // Промокод: поле и список уже активированных.
+  function promoCard(promo) {
+    var active = (promo || []).map(function (p) {
+      return '<div class="promo__used">✅ ' + e(p.code) + '</div>';
+    }).join('');
+    return '<div class="section"><div class="section__head"><span class="section__title">Промокод</span></div>' +
+      '<div class="card">' +
+      '<form data-form="promo" novalidate class="promo">' +
+      '<input class="input input--code" name="code" maxlength="32" autocomplete="off" placeholder="код друга" value="">' +
+      '<button type="submit" class="btn btn--sm btn--primary">Активировать</button>' +
+      '</form>' +
+      '<p class="small muted mt-8">Код продлевает доступ к бюджету. Один код — одна активация на семью.</p>' +
+      active +
+      '</div></div>';
+  }
 
   function renderSettings() {
     var st = State.get();
     var m = st.member;
     var h = (m && m.households) || {};
     var left = State.planDaysLeft();
+    var untilText = h.plan_until ? Fmt.dayLabel(h.plan_until) : '';
     var planText;
     if (left === null) planText = '—';
     else if (left < 0) planText = 'закончился';
@@ -242,8 +437,10 @@
       '<div class="settings-row"><span class="settings-row__label">Семья</span><span class="settings-row__value">' + e(h.name || '—') + '</span></div>' +
       '<div class="settings-row"><span class="settings-row__label">Вы</span><span class="settings-row__value">' + e(m ? m.name : '—') + '</span></div>' +
       '<div class="settings-row"><span class="settings-row__label">Деление общих трат</span><span class="settings-row__value">' + e(State.splitModeLabel()) + '</span></div>' +
-      '<div class="settings-row"><span class="settings-row__label">Доступ</span><span class="settings-row__value' + (left !== null && left < 0 ? ' amount--neg' : '') + '">' + e(planText) + '</span></div>' +
+      '<div class="settings-row"><span class="settings-row__label">Доступ</span><span class="settings-row__value' + (left !== null && left < 0 ? ' amount--neg' : '') + '">' + e(planText) +
+        (untilText ? ' · до ' + e(untilText) : '') + '</span></div>' +
       '</div>' +
+      promoCard(st.promo) +
       '<div class="section"><div class="section__head"><span class="section__title">Приглашение</span></div>' +
       '<div class="card"><p class="small muted">Передайте код партнёру — в приложении он выберет «Подключиться» и введёт его.</p>' +
       '<div class="invite"><span class="invite__code">' + e(h.invite_code || '—') + '</span>' +
@@ -297,9 +494,11 @@
 
   // --- Ошибки ---
 
-  // opts.retry === false — повтор бессмысленен (например, нет сессии Telegram)
+  // opts.retry === false — повтор бессмысленен (например, нет сессии Telegram).
+  // opts.promo — на экране истёкшего доступа добавляем путь к активации кода.
   function renderError(opts) {
-    var btn = opts.retry === false ? '' : '<button type="button" class="btn mt-16" data-action="retry">Повторить</button>';
+    var btn = (opts.retry === false ? '' : '<button type="button" class="btn mt-16" data-action="retry">Повторить</button>') +
+      (opts.promo ? '<button type="button" class="btn btn--primary mt-8" data-action="go-settings">Ввести промокод</button>' : '');
     return empty(opts.icon || '⚠️', opts.title || 'Что-то пошло не так', opts.text || '', btn);
   }
 
@@ -307,6 +506,8 @@
     skeletonSummary: skeletonSummary,
     skeletonList: skeletonList,
     renderSummary: renderSummary,
+    renderPlans: renderPlans,
+    renderPlanForm: renderPlanForm,
     renderTxList: renderTxList,
     renderForm: renderForm,
     renderSettings: renderSettings,

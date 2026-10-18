@@ -14,6 +14,8 @@
     dialog: $('#dialog'),
     dialogText: $('#dialog-text'),
     dialogOk: $('#dialog-ok'),
+    sheet: $('#sheet'),
+    sheetBody: $('#sheet-body'),
   };
 
   var st = State.get();
@@ -26,9 +28,11 @@
   var TABS = [
     { id: 'summary', icon: '📊', label: 'Сводка' },
     { id: 'tx', icon: '🧾', label: 'Траты' },
+    { id: 'plans', icon: '📈', label: 'Планы' },
     { id: 'add', icon: '＋', label: 'Добавить', primary: true },
     { id: 'settings', icon: '⚙️', label: 'Ещё' },
   ];
+  var plansTab = 'goals';
 
   // --- UI-помощники ---
 
@@ -59,6 +63,18 @@
     dialogResolve = null;
   }
 
+  function openSheet(html) {
+    el.sheetBody.innerHTML = html;
+    el.sheet.hidden = false;
+    root.Tg.backButton(closeSheet);
+  }
+
+  function closeSheet() {
+    el.sheet.hidden = true;
+    el.sheetBody.innerHTML = '';
+    syncBackButton();
+  }
+
   function hideLoader() {
     el.loader.hidden = true;
   }
@@ -77,7 +93,8 @@
       el.tabs.innerHTML = '';
       return;
     }
-    var active = route.name === 'add' ? 'add' : route.name;
+    // «Добавить» — не место, а действие: подсвечиваем вкладку, с которой пришли.
+    var active = route.name === 'add' ? 'summary' : route.name;
     el.tabs.innerHTML = TABS.map(function (t) {
       var cls = 'tab' + (t.primary ? ' tab--primary' : '') + (t.id === active ? ' tab--active' : '');
       return '<button type="button" class="' + cls + '" data-tab="' + t.id + '">' +
@@ -130,8 +147,9 @@
       opts = {
         icon: '⌛',
         title: 'Пробный период закончился',
-        text: 'Добавлять записи нельзя. Продлите доступ, чтобы продолжить.',
+        text: 'Добавлять записи нельзя. Активируйте промокод, чтобы восстановить доступ.',
         retry: true,
+        promo: true,
       };
     }
     render(Views.renderError(opts));
@@ -155,7 +173,23 @@
         return null;
       }
       st.member = res.member;
+      st.promo = Array.isArray(res.promo) ? res.promo : [];
       return st.member;
+    });
+  }
+
+  // Планы подтягиваем лениво и мягко: сводка не должна падать из-за них.
+  function loadPlans(force) {
+    if (!force && st.plans) return Promise.resolve(st.plans);
+    return Api.call('list_plans').then(function (p) {
+      st.plans = {
+        goals: Array.isArray(p.goals) ? p.goals : [],
+        debts: Array.isArray(p.debts) ? p.debts : [],
+        wishes: Array.isArray(p.wishes) ? p.wishes : [],
+      };
+      return st.plans;
+    }).catch(function () {
+      return st.plans || { goals: [], debts: [], wishes: [] };
     });
   }
 
@@ -194,6 +228,14 @@
       if (seq !== reqSeq) return;
       render(Views.renderSummary(s));
       if (State.isExpired()) banner('Пробный период закончился — новые записи недоступны.');
+      // Планы подтягиваем вторым шагом, чтобы не задерживать сводку.
+      loadPlans().then(function (plans) {
+        if (seq === reqSeq && route.name === 'summary') {
+          render(Views.renderSummary(s, plans));
+          // banner() вставляет узел в DOM — повторный render() его стёр бы.
+          if (State.isExpired()) banner('Пробный период закончился — новые записи недоступны.');
+        }
+      });
     }).catch(function (err) {
       if (seq !== reqSeq) return;
       fail(err);
@@ -269,13 +311,147 @@
 
   function openSettings() {
     route = { name: 'settings' };
+    loadPlans().then(function () {
+      if (route.name === 'settings') render(Views.renderSettings());
+    });
     render(Views.renderSettings());
+  }
+
+  // --- Планы ---
+
+  function openPlans(tab) {
+    if (tab) plansTab = tab;
+    route = { name: 'plans' };
+    render(Views.skeletonList());
+    var seq = ++reqSeq;
+    loadPlans(true).then(function (plans) {
+      if (seq !== reqSeq) return;
+      render(Views.renderPlans(plans, plansTab));
+      if (State.isExpired()) banner('Пробный период закончился — изменения недоступны.');
+    }).catch(function (err) {
+      if (seq !== reqSeq) return;
+      fail(err);
+    });
+  }
+
+  function openPlanForm(kind, current) {
+    if (State.isExpired()) return fail(new Api.ApiError('subscription_expired', 402));
+    openSheet(Views.renderPlanForm(kind, current));
+    var input = el.sheetBody.querySelector('input[name="name"]');
+    if (input) setTimeout(function () { input.focus(); }, 250);
+  }
+
+  function submitPlan(formEl) {
+    var kind = formEl.getAttribute('data-kind');
+    var id = formEl.getAttribute('data-id') || undefined;
+    var v = formEl.elements;
+    var btn = formEl.querySelector('[type="submit"]');
+    var payload = { id: id, name: v.name.value };
+    var action;
+    if (kind === 'goals') {
+      action = 'save_goal';
+      payload.target = Fmt.parseAmount(v.target.value);
+      payload.saved = v.saved.value ? Fmt.parseAmount(v.saved.value) : 0;
+      payload.monthly = v.monthly.value ? Fmt.parseAmount(v.monthly.value) : 0;
+      if (!(payload.target > 0)) return badInput('Укажите сумму цели', v.target);
+      if (isNaN(payload.saved) || isNaN(payload.monthly)) return badInput('Проверьте суммы', v.saved);
+      if (payload.saved > payload.target) return badInput('Накоплено не может быть больше цели', v.saved);
+    } else if (kind === 'debts') {
+      action = 'save_debt';
+      payload.total = Fmt.parseAmount(v.total.value);
+      payload.remaining = v.remaining.value ? Fmt.parseAmount(v.remaining.value) : payload.total;
+      payload.monthly = v.monthly.value ? Fmt.parseAmount(v.monthly.value) : 0;
+      payload.creditor = v.creditor.value.trim();
+      if (!(payload.total > 0)) return badInput('Укажите сумму долга', v.total);
+      if (isNaN(payload.remaining) || isNaN(payload.monthly)) return badInput('Проверьте суммы', v.remaining);
+      if (payload.remaining > payload.total) return badInput('Остаток больше суммы долга', v.remaining);
+    } else {
+      action = 'save_wish';
+      payload.price = Fmt.parseAmount(v.price.value);
+      payload.priority = v.priority.value;
+      payload.goal_id = v.goal_id && v.goal_id.value ? v.goal_id.value : null;
+      if (!(payload.price > 0)) return badInput('Укажите цену', v.price);
+    }
+    if (!payload.name.trim()) return badInput('Введите название', v.name);
+
+    btn.disabled = true;
+    Api.call(action, payload).then(function () {
+      root.Tg.haptic('success');
+      closeSheet();
+      toast('Сохранено');
+      openPlans();
+    }).catch(function (err) {
+      btn.disabled = false;
+      root.Tg.haptic('error');
+      if (err.code === 'subscription_expired') { closeSheet(); fail(err); return; }
+      toast(err.message || 'Не удалось сохранить');
+    });
+  }
+
+  function badInput(text, field) {
+    root.Tg.haptic('error');
+    toast(text);
+    if (field && field.focus) field.focus();
+  }
+
+  // Быстрое действие с деньгами внутри карточки: сумма → API → перерисовка.
+  function planAction(action, id, amount, label) {
+    if (State.isExpired()) return fail(new Api.ApiError('subscription_expired', 402));
+    if (!(amount > 0) || isNaN(amount)) return toast('Введите сумму');
+    Api.call(action, { id: id, amount: amount }).then(function () {
+      root.Tg.haptic('success');
+      toast(label);
+      openPlans();
+    }).catch(function (err) {
+      root.Tg.haptic('error');
+      if (err.code === 'subscription_expired') return fail(err);
+      toast(err.message || 'Не получилось');
+    });
+  }
+
+  function removePlan(kind, id) {
+    var labels = { goals: ['Удалить цель?', 'delete_goal'], debts: ['Удалить долг?', 'delete_debt'], wishes: ['Удалить желание?', 'delete_wish'] };
+    var l = labels[kind];
+    dialog(l[0], 'Удалить').then(function (ok) {
+      if (!ok) return;
+      Api.call(l[1], { id: id }).then(function () {
+        root.Tg.haptic('success');
+        toast('Удалено');
+        openPlans();
+      }).catch(function (err) {
+        root.Tg.haptic('error');
+        if (err.code === 'subscription_expired') return fail(err);
+        toast(err.message || 'Не удалось удалить');
+      });
+    });
+  }
+
+  // --- Промокод ---
+
+  function redeemPromo(code) {
+    code = String(code || '').trim();
+    if (!code) return toast('Введите промокод');
+    return Api.call('redeem_promo', { code: code }).then(function (res) {
+      root.Tg.haptic('success');
+      st.summaryCache = {};
+      st.txCache = {};
+      return loadMember().then(function () {
+        toast('Доступ до ' + Fmt.dayLabel(res.plan_until));
+        if (route.name === 'settings') render(Views.renderSettings());
+      });
+    }).catch(function (err) {
+      root.Tg.haptic('error');
+      if (err.code === 'bad_promo') return toast('Такого промокода нет');
+      if (err.code === 'promo_used') return toast('Этот код уже активирован');
+      toast(err.message || 'Не удалось активировать');
+    });
   }
 
   function openTab(tab) {
     if (!st.member) return;
     if (tab === 'summary') openSummary();
     else if (tab === 'tx') openTx();
+    else if (tab === 'plans') openPlans();
     else if (tab === 'add') openAdd();
     else if (tab === 'settings') openSettings();
   }
@@ -419,6 +595,10 @@
         break;
       case 'retry': goHome(); break;
       case 'start': goHome(); break;
+      case 'go-plans': openPlans(); break;
+      case 'go-settings': openSettings(); break;
+      case 'plans-tab': plansTab = actionBtn.getAttribute('data-plans'); openPlans(); break;
+      case 'plan-add': openPlanForm(actionBtn.getAttribute('data-kind') || plansTab); break;
       case 'onb-tab':
         onboarding.tab = actionBtn.getAttribute('data-onb');
         onboarding.member_name = (el.screen.querySelector('[name="member_name"]') || {}).value || '';
@@ -433,6 +613,10 @@
         break;
       case 'copy-code':
         root.Tg.copy(actionBtn.getAttribute('data-code') || '');
+        break;
+      case 'open-promo':
+        var promoInput = el.screen.querySelector('[name="code"]');
+        if (promoInput) { promoInput.focus(); }
         break;
       case 'demo-reset':
         if (root.DEMO_API) root.DEMO_API.reset();
@@ -464,6 +648,8 @@
     ev.preventDefault();
     var kind = f.getAttribute('data-form');
     if (kind === 'add') submitAdd(f);
+    else if (kind === 'plan') submitPlan(f);
+    else if (kind === 'promo') redeemPromo(f.elements.code.value);
     else if (kind === 'create' || kind === 'join') submitOnboarding(f, kind);
   });
 
@@ -482,6 +668,73 @@
         else openTxRow(tx);
       }
       return;
+    }
+  });
+
+  el.sheet.addEventListener('click', function (ev) {
+    if (ev.target.closest('[data-sheet-close]')) closeSheet();
+  });
+
+  // Карточки планов: «···» → удалить, «+ Пополнить» / «− 1000» → сумма и API.
+  el.screen.addEventListener('click', function (ev) {
+    var card = ev.target.closest('[data-plan]');
+    if (!card) return;
+    var kind = card.getAttribute('data-plan');
+    var id = card.getAttribute('data-id');
+
+    if (ev.target.closest('[data-plan-more]')) {
+      card.classList.toggle('plan--open');
+      var more = card.querySelector('.plan__more');
+      if (more) more.textContent = card.classList.contains('plan--open') ? 'Удалить' : '···';
+      return;
+    }
+    if (card.classList.contains('plan--open') && ev.target.closest('.plan__more') === null &&
+        !ev.target.closest('[data-plan-add]') && !ev.target.closest('[data-debt-pay]') && !ev.target.closest('[data-wish-buy]')) {
+      card.classList.remove('plan--open');
+      var m2 = card.querySelector('.plan__more');
+      if (m2) m2.textContent = '···';
+      var confirm = card.querySelector('.plan__confirm');
+      if (confirm && !ev.target.closest('.plan__confirm')) confirm.hidden = true;
+      return;
+    }
+
+    var addBtn = ev.target.closest('[data-plan-add]');
+    if (addBtn) {
+      var box = card.querySelector('.plan__confirm');
+      box.hidden = !box.hidden;
+      var input = box.querySelector('[data-plan-amount]');
+      if (!box.hidden && input) setTimeout(function () { input.focus(); }, 100);
+      return;
+    }
+    if (ev.target.closest('[data-plan-cancel]')) {
+      var c = card.querySelector('.plan__confirm');
+      if (c) c.hidden = true;
+      return;
+    }
+    if (ev.target.closest('[data-plan-save]')) {
+      var amountField = card.querySelector('[data-plan-amount]');
+      var value = amountField ? Fmt.parseAmount(amountField.value) : NaN;
+      if (kind === 'goal') planAction('add_to_goal', id, value, 'Добавлено');
+      else planAction('pay_debt', id, value, 'Выплачено');
+      return;
+    }
+
+    var pay = ev.target.closest('[data-debt-pay]');
+    if (pay) {
+      var raw = pay.getAttribute('data-debt-pay');
+      // «весь остаток» — сумма берётся из data-remaining на карточке.
+      var amt = raw === 'all' ? Number(card.getAttribute('data-remaining') || 0) : Number(raw);
+      planAction('pay_debt', id, amt, 'Выплачено');
+      return;
+    }
+
+    var buy = ev.target.closest('[data-wish-buy]');
+    if (buy) {
+      Api.call('buy_wish', { id: id }).then(function () {
+        root.Tg.haptic('success');
+        toast('Отмечено купленным');
+        openPlans();
+      }).catch(function (err) { toast(err.message || 'Не удалось'); });
     }
   });
 
