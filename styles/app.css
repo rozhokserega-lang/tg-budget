@@ -283,8 +283,22 @@ button {
   cursor: pointer;
 }
 
+/* Раскрытая категория: мягкая подсветка, чтобы список не сливался с остальными */
+.cat-wrap--open {
+  margin: 4px calc(-1 * var(--pad)) 6px;
+  padding: 0 var(--pad) 4px;
+  border-radius: var(--radius-md);
+  background: var(--c-card-strong);
+}
+
 .cat-wrap--open .cat {
   border-bottom: 0;
+  width: 100%;
+  margin: 0;
+}
+
+.cat-wrap--open .cat__name {
+  font-weight: 700;
 }
 
 .cat__chev {
@@ -296,15 +310,18 @@ button {
 }
 
 .cat-tx {
-  padding: 2px 0 10px;
-  border-bottom: 1px solid var(--c-border);
+  padding: 2px 0 6px;
+  border-top: 1px dashed var(--c-border);
 }
 
 .cat-tx__row {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  padding: 6px 0 6px 42px;
+  padding: 7px 8px 7px 42px;
+  margin-top: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--c-bg);
   font-size: 13px;
 }
 
