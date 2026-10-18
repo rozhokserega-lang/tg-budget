@@ -41,6 +41,16 @@ button {
   display: none !important;
 }
 
+/* Единые анимации: короткие и ненавязчивые, уважают reduce-motion */
+button,
+.input,
+.switch__track,
+.switch__track::after,
+.progress__bar {
+  transition-duration: var(--dur);
+  transition-timing-function: var(--ease);
+}
+
 /* --- Каркас --- */
 
 .app {
@@ -283,18 +293,17 @@ button {
   cursor: pointer;
 }
 
-/* Раскрытая категория: мягкая подсветка, чтобы список не сливался с остальными */
+/* Раскрытая категория: подсветка без сдвига шапки — внешних отступов нет. */
 .cat-wrap--open {
-  margin: 4px calc(-1 * var(--pad)) 6px;
-  padding: 0 var(--pad) 4px;
-  border-radius: var(--radius-md);
+  border-radius: 10px;
   background: var(--c-card-strong);
 }
 
 .cat-wrap--open .cat {
   border-bottom: 0;
-  width: 100%;
-  margin: 0;
+  padding-left: calc(var(--pad) - 8px);
+  padding-right: calc(var(--pad) - 8px);
+  border-radius: 10px 10px 0 0;
 }
 
 .cat-wrap--open .cat__name {
@@ -310,8 +319,28 @@ button {
 }
 
 .cat-tx {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur) var(--ease);
+}
+
+.cat-wrap--open .cat-tx {
+  grid-template-rows: 1fr;
+}
+
+.cat-tx__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cat-wrap--open .cat-tx__inner {
   padding: 2px 0 6px;
   border-top: 1px dashed var(--c-border);
+}
+
+.cat-tx__add {
+  width: 100%;
+  margin: 6px 0 2px;
 }
 
 .cat-tx__row {

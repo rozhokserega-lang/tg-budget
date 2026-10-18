@@ -118,7 +118,10 @@
           '<div class="cat__meta"><span>из ' + e(money(plan)) + '</span><span class="' + (over ? 'amount--neg' : '') + '">' + pct + '%</span></div>'
         : '<div class="cat__meta"><span>без лимита</span></div>') +
       '</button>' +
-      (open ? '<div class="cat-tx">' + list + '</div>' : '') +
+      '<div class="cat-tx"><div class="cat-tx__inner">' +
+      (open ? list + '<button type="button" class="btn btn--sm btn--primary cat-tx__add" data-action="add-in-cat" data-id="' + e(c.id) + '">' +
+        '+ Добавить в «' + e(c.name) + '»</button>' : '') +
+      '</div></div>' +
       '</div>'
     );
   }
@@ -258,7 +261,9 @@
 
   function renderTxList(list, filterId) {
     var st = State.get();
-    list = reconcileList(list);
+    list = reconcileList(list).filter(function (t) {
+      return !(root.AppState && root.AppState.isDeleting(t.id));
+    });
     var cat = filterId ? (st.categories || []).find(function (c) { return c.id === filterId; }) : null;
     // category_id в записях есть всегда; для истории берём имя из первой записи, если категории уже нет.
     if (filterId && !cat && list[0] && list[0].categories) {
