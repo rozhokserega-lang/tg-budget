@@ -1,0 +1,187 @@
+/**
+ * Демо-данные для запуска вне Telegram (браузер, вёрстка без бэкенда).
+ * Повторяет контракт Edge Function `api` в памяти — состояние живёт до перезагрузки.
+ * Внутри Telegram не используется.
+ */
+
+(function (root) {
+  var seq = 100;
+  var id = function () { return 'demo-' + ++seq; };
+  var iso = function (d) { return Fmt.isoDate(d); };
+  var daysAgo = function (n) { return iso(new Date(Date.now() - n * 86400000)); };
+
+  // ?onboarding — демо начинается без семьи, чтобы проверить создание и вступление.
+  var state = fresh();
+  if (new URLSearchParams(root.location.search).has('onboarding')) state.member = null;
+
+  function fresh() {
+    var categories = [
+      cat('Продукты', 'expense', 30000, '🛒', 1),
+      cat('Жильё и коммуналка', 'expense', 35000, '🏠', 2),
+      cat('Транспорт', 'expense', 8000, '🚌', 3),
+      cat('Кафе и рестораны', 'expense', 10000, '☕', 4),
+      cat('Здоровье', 'expense', 5000, '💊', 5),
+      cat('Одежда', 'expense', 6000, '👕', 6),
+      cat('Развлечения', 'expense', 8000, '🎬', 7),
+      cat('Подписки и связь', 'expense', 3000, '📱', 8),
+      cat('Подарки', 'expense', 4000, '🎁', 9),
+      cat('Дом и быт', 'expense', 5000, '🧺', 10),
+      cat('Путешествия', 'expense', 10000, '✈️', 11),
+      cat('Прочее', 'expense', 5000, '📦', 12),
+      cat('Зарплата', 'income', 0, '💼', 20),
+      cat('Подработка', 'income', 0, '🧩', 21),
+      cat('Премия', 'income', 0, '🏆', 22),
+      cat('Прочие доходы', 'income', 0, '➕', 23),
+    ];
+    var members = [
+      { id: 'm1', name: 'Аня', telegram_id: 1 },
+      { id: 'm2', name: 'Игорь', telegram_id: 2 },
+    ];
+    var tx = [];
+    function add(member, catName, amount, shared, note, day) {
+      var c = categories.find(function (x) { return x.name === catName; });
+      tx.push({ id: id(), member_id: member, category_id: c.id, amount: amount, is_shared: shared, note: note, occurred_on: day, created_at: new Date().toISOString() });
+    }
+    add('m1', 'Зарплата', 120000, false, 'оклад', daysAgo(20));
+    add('m2', 'Зарплата', 90000, false, 'оклад', daysAgo(19));
+    add('m1', 'Продукты', 3240.5, true, 'лента', daysAgo(12));
+    add('m1', 'Продукты', 2180, true, 'пятёрочка', daysAgo(5));
+    add('m2', 'Продукты', 1450, true, 'магнит', daysAgo(3));
+    add('m1', 'Кафе и рестораны', 890, false, 'обед', daysAgo(4));
+    add('m2', 'Кафе и рестораны', 1250, false, 'бариста', daysAgo(2));
+    add('m1', 'Транспорт', 420, true, 'такси', daysAgo(1));
+    add('m1', 'Подписки и связь', 399, true, 'музыка', daysAgo(8));
+    add('m2', 'Развлечения', 2400, true, 'кино', daysAgo(6));
+    add('m1', 'Здоровье', 1250, false, 'аптека', daysAgo(0));
+    add('m2', 'Подработка', 15000, false, 'фриланс', daysAgo(10));
+    add('m1', 'Кафе и рестораны', 350, false, 'кофе', daysAgo(0));
+    return {
+      me: { id: 'm1', household_id: 'h1', name: 'Аня', telegram_id: 1, households: null },
+      member: { id: 'm1', household_id: 'h1', name: 'Аня', telegram_id: 1,
+        households: { id: 'h1', name: 'Наша семья', split_mode: 'proportional', invite_code: 'demo1234',
+          plan_until: new Date(Date.now() + (new URLSearchParams(root.location.search).has('expired') ? -86400000 : 12 * 86400000)).toISOString() } },
+      members: members,
+      categories: categories,
+      tx: tx,
+    };
+  }
+
+  function cat(name, kind, plan, icon, sort) {
+    return { id: id(), name: name, kind: kind, plan_monthly: plan, icon: icon, sort: sort, archived: false };
+  }
+
+  function summary(month) {
+    var ym = month || Fmt.currentMonth();
+    var inMonth = state.tx.filter(function (t) { return Fmt.sameMonth(t.occurred_on, ym); });
+    var kindOf = function (t) { return state.categories.find(function (c) { return c.id === t.category_id; }).kind; };
+    var income = sum(inMonth.filter(function (t) { return kindOf(t) === 'income'; }));
+    var expense = sum(inMonth.filter(function (t) { return kindOf(t) === 'expense'; }));
+    var categories = state.categories
+      .filter(function (c) { return c.kind === 'expense' && !c.archived; })
+      .sort(function (a, b) { return a.sort - b.sort; })
+      .map(function (c) {
+        return { id: c.id, name: c.name, icon: c.icon, plan: c.plan_monthly,
+          fact: sum(inMonth.filter(function (t) { return t.category_id === c.id; })) };
+      });
+    // Как в month_summary(): общие траты делятся пропорционально доходу участника,
+    // при нулевом суммарном доходе — поровну.
+    var totalShared = sum(inMonth.filter(function (t) { return kindOf(t) === 'expense' && t.is_shared; }));
+    var totalIncome = sum(inMonth.filter(function (t) { return kindOf(t) === 'income'; }));
+    var shareOf = function (m) {
+      return totalIncome > 0
+        ? totalShared * m.income / totalIncome
+        : totalShared / state.members.length;
+    };
+    var members = state.members.map(function (m) {
+      var own = inMonth.filter(function (t) { return t.member_id === m.id; });
+      var mIncome = sum(own.filter(function (t) { return kindOf(t) === 'income'; }));
+      var paidShared = sum(own.filter(function (t) { return kindOf(t) === 'expense' && t.is_shared; }));
+      return { id: m.id, name: m.name, income: mIncome, paid_shared: paidShared,
+        personal: sum(own.filter(function (t) { return kindOf(t) === 'expense' && !t.is_shared; })),
+        personal_limit: 0, share: Math.round(shareOf({ income: mIncome }) * 100) / 100,
+        balance: 0 };
+    });
+    members.forEach(function (m) { m.balance = Math.round(m.paid_shared - m.share); });
+    return { income: income, expense: expense, balance: income - expense, categories: categories, members: members };
+  }
+
+  function sum(list) {
+    return list.reduce(function (a, t) { return a + Number(t.amount); }, 0);
+  }
+
+  var handlers = {
+    // API отвечает `{}`, пока пользователь не в семье.
+    me: function () {
+      return state.member ? { member: Object.assign({}, state.member.me, { households: state.member.households }) } : {};
+    },
+    summary: function (p) {
+      return summary(p.month);
+    },
+    categories: function () {
+      return state.categories.filter(function (c) { return !c.archived; }).sort(function (a, b) { return a.sort - b.sort; });
+    },
+    list_tx: function (p) {
+      var ym = String(p.month || Fmt.currentMonth()).slice(0, 7);
+      return state.tx
+        .filter(function (t) { return Fmt.sameMonth(t.occurred_on, ym); })
+        .sort(function (a, b) { return a.occurred_on < b.occurred_on ? 1 : a.occurred_on > b.occurred_on ? -1 : (a.created_at < b.created_at ? 1 : -1); })
+        .map(function (t) {
+          var c = state.categories.find(function (x) { return x.id === t.category_id; });
+          var m = state.members.find(function (x) { return x.id === t.member_id; });
+          return Object.assign({}, t, {
+            categories: c ? { name: c.name, icon: c.icon, kind: c.kind } : null,
+            members: m ? { name: m.name } : null,
+          });
+        });
+    },
+    add_tx: function (p) {
+      var c = state.categories.find(function (x) { return x.id === p.category_id; });
+      if (!c) throw new Error('bad_category');
+      if (!(Number(p.amount) > 0)) throw new Error('bad_amount');
+      var tx = { id: id(), member_id: state.member.id, category_id: c.id, amount: Number(p.amount),
+        is_shared: !!p.is_shared, note: p.note || null,
+        occurred_on: p.occurred_on || Fmt.todayIso(), created_at: new Date().toISOString() };
+      state.tx.push(tx);
+      return tx;
+    },
+    delete_tx: function (p) {
+      state.tx = state.tx.filter(function (t) { return t.id !== p.id; });
+      return { ok: true };
+    },
+    create_household: function (p) {
+      state.member = joinDemo(p.member_name);
+      return { ok: true, invite_code: state.member.households.invite_code };
+    },
+    join: function (p) {
+      state.member = joinDemo(p.member_name);
+      return { ok: true };
+    },
+  };
+
+  // Возвращает демо-участника в семью (то, что делает me после create/join на реальном API).
+  function joinDemo(name) {
+    var s = fresh();
+    var member = Object.assign({}, s.member, { name: name || s.member.me.name });
+    return (state.member = member);
+  }
+
+  function call(action, payload) {
+    return new Promise(function (resolve, reject) {
+      setTimeout(function () {
+        var h = handlers[action];
+        if (!h) return reject(new Error('unknown_action'));
+        try {
+          resolve(h(payload || {}));
+        } catch (e) {
+          reject(e);
+        }
+      }, 120);
+    });
+  }
+
+  function reset() {
+    state = fresh();
+  }
+
+  root.DEMO_API = { call: call, reset: reset };
+})(window);

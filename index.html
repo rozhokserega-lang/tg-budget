@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
+<title>Бюджет пары</title>
+
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+
+<link rel="stylesheet" href="styles/tokens.css">
+<link rel="stylesheet" href="styles/app.css">
+
+<script src="https://telegram.org/js/telegram-web-app.js" async></script>
+</head>
+<body>
+<!-- Адрес Edge Function `api`. Можно переопределить в браузере: index.html?api=https://... -->
+<script>window.APP_API_URL = 'https://iqbbjkjzxtdqtuwhiadj.supabase.co/functions/v1/api';</script>
+
+<div id="app" class="app">
+  <header id="screen-header" class="screen-header" hidden></header>
+  <main id="screen" class="screen" aria-live="polite"></main>
+  <nav id="tabs" class="tabs" hidden></nav>
+  <div id="loader" class="loader">
+    <div class="loader__spinner"></div>
+    <p class="loader__text">Загружаем бюджет…</p>
+  </div>
+</div>
+
+<div id="dialog" class="dialog" hidden>
+  <div class="dialog__backdrop" data-dialog-close></div>
+  <div class="dialog__box" role="alertdialog" aria-modal="true">
+    <p id="dialog-text" class="dialog__text"></p>
+    <div class="dialog__actions">
+      <button type="button" class="dialog__btn" data-dialog-close>Отмена</button>
+      <button type="button" id="dialog-ok" class="dialog__btn dialog__btn--primary" data-dialog-ok>Удалить</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script src="src/format.js"></script>
+<script src="src/telegram.js"></script>
+<script src="src/demo.js"></script>
+<script src="src/api.js"></script>
+<script src="src/state.js"></script>
+<script src="src/views.js"></script>
+<script src="src/app.js"></script>
+</body>
+</html>
