@@ -250,6 +250,7 @@
     { id: 'goals', label: 'Цели' },
     { id: 'debts', label: 'Долги' },
     { id: 'wishes', label: 'Желания' },
+    { id: 'recurring', label: 'Платежи' },
   ];
   var PRIORITY = { high: 'высокий', medium: 'средний', low: 'низкий' };
 
@@ -330,6 +331,21 @@
     );
   }
 
+  function recurringRow(r) {
+    var cat = r.categories || {};
+    return (
+      '<div class="plan" data-recurring="' + e(r.id) + '">' +
+      '<div class="plan__top">' +
+      '<span class="cat__icon">' + e(cat.icon || '🔁') + '</span>' +
+      '<span class="plan__name">' + e(r.name) + '</span>' +
+      '<span class="plan__amount">' + e(money(r.amount)) + '</span>' +
+      '<button type="button" class="plan__more" data-recurring-more>···</button></div>' +
+      '<div class="plan__meta">' + r.day_of_month + '-го числа · ' + e(cat.name || 'без категории') + '</div>' +
+      '<div class="plan__actions"><button type="button" class="btn btn--sm btn--ghost" data-recurring-pay>Отметить оплату</button></div>' +
+      '</div>'
+    );
+  }
+
   function renderPlans(plans, tab) {
     plans = plans || { goals: [], debts: [], wishes: [] };
     tab = tab || 'goals';
@@ -340,12 +356,13 @@
         goals: ['🎯', 'Целей пока нет', 'Например, отпуск или новая техника'],
         debts: ['💳', 'Долгов нет', 'Отлично!'],
         wishes: ['✨', 'Список желаний пуст', 'Добавьте то, что хочется купить'],
+        recurring: ['🔁', 'Платежей пока нет', 'Аренда, подписки, кредиты — напомним накануне'],
       };
       var t = titles[tab];
       body = '<div class="empty"><div class="empty__icon">' + t[0] + '</div><div class="empty__title">' + t[1] + '</div><p>' + t[2] + '</p>' +
         '<button type="button" class="btn btn--primary" data-action="plan-add" data-kind="' + tab + '">Добавить</button></div>';
     } else {
-      var row = { goals: goalRow, debts: debtRow, wishes: wishRow }[tab];
+      var row = { goals: goalRow, debts: debtRow, wishes: wishRow, recurring: recurringRow }[tab];
       body = list.map(row).join('');
     }
     return (
@@ -395,6 +412,30 @@
       '<button type="submit" class="btn btn--primary btn--full">Сохранить</button>' +
       '<button type="button" class="btn btn--danger btn--full mt-8" data-action="delete-cat" data-id="' + e(c.id) + '">Удалить категорию</button>' +
       '</div>' +
+      '</form>'
+    );
+  }
+
+  // Повторяющийся платёж: название, сумма, день месяца, категория.
+  function renderRecurringForm(opts) {
+    opts = opts || {};
+    var cats = (State.get().categories || []).filter(function (c) { return c.kind === 'expense' && !c.archived; })
+      .sort(function (a, b) { return (a.sort || 0) - (b.sort || 0); });
+    return (
+      '<form data-form="plan" data-kind="recurring"' + (opts.id ? ' data-id="' + e(opts.id) + '"' : '') + ' novalidate>' +
+      '<div class="sheet__title">' + (opts.id ? 'Изменить платёж' : 'Новый платёж') + '</div>' +
+      '<label class="field"><span class="field__label">Название</span>' +
+      '<input class="input" name="name" maxlength="80" placeholder="Аренда, интернет…" value="' + e(opts.name || '') + '"></label>' +
+      '<label class="field"><span class="field__label">Сумма</span>' +
+      '<input class="input" name="amount" inputmode="decimal" placeholder="0 ₽" value="' + e(opts.amount || '') + '"></label>' +
+      '<label class="field"><span class="field__label">День месяца</span>' +
+      '<input class="input input--center" name="day" inputmode="numeric" placeholder="5" value="' + e(opts.day || '') + '"></label>' +
+      '<label class="field"><span class="field__label">Категория</span>' +
+      '<select class="input" name="category_id">' + cats.map(function (c) {
+        return '<option value="' + e(c.id) + '"' + (opts.category_id === c.id ? ' selected' : '') + '>' + e(c.icon || '🏷️') + ' ' + e(c.name) + '</option>';
+      }).join('') + '</select></label>' +
+      '<p class="small muted">Напомним за день до платежа. 31-е в коротком месяце сдвигаем на последний день.</p>' +
+      '<div class="actions"><button type="submit" class="btn btn--primary btn--full">Сохранить</button></div>' +
       '</form>'
     );
   }
@@ -479,6 +520,24 @@
     );
   }
 
+  // Уведомления в Telegram: платежи и лимиты включены, сводка — по желанию.
+  function notificationsCard(notif) {
+    notif = notif || {};
+    function toggle(key, title, hint) {
+      return '<label class="switch-row"><span class="switch-row__text">' +
+        '<span class="switch-row__title">' + e(title) + '</span>' +
+        '<span class="switch-row__hint">' + e(hint) + '</span></span>' +
+        '<span class="switch"><input type="checkbox" data-notif="' + key + '"' + (notif[key] ? ' checked' : '') + '>' +
+        '<span class="switch__track"></span></span></label>';
+    }
+    return '<div class="section"><div class="section__head"><span class="section__title">Уведомления в Telegram</span></div>' +
+      '<div class="card card--stack">' +
+      toggle('payments', 'Напоминания о платежах', 'За день до даты') +
+      toggle('limits', 'Лимиты категорий', 'При 80 % и 100 % плана') +
+      toggle('digest', 'Итоги недели', 'Воскресенье, вечером') +
+      '</div></div>';
+  }
+
   function limitsCard() {
     var cats = ((State.get().categories) || []).filter(function (c) { return c.kind === 'expense' && !c.archived; });
     var total = cats.reduce(function (s, c) { return s + (Number(c.plan_monthly) || 0); }, 0);
@@ -537,6 +596,7 @@
     var h = (m && m.households) || {};
     var left = State.planDaysLeft();
     var untilText = h.plan_until ? Fmt.dayLabel(h.plan_until) : '';
+    var notif = (m && m.notifications) || { payments: true, limits: true, digest: false };
     var planText;
     if (left === null) planText = '—';
     else if (left < 0) planText = 'закончился';
@@ -550,6 +610,7 @@
       '<div class="settings-row"><span class="settings-row__label">Доступ</span><span class="settings-row__value' + (left !== null && left < 0 ? ' amount--neg' : '') + '">' + e(planText) +
         (untilText ? ' · до ' + e(untilText) : '') + '</span></div>' +
       '</div>' +
+      notificationsCard(notif) +
       limitsCard() +
       starsCard(st.tariffs, st.buying) +
       promoCard(st.promo) +
@@ -636,6 +697,7 @@
     renderPlans: renderPlans,
     renderPlanForm: renderPlanForm,
     renderCategoryForm: renderCategoryForm,
+    renderRecurringForm: renderRecurringForm,
     renderLimits: renderLimits,
     renderTxList: renderTxList,
     renderForm: renderForm,

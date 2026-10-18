@@ -73,7 +73,14 @@
       { id: 'w2', household_id: 'h1', name: 'Абонемент в зал', price: 24000, priority: 'medium', goal_id: null, purchased: true },
     ];
     return {
-      me: { id: 'm1', household_id: 'h1', name: 'Аня', telegram_id: 1, households: null },
+      me: { id: 'm1', household_id: 'h1', name: 'Аня', telegram_id: 1, households: null,
+        notifications: { payments: true, limits: true, digest: false } },
+      recurring: [
+        { id: 'r1', household_id: 'h1', name: 'Аренда', amount: 35000, day_of_month: 5, active: true,
+          categories: { name: 'Жильё и коммуналка', icon: '🏠' } },
+        { id: 'r2', household_id: 'h1', name: 'Интернет', amount: 900, day_of_month: 12, active: true,
+          categories: { name: 'Подписки и связь', icon: '📱' } },
+      ],
       goals: goals,
       debts: debts,
       wishes: wishes,
@@ -135,7 +142,10 @@
     // API отвечает `{}`, пока пользователь не в семье.
     me: function () {
       return state.member
-        ? { member: Object.assign({}, state.member.me, { households: state.member.households }), promo: state.promo || [] }
+        ? { member: Object.assign({}, state.member.me, {
+            households: state.member.households,
+            notifications: state.member.notifications || { payments: true, limits: true, digest: false },
+          }), promo: state.promo || [] }
         : {};
     },
     summary: function (p) {
@@ -257,6 +267,44 @@
       if (used) c.archived = true;
       else state.categories = state.categories.filter(function (x) { return x.id !== p.id; });
       return { ok: true, archived: used };
+    },
+    list_recurring: function () { return state.recurring; },
+    save_recurring: function (p) {
+      var cat = state.categories.find(function (c) { return c.id === p.category_id; });
+      var row = {
+        name: p.name, amount: Number(p.amount), day_of_month: Number(p.day_of_month), active: true,
+        categories: cat ? { name: cat.name, icon: cat.icon } : null,
+      };
+      if (p.id) {
+        var cur = state.recurring.find(function (x) { return x.id === p.id; });
+        if (!cur) throw new Error('not_found');
+        Object.assign(cur, row);
+        return cur;
+      }
+      var item = Object.assign({ id: id() }, row);
+      state.recurring.push(item);
+      return item;
+    },
+    delete_recurring: function (p) {
+      state.recurring = state.recurring.filter(function (x) { return x.id !== p.id; });
+      return { ok: true };
+    },
+    pay_recurring: function (p) {
+      var r = state.recurring.find(function (x) { return x.id === p.id; });
+      if (!r) throw new Error('not_found');
+      var cat = state.categories.find(function (c) { return c.name === (r.categories && r.categories.name); });
+      var tx = { id: id(), member_id: state.member.id, category_id: cat.id, amount: r.amount,
+        is_shared: false, note: r.name, occurred_on: Fmt.todayIso(), created_at: new Date().toISOString() };
+      state.tx.push(tx);
+      return { ok: true, transaction: tx };
+    },
+    save_notifications: function (p) {
+      state.member.notifications = {
+        payments: p.notifications.payments !== false,
+        limits: p.notifications.limits !== false,
+        digest: p.notifications.digest === true,
+      };
+      return { notifications: state.member.notifications };
     },
     plans: function () {
       return [

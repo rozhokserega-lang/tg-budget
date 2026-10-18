@@ -669,6 +669,20 @@ textarea.input {
   min-width: 0;
 }
 
+.card--stack {
+  padding: 4px 0;
+}
+
+.card--stack .switch-row {
+  padding: 10px 14px;
+  border-radius: 0;
+  background: transparent;
+}
+
+.card--stack .switch-row + .switch-row {
+  border-top: 1px solid var(--c-border);
+}
+
 .switch-row__title {
   display: block;
   font-weight: 500;

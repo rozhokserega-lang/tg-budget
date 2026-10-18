@@ -185,15 +185,21 @@
   // Планы подтягиваем лениво и мягко: сводка не должна падать из-за них.
   function loadPlans(force) {
     if (!force && st.plans) return Promise.resolve(st.plans);
-    return Api.call('list_plans').then(function (p) {
+    return Promise.all([
+      Api.call('list_plans'),
+      Api.call('list_recurring').catch(function () { return []; }),
+    ]).then(function (res) {
+      var p = res[0];
+      var rec = Array.isArray(res[1]) ? res[1] : [];
       st.plans = {
         goals: Array.isArray(p.goals) ? p.goals : [],
         debts: Array.isArray(p.debts) ? p.debts : [],
         wishes: Array.isArray(p.wishes) ? p.wishes : [],
+        recurring: rec,
       };
       return st.plans;
     }).catch(function () {
-      return st.plans || { goals: [], debts: [], wishes: [] };
+      return st.plans || { goals: [], debts: [], wishes: [], recurring: [] };
     });
   }
 
@@ -393,12 +399,43 @@
 
   function openPlanForm(kind, current) {
     if (State.isExpired()) return fail(new Api.ApiError('subscription_expired', 402));
+    if (kind === 'recurring') {
+      openSheet(Views.renderRecurringForm(current));
+      return;
+    }
     openSheet(Views.renderPlanForm(kind, current));
     var input = el.sheetBody.querySelector('input[name="name"]');
     if (input) setTimeout(function () { input.focus(); }, 250);
   }
 
+  function submitRecurring(formEl) {
+    var id = formEl.getAttribute('data-id') || undefined;
+    var v = formEl.elements;
+    var amt = Fmt.parseAmount(v.amount.value);
+    var day = parseInt(v.day.value, 10);
+    if (!v.name.value.trim()) return badInput('Введите название', v.name);
+    if (!(amt > 0)) return badInput('Укажите сумму', v.amount);
+    if (!(day >= 1 && day <= 31)) return badInput('День от 1 до 31', v.day);
+    var btn = formEl.querySelector('[type="submit"]');
+    btn.disabled = true;
+    Api.call('save_recurring', {
+      id: id, name: v.name.value, amount: amt, day_of_month: day, category_id: v.category_id.value,
+    }).then(function () {
+      root.Tg.haptic('success');
+      st.plans = null;
+      closeSheet();
+      toast('Платёж сохранён');
+      openPlans();
+    }).catch(function (err) {
+      btn.disabled = false;
+      root.Tg.haptic('error');
+      if (err.code === 'subscription_expired') { closeSheet(); return fail(err); }
+      toast(err.message || 'Не удалось сохранить');
+    });
+  }
+
   function submitPlan(formEl) {
+    if (formEl.getAttribute('data-kind') === 'recurring') return submitRecurring(formEl);
     var kind = formEl.getAttribute('data-kind');
     var id = formEl.getAttribute('data-id') || undefined;
     var v = formEl.elements;
@@ -567,6 +604,18 @@
       });
   }
 
+  function removeRecurring(id) {
+    dialog('Удалить напоминание о платеже?', 'Удалить').then(function (ok) {
+      if (!ok) return;
+      Api.call('delete_recurring', { id: id }).then(function () {
+        root.Tg.haptic('success');
+        st.plans = null;
+        toast('Удалено');
+        openPlans();
+      }).catch(function (err) { toast(err.message || 'Не удалось удалить'); });
+    });
+  }
+
   function deleteCategory(id) {
     var msg = 'Удалить категорию? Траты этой категории останутся в истории, а категория скроется из списка.';
     dialog(msg, 'Удалить').then(function (ok) {
@@ -595,6 +644,29 @@
       render(Views.renderLimits());
     }).catch(function (err) {
       fail(err);
+    });
+  }
+
+  // --- Уведомления ---
+
+  function toggleNotification(el) {
+    var key = el.getAttribute('data-notif');
+    var current = (st.member && st.member.notifications) || { payments: true, limits: true, digest: false };
+    var next = Object.assign({}, current);
+    next[key] = !!el.checked;
+    // Оптимистично: переключатель уже нажат.
+    st.member = Object.assign({}, st.member, { notifications: next });
+    Api.call('save_notifications', { notifications: next }).then(function (res) {
+      if (res && res.notifications) {
+        st.member = Object.assign({}, st.member, { notifications: res.notifications });
+      }
+      root.Tg.haptic('light');
+      toast(next[key] ? 'Включено' : 'Выключено');
+    }).catch(function (err) {
+      el.checked = !el.checked;
+      st.member = Object.assign({}, st.member, { notifications: current });
+      root.Tg.haptic('error');
+      toast(err.message || 'Не удалось сохранить');
     });
   }
 
@@ -846,6 +918,27 @@
   });
 
   el.screen.addEventListener('click', function (ev) {
+    // Карточка повторяющегося платежа: «···» удаляет, кнопка проводит оплату.
+    var recCard = ev.target.closest('[data-recurring]');
+    if (recCard) {
+      var recId = recCard.getAttribute('data-recurring');
+      if (ev.target.closest('[data-recurring-more]')) return removeRecurring(recId);
+      if (ev.target.closest('[data-recurring-pay]')) {
+        Api.call('pay_recurring', { id: recId }).then(function () {
+          root.Tg.haptic('success');
+          st.plans = null;
+          st.summaryCache = {};
+          st.txCache = {};
+          toast('Оплата записана');
+          openPlans();
+        }).catch(function (err) {
+          root.Tg.haptic('error');
+          toast(err.message || 'Не удалось записать');
+        });
+      }
+      return;
+    }
+
     var del = ev.target.closest('[data-tx-delete]');
     if (del) {
       deleteTx(del.getAttribute('data-tx-delete'));
@@ -861,6 +954,11 @@
       }
       return;
     }
+  });
+
+  el.screen.addEventListener('change', function (ev) {
+    var t = ev.target;
+    if (t && t.matches && t.matches('[data-notif]')) toggleNotification(t);
   });
 
   el.sheet.addEventListener('click', function (ev) {
