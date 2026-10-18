@@ -842,6 +842,7 @@
       case 'retry': goHome(); break;
       case 'start': goHome(); break;
       case 'go-plans': openPlans(); break;
+      case 'go-recurring': openPlans('recurring'); break;
       case 'go-settings': openSettings(); break;
       case 'buy': buyTariff(actionBtn.getAttribute('data-buy')); break;
       case 'delete-account': deleteAccount(); break;

@@ -119,6 +119,31 @@
       '<span class="plans-teaser__meta">' + e(parts.join(' · ')) + ' ›</span></button>';
   }
 
+  // Ближайший повторяющийся платёж: за день до даты и в сам день — баннер сверху.
+  // Показываем только первый, остальные — в «Планы → Платежи».
+  function dueBanner(plans) {
+    var list = (plans && plans.recurring) || [];
+    var now = new Date();
+    var today = now.getDate();
+    var monthDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    var soon = list.filter(function (r) { return r.active !== false; }).map(function (r) {
+      var day = Math.min(Number(r.day_of_month) || 1, monthDays);
+      return { r: r, day: day, diff: day - today };
+    }).filter(function (x) { return x.diff === 0 || x.diff === 1; })
+      .sort(function (a, b) { return a.diff - b.diff; });
+    if (!soon.length) return '';
+    var x = soon[0];
+    var more = soon.length - 1;
+    var when = x.diff === 0 ? 'Сегодня платёж' : 'Завтра платёж';
+    return '<button type="button" class="due" data-action="go-recurring">' +
+      '<span class="due__icon">🔔</span>' +
+      '<span class="due__body">' +
+      '<span class="due__title">' + e(when) + ': ' + e(x.r.name) + ' · ' + e(money(x.r.amount)) + '</span>' +
+      '<span class="due__hint">' + (more > 0 ? 'и ещё ' + more + ' · ' : '') + 'отметить оплату ›</span>' +
+      '</span>' +
+      '</button>';
+  }
+
   function renderSummary(s, plans) {
     var st = State.get();
     s = s || { income: 0, expense: 0, balance: 0, categories: [], members: [] };
@@ -133,6 +158,7 @@
       ? s.categories.map(categoryRow).join('')
       : '<div class="empty">Категорий пока нет</div>';
     return (
+      dueBanner(plans) +
       monthNav(st.month) +
       '<div class="hero">' +
       '<button type="button" class="hero__link" data-action="go-tx">Все траты →</button>' +
