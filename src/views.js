@@ -341,7 +341,10 @@
       '<span class="plan__amount">' + e(money(r.amount)) + '</span>' +
       '<button type="button" class="plan__more" data-recurring-more>···</button></div>' +
       '<div class="plan__meta">' + r.day_of_month + '-го числа · ' + e(cat.name || 'без категории') + '</div>' +
-      '<div class="plan__actions"><button type="button" class="btn btn--sm btn--ghost" data-recurring-pay>Отметить оплату</button></div>' +
+      '<div class="plan__actions">' +
+      '<button type="button" class="btn btn--sm btn--ghost" data-recurring-pay>Отметить оплату</button>' +
+      '<button type="button" class="btn btn--sm btn--ghost" data-recurring-edit>Изменить</button>' +
+      '</div>' +
       '</div>'
     );
   }
@@ -421,6 +424,11 @@
     opts = opts || {};
     var cats = (State.get().categories || []).filter(function (c) { return c.kind === 'expense' && !c.archived; })
       .sort(function (a, b) { return (a.sort || 0) - (b.sort || 0); });
+    // Для правки категория приходит из вложенного объекта recurring_payments.categories.
+    var byName = opts.categories && opts.categories.name
+      ? (cats.find(function (c) { return c.name === opts.categories.name; }) || {}).id
+      : null;
+    var selected = opts.category_id || byName || null;
     return (
       '<form data-form="plan" data-kind="recurring"' + (opts.id ? ' data-id="' + e(opts.id) + '"' : '') + ' novalidate>' +
       '<div class="sheet__title">' + (opts.id ? 'Изменить платёж' : 'Новый платёж') + '</div>' +
@@ -432,7 +440,7 @@
       '<input class="input input--center" name="day" inputmode="numeric" placeholder="5" value="' + e(opts.day || '') + '"></label>' +
       '<label class="field"><span class="field__label">Категория</span>' +
       '<select class="input" name="category_id">' + cats.map(function (c) {
-        return '<option value="' + e(c.id) + '"' + (opts.category_id === c.id ? ' selected' : '') + '>' + e(c.icon || '🏷️') + ' ' + e(c.name) + '</option>';
+        return '<option value="' + e(c.id) + '"' + (selected === c.id ? ' selected' : '') + '>' + e(c.icon || '🏷️') + ' ' + e(c.name) + '</option>';
       }).join('') + '</select></label>' +
       '<p class="small muted">Напомним за день до платежа. 31-е в коротком месяце сдвигаем на последний день.</p>' +
       '<div class="actions"><button type="submit" class="btn btn--primary btn--full">Сохранить</button></div>' +

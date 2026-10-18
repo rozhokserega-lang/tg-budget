@@ -268,11 +268,17 @@
       else state.categories = state.categories.filter(function (x) { return x.id !== p.id; });
       return { ok: true, archived: used };
     },
-    list_recurring: function () { return state.recurring; },
+    list_recurring: function () {
+      return state.recurring.map(function (r) {
+        var cat = state.categories.find(function (c) { return c.name === (r.categories && r.categories.name); });
+        return Object.assign({}, r, { category_id: cat ? cat.id : null });
+      });
+    },
     save_recurring: function (p) {
       var cat = state.categories.find(function (c) { return c.id === p.category_id; });
       var row = {
         name: p.name, amount: Number(p.amount), day_of_month: Number(p.day_of_month), active: true,
+        category_id: cat ? cat.id : null,
         categories: cat ? { name: cat.name, icon: cat.icon } : null,
       };
       if (p.id) {

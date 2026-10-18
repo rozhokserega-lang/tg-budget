@@ -419,7 +419,8 @@
     var btn = formEl.querySelector('[type="submit"]');
     btn.disabled = true;
     Api.call('save_recurring', {
-      id: id, name: v.name.value, amount: amt, day_of_month: day, category_id: v.category_id.value,
+      id: id, name: v.name.value, amount: amt, day_of_month: day,
+      category_id: v.category_id && v.category_id.value ? v.category_id.value : null,
     }).then(function () {
       root.Tg.haptic('success');
       st.plans = null;
@@ -923,6 +924,17 @@
     if (recCard) {
       var recId = recCard.getAttribute('data-recurring');
       if (ev.target.closest('[data-recurring-more]')) return removeRecurring(recId);
+      if (ev.target.closest('[data-recurring-edit]')) {
+        var rec = ((st.plans && st.plans.recurring) || []).find(function (r) { return r.id === recId; });
+        if (!rec) return;
+        // Категории нужны для выбора в форме — подгружаем, если ещё не загружены.
+        return loadCategories().then(function () {
+          openPlanForm('recurring', {
+            id: rec.id, name: rec.name, amount: rec.amount, day: rec.day_of_month,
+            category_id: rec.category_id, categories: rec.categories,
+          });
+        });
+      }
       if (ev.target.closest('[data-recurring-pay]')) {
         Api.call('pay_recurring', { id: recId }).then(function () {
           root.Tg.haptic('success');
