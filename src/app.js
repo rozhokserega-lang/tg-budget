@@ -314,7 +314,56 @@
     loadPlans().then(function () {
       if (route.name === 'settings') render(Views.renderSettings());
     });
+    loadTariffs();
     render(Views.renderSettings());
+  }
+
+  function loadTariffs() {
+    return Api.call('plans').then(function (list) {
+      st.tariffs = Array.isArray(list) ? list : [];
+    }).catch(function () {
+      st.tariffs = st.tariffs || [];
+    }).then(function () {
+      if (route.name === 'settings') render(Views.renderSettings());
+    });
+  }
+
+  // Покупка доступа за Telegram Stars: счёт создаёт сервер, оплату открывает Telegram,
+  // доступ продлевает бот по successful_payment — здесь только ждём и обновляем.
+  function buyTariff(code) {
+    if (st.buying) return;
+    st.buying = true;
+    render(Views.renderSettings());
+    Api.call('create_invoice', { plan: code }).then(function (res) {
+      var tg = root.Tg.sdk();
+      if (!tg || !tg.openInvoice) {
+        st.buying = false;
+        render(Views.renderSettings());
+        toast('Оплата доступна только в Telegram');
+        return;
+      }
+      tg.openInvoice(res.url, function (status) {
+        st.buying = false;
+        if (status === 'paid') {
+          // Вебхук бота может прийти на секунду позже — перечитываем статус.
+          setTimeout(function () {
+            loadMember().then(function () {
+              if (st.member && st.member.households) st.summaryCache = {};
+              toast('Спасибо! Доступ продлён');
+              if (route.name === 'settings') render(Views.renderSettings());
+            });
+          }, 1500);
+        } else {
+          toast(status === 'cancelled' ? 'Оплата отменена' : 'Оплата не прошла');
+          if (route.name === 'settings') render(Views.renderSettings());
+        }
+      });
+    }).catch(function (err) {
+      st.buying = false;
+      if (route.name === 'settings') render(Views.renderSettings());
+      if (err.code === 'telegram_error') return toast('Не удалось создать счёт');
+      toast(err.message || 'Не удалось создать счёт');
+    });
   }
 
   // --- Планы ---
@@ -597,6 +646,7 @@
       case 'start': goHome(); break;
       case 'go-plans': openPlans(); break;
       case 'go-settings': openSettings(); break;
+      case 'buy': buyTariff(actionBtn.getAttribute('data-buy')); break;
       case 'plans-tab': plansTab = actionBtn.getAttribute('data-plans'); openPlans(); break;
       case 'plan-add': openPlanForm(actionBtn.getAttribute('data-kind') || plansTab); break;
       case 'onb-tab':

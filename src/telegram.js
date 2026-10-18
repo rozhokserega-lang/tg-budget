@@ -163,6 +163,8 @@
     showAlert: showAlert,
     confirm: confirm,
     copy: copy,
-    sdk: function () { return tg; },
+    // SDK из CDN грузится асинхронно и может перезаписать window.Telegram позже нас —
+    // поэтому всегда берём актуальный объект.
+    sdk: function () { return (root.Telegram && root.Telegram.WebApp) || tg; },
   };
 })(window);

@@ -7,6 +7,8 @@
     categories: null,
     plans: null,
     promo: [],
+    tariffs: null,
+    buying: false,
     month: Fmt.currentMonth(),
     summaryCache: {},
     txCache: {},

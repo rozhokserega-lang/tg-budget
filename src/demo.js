@@ -227,6 +227,19 @@
       state.wishes = state.wishes.filter(function (x) { return x.id !== p.id; });
       return { ok: true };
     },
+    plans: function () {
+      return [
+        { code: 'month', title: '1 месяц', days: 30, stars: 150 },
+        { code: 'quarter', title: '3 месяца', days: 90, stars: 400 },
+        { code: 'year', title: 'Год', days: 365, stars: 1200 },
+      ];
+    },
+    create_invoice: function (p) {
+      var plan = handlers.plans().find(function (x) { return x.code === p.plan; });
+      if (!plan) throw new Error('bad_plan');
+      state.lastInvoice = plan;
+      return { ok: true, url: 'https://t.me/$demo-invoice', stars: plan.stars, days: plan.days };
+    },
     redeem_promo: function (p) {
       var code = String(p.code || '').trim().toUpperCase();
       if (!code) throw new Error('bad_promo');

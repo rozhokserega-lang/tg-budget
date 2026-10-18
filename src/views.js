@@ -405,6 +405,21 @@
 
   // --- Настройки ---
 
+  // Тарифы за Telegram Stars: показываются, если сервер их прислал (нет в демо — не рисуем).
+  function starsCard(tariffs, busy) {
+    if (!tariffs || !tariffs.length) return '';
+    return '<div class="section"><div class="section__head"><span class="section__title">Продлить за звёзды</span></div>' +
+      '<div class="card">' +
+      tariffs.map(function (t) {
+        var perDay = t.stars / t.days;
+        return '<div class="tariff"><div class="tariff__body"><div class="tariff__title">' + e(t.title) + '</div>' +
+          '<div class="tariff__meta">' + t.days + ' дней · ' + perDay.toFixed(1).replace('.', ',') + ' ⭐/день</div></div>' +
+          '<button type="button" class="btn btn--sm btn--primary" data-action="buy" data-buy="' + e(t.code) + '"' + (busy ? ' disabled' : '') + '>' + t.stars + ' ⭐</button></div>';
+      }).join('') +
+      '<p class="small muted mt-8">Оплата проходит внутри Telegram. Продление начнётся после конца текущего доступа.</p>' +
+      '</div></div>';
+  }
+
   // Промокод: поле и список уже активированных.
   function promoCard(promo) {
     var active = (promo || []).map(function (p) {
@@ -440,6 +455,7 @@
       '<div class="settings-row"><span class="settings-row__label">Доступ</span><span class="settings-row__value' + (left !== null && left < 0 ? ' amount--neg' : '') + '">' + e(planText) +
         (untilText ? ' · до ' + e(untilText) : '') + '</span></div>' +
       '</div>' +
+      starsCard(st.tariffs, st.buying) +
       promoCard(st.promo) +
       '<div class="section"><div class="section__head"><span class="section__title">Приглашение</span></div>' +
       '<div class="card"><p class="small muted">Передайте код партнёру — в приложении он выберет «Подключиться» и введёт его.</p>' +
@@ -511,6 +527,7 @@
     renderTxList: renderTxList,
     renderForm: renderForm,
     renderSettings: renderSettings,
+    starsCard: starsCard,
     renderOnboarding: renderOnboarding,
     renderInvite: renderInvite,
     renderError: renderError,

@@ -919,6 +919,32 @@ textarea.input {
   color: var(--c-hint);
 }
 
+.tariff {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.tariff:last-of-type {
+  border-bottom: 0;
+}
+
+.tariff__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.tariff__title {
+  font-weight: 600;
+}
+
+.tariff__meta {
+  font-size: 12px;
+  color: var(--c-hint);
+}
+
 /* --- Настройки --- */
 
 .settings-row {
