@@ -85,9 +85,43 @@
 .cat-wrap--open .cat { padding-left: 0; padding-right: 0; border-radius: 0; }
 .cat:active { background: transparent; }
 .cat-wrap--open .cat-tx__inner { border-top: 1px solid var(--c-border); }
-.cat-tx { transition: grid-template-rows var(--dur-slow) var(--ease-out); }
+.cat-tx { transition: grid-template-rows 240ms var(--ease-out); }
 .cat__chev { transition: transform var(--dur) var(--ease-out); }
 .cat-wrap--open .cat__chev { transform: rotate(180deg); }
+
+/* --- Раскрытие категории: строки поднимаются каскадом, шеврон крутится --- */
+/* Обёртка анимируется по высоте (grid-rows), а записи — по появлению. */
+.cat-wrap:not(.cat-wrap--open) .cat-tx {
+  transition: grid-template-rows 180ms var(--ease-out);
+}
+
+.cat-tx__row,
+.cat-tx__add {
+  opacity: 0;
+  transform: translateY(-6px);
+  /* transition-delay на закрытии не нужен — схлопываем сразу */
+  transition:
+    opacity 200ms var(--ease-out),
+    transform 240ms var(--ease-out);
+}
+
+.cat-wrap--open .cat-tx__row,
+.cat-wrap--open .cat-tx__add {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Каскад: каждая следующая строка появляется на 35 мс позже */
+.cat-wrap--open .cat-tx__row:nth-child(1) { transition-delay: 40ms; }
+.cat-wrap--open .cat-tx__row:nth-child(2) { transition-delay: 75ms; }
+.cat-wrap--open .cat-tx__row:nth-child(3) { transition-delay: 110ms; }
+.cat-wrap--open .cat-tx__row:nth-child(4) { transition-delay: 145ms; }
+.cat-wrap--open .cat-tx__row:nth-child(5) { transition-delay: 180ms; }
+.cat-wrap--open .cat-tx__row:nth-child(n + 6) { transition-delay: 200ms; }
+.cat-wrap--open .cat-tx__add { transition-delay: 220ms; }
+
+/* Шапка раскрытой категории чуть «утапливается», чтобы отделить список */
+.cat-wrap--open .cat__name { transition: transform var(--dur) var(--ease-out); }
 
 /* --- Шторка: плавное открытие и закрытие --- */
 .sheet__backdrop { animation: fade-in var(--dur) var(--ease-out); }

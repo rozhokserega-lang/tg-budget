@@ -99,11 +99,18 @@
     var over = plan > 0 && fact > plan;
     var barCls = over ? ' progress__bar--over' : pct >= 85 ? ' progress__bar--warn' : '';
     var open = !!expanded;
-    var list = expanded
-      ? (expanded.rows && expanded.rows.length
-          ? expanded.rows.slice(0, 50).map(function (t) { return categoryTxRow(t); }).join('')
-          : '<div class="cat-tx__empty">Записей за этот месяц нет</div>')
-      : '';
+    // Строки держим в DOM всегда: CSS-переход срабатывает только на уже существующих узлах,
+    // а видимость переключается классом cat-wrap--open.
+    // Строки из кэша месяца: благодаря им анимация играет на уже существующих узлах.
+    var st = State.get();
+    var cacheKey = 'txCache:' + st.month;
+    var cachedRows = (st[cacheKey] && st[cacheKey].data) || [];
+    var rows = expanded && expanded.rows
+      ? expanded.rows
+      : cachedRows.filter(function (t) { return t.category_id === c.id; });
+    var list = rows.length
+      ? rows.slice(0, 50).map(function (t) { return categoryTxRow(t); }).join('')
+      : (expanded ? '<div class="cat-tx__empty">Записей за этот месяц нет</div>' : '');
     return (
       '<div class="cat-wrap' + (open ? ' cat-wrap--open' : '') + '">' +
       '<button type="button" class="cat" data-action="toggle-cat" data-id="' + e(c.id) + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
@@ -119,7 +126,8 @@
         : '<div class="cat__meta"><span>без лимита</span></div>') +
       '</button>' +
       '<div class="cat-tx"><div class="cat-tx__inner">' +
-      (open ? list + '<button type="button" class="btn btn--sm btn--primary cat-tx__add" data-action="add-in-cat" data-id="' + e(c.id) + '">' +
+      list +
+      (open ? '<button type="button" class="btn btn--sm btn--primary cat-tx__add" data-action="add-in-cat" data-id="' + e(c.id) + '">' +
         '+ Добавить в «' + e(c.name) + '»</button>' : '') +
       '</div></div>' +
       '</div>'

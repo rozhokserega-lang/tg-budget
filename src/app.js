@@ -312,6 +312,12 @@
       if (seq !== reqSeq) return;
       render(Views.renderSummary(s, null, expandedCat));
       prefetchMonths(month);
+      // Записи месяца нужны для подсчёта раскрытия: держим их в кэше заранее.
+      loadTx(month).then(function () {
+        if (seq === reqSeq && route.name === 'summary' && !expandedCat) {
+          renderSummaryFromCache();
+        }
+      }).catch(function () {});
       // Категория была раскрыта (например, только что добавили запись) — догружаем её строки.
       if (expandedCat && !expandedCat.rows) fillExpandedCat(s, expandedCat.id);
       if (State.isExpired()) banner('Пробный период закончился — новые записи недоступны.');
