@@ -89,7 +89,7 @@
     var over = plan > 0 && fact > plan;
     var barCls = over ? ' progress__bar--over' : pct >= 85 ? ' progress__bar--warn' : '';
     return (
-      '<div class="cat">' +
+      '<button type="button" class="cat" data-action="edit-cat" data-id="' + e(c.id) + '">' +
       '<div class="cat__top">' +
       '<span class="cat__icon">' + e(c.icon || '🏷️') + '</span>' +
       '<span class="cat__name">' + e(c.name) + '</span>' +
@@ -99,7 +99,7 @@
         ? '<div class="progress"><div class="progress__bar' + barCls + '" style="width:' + Math.min(100, pct) + '%"></div></div>' +
           '<div class="cat__meta"><span>из ' + e(money(plan)) + '</span><span class="' + (over ? 'amount--neg' : '') + '">' + pct + '%</span></div>'
         : '<div class="cat__meta"><span>без лимита</span></div>') +
-      '</div>'
+      '</button>'
     );
   }
 
@@ -124,7 +124,8 @@
     s = s || { income: 0, expense: 0, balance: 0, categories: [], members: [] };
     plans = plans || st.plans;
     var balance = Number(s.balance) || 0;
-    var partners = s.members && s.members.length
+    var solo = State.isSolo();
+    var partners = !solo && s.members && s.members.length
       ? '<div class="card">' + s.members.map(partnerRow).join('') +
         '<div class="small muted mt-8">Как делим: ' + e(State.splitModeLabel()) + '</div></div>'
       : '';
@@ -358,6 +359,27 @@
     );
   }
 
+  function renderCategoryForm(c) {
+    var kindTitle = c.kind === 'income' ? 'Доход' : 'Расход';
+    return (
+      '<form data-form="category" data-id="' + e(c.id) + '" novalidate>' +
+      '<div class="sheet__title">' + e(c.icon || '🏷️') + ' ' + e(c.name) + ' · ' + kindTitle + '</div>' +
+      '<label class="field"><span class="field__label">Лимит на месяц</span>' +
+      '<input class="input input--amount" name="plan" inputmode="decimal" placeholder="0 ₽" value="' +
+        (Number(c.plan_monthly) > 0 ? e(String(Number(c.plan_monthly))) : '') + '"></label>' +
+      '<p class="small muted">0 или пусто — без лимита. Сводка считает план/факт для каждого месяца.</p>' +
+      '<label class="field mt-16"><span class="field__label">Название</span>' +
+      '<input class="input" name="name" maxlength="40" value="' + e(c.name) + '"></label>' +
+      '<label class="field"><span class="field__label">Иконка (эмодзи)</span>' +
+      '<input class="input input--center" name="icon" maxlength="8" value="' + e(c.icon || '🏷️') + '"></label>' +
+      '<div class="actions">' +
+      '<button type="submit" class="btn btn--primary btn--full">Сохранить</button>' +
+      '<button type="button" class="btn btn--danger btn--full mt-8" data-action="delete-cat" data-id="' + e(c.id) + '">Удалить категорию</button>' +
+      '</div>' +
+      '</form>'
+    );
+  }
+
   // Форма добавления/редактирования в нижнем шите.
   function renderPlanForm(kind, opts) {
     opts = opts || {};
@@ -469,11 +491,14 @@
       starsCard(st.tariffs, st.buying) +
       promoCard(st.promo) +
       legalCard(st.deleting) +
-      '<div class="section"><div class="section__head"><span class="section__title">Приглашение</span></div>' +
-      '<div class="card"><p class="small muted">Передайте код партнёру — в приложении он выберет «Подключиться» и введёт его.</p>' +
-      '<div class="invite"><span class="invite__code">' + e(h.invite_code || '—') + '</span>' +
-      '<button type="button" class="btn btn--sm btn--primary" data-action="copy-invite">Копировать</button></div>' +
-      '</div></div>' +
+      (State.isSolo()
+        ? '<div class="section"><div class="section__head"><span class="section__title">Режим</span></div>' +
+          '<div class="card"><p class="small muted">Личный бюджет: партнёр не подключён, расчёт между участниками не показывается.</p></div></div>'
+        : '<div class="section"><div class="section__head"><span class="section__title">Приглашение</span></div>' +
+          '<div class="card"><p class="small muted">Передайте код партнёру — в приложении он выберет «Подключиться» и введёт его.</p>' +
+          '<div class="invite"><span class="invite__code">' + e(h.invite_code || '—') + '</span>' +
+          '<button type="button" class="btn btn--sm btn--primary" data-action="copy-invite">Копировать</button></div>' +
+          '</div></div>') +
       '<div class="section"><div class="section__head"><span class="section__title">О приложении</span></div>' +
       '<div class="card small muted">Данные видят только участники семьи. Telegram-бот принимает записи сообщением: «кофе 350», «+15000 подработка».</div></div>' +
       (Api.isDemo()
@@ -497,6 +522,17 @@
       '<button type="button" class="segment' + (!isJoin ? ' segment--active' : '') + '" data-action="onb-tab" data-onb="create">Создать семью</button>' +
       '<button type="button" class="segment' + (isJoin ? ' segment--active' : '') + '" data-action="onb-tab" data-onb="join">Подключиться</button>' +
       '</div>' +
+      (!isJoin
+        ? '<div class="segments">' +
+          '<button type="button" class="segment' + ((opts.mode || 'pair') === 'pair' ? ' segment--active' : '') + '" data-action="onb-mode" data-mode="pair">👫 Для двоих</button>' +
+          '<button type="button" class="segment' + ((opts.mode || 'pair') === 'solo' ? ' segment--active' : '') + '" data-action="onb-mode" data-mode="solo">🙋 Только для меня</button>' +
+          '</div>' +
+          '<p class="small muted mt-8">' +
+          ((opts.mode || 'pair') === 'solo'
+            ? 'Личный бюджет без приглашения. Партнёра можно не подключать — расчёт между участниками не показывается.'
+            : 'После создания получите код, по которому партнёр подключится к общей семье.') +
+          '</p>'
+        : '') +
       '<form data-form="' + (isJoin ? 'join' : 'create') + '" novalidate>' +
       '<label class="field"><span class="field__label">Ваше имя</span>' +
       '<input class="input" name="member_name" maxlength="40" autocomplete="name" placeholder="Как вас звать?" value="' + e(opts.member_name || '') + '"></label>' +
@@ -536,6 +572,7 @@
     renderSummary: renderSummary,
     renderPlans: renderPlans,
     renderPlanForm: renderPlanForm,
+    renderCategoryForm: renderCategoryForm,
     renderTxList: renderTxList,
     renderForm: renderForm,
     renderSettings: renderSettings,

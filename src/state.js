@@ -32,6 +32,12 @@
     return !!until && new Date(until).getTime() < Date.now();
   }
 
+  // Режим «только я»: семья без партнёра, блок расчёта и приглашение скрыты.
+  function isSolo() {
+    var h = state.member && state.member.households;
+    return !!(h && h.mode === 'solo');
+  }
+
   function splitModeLabel() {
     var mode = state.member && state.member.households && state.member.households.split_mode;
     return mode === 'equal' ? 'Поровну' : 'Пропорционально доходу';
@@ -57,6 +63,7 @@
       return (state.categories || []).find(function (c) { return c.id === cid; }) || null;
     },
     displayName: displayName,
+    isSolo: isSolo,
     planDaysLeft: planDaysLeft,
     isExpired: isExpired,
     splitModeLabel: splitModeLabel,

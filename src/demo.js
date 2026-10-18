@@ -80,7 +80,7 @@
       promo: [],
       promoUsed: {},
       member: { id: 'm1', household_id: 'h1', name: 'Аня', telegram_id: 1,
-        households: { id: 'h1', name: 'Наша семья', split_mode: 'proportional', invite_code: 'demo1234',
+        households: { id: 'h1', name: 'Наша семья', mode: new URLSearchParams(root.location.search).has('solo') ? 'solo' : 'pair', split_mode: 'proportional', invite_code: 'demo1234',
           plan_until: new Date(Date.now() + (new URLSearchParams(root.location.search).has('expired') ? -86400000 : 12 * 86400000)).toISOString() } },
       members: members,
       categories: categories,
@@ -173,8 +173,8 @@
       return { ok: true };
     },
     create_household: function (p) {
-      state.member = joinDemo(p.member_name);
-      return { ok: true, invite_code: state.member.households.invite_code };
+      state.member = joinDemo(p.member_name, p.mode);
+      return { ok: true, invite_code: state.member.households.invite_code, mode: state.member.households.mode };
     },
     join: function (p) {
       state.member = joinDemo(p.member_name);
@@ -234,6 +234,23 @@
       state.wishes = [];
       return { ok: true };
     },
+    save_category: function (p) {
+      var c = state.categories.find(function (x) { return x.id === p.id; });
+      if (!c) throw new Error('not_found');
+      c.plan_monthly = Number(p.plan_monthly) || 0;
+      if (p.name) c.name = p.name;
+      if (p.icon) c.icon = p.icon;
+      state.tx = state.tx;
+      return c;
+    },
+    archive_category: function (p) {
+      var c = state.categories.find(function (x) { return x.id === p.id; });
+      if (!c) throw new Error('not_found');
+      var used = state.tx.some(function (t) { return t.category_id === p.id; });
+      if (used) c.archived = true;
+      else state.categories = state.categories.filter(function (x) { return x.id !== p.id; });
+      return { ok: true, archived: used };
+    },
     plans: function () {
       return [
         { code: 'month', title: '1 месяц', days: 30, stars: 150 },
@@ -281,9 +298,10 @@
   }
 
   // Возвращает демо-участника в семью (то, что делает me после create/join на реальном API).
-  function joinDemo(name) {
+  function joinDemo(name, mode) {
     var s = fresh();
     var member = Object.assign({}, s.member, { name: name || s.member.me.name });
+    member.households = Object.assign({}, member.households, { mode: mode === 'solo' ? 'solo' : 'pair' });
     return (state.member = member);
   }
 

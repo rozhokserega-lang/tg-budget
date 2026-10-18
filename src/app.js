@@ -21,7 +21,7 @@
   var st = State.get();
   var route = { name: 'summary', tab: 'summary' };
   var form = {};
-  var onboarding = { tab: 'create', member_name: '', code: '', household_name: '' };
+  var onboarding = { tab: 'create', member_name: '', code: '', household_name: '', mode: 'pair' };
   var reqSeq = 0;
   var dialogResolve = null;
 
@@ -503,6 +503,67 @@
     });
   }
 
+  // --- Категории и лимиты ---
+
+  function openCategoryForm(id) {
+    var cat = (st.categories || []).find(function (c) { return c.id === id; });
+    // st.categories мог ещё не загрузиться — ищем в сводке.
+    if (!cat) {
+      var fromSummary = (st.summaryCache[st.month] || { categories: [] }).categories || [];
+      var row = fromSummary.find(function (c) { return c.id === id; });
+      if (row) cat = { id: row.id, name: row.name, icon: row.icon, kind: 'expense', plan_monthly: row.plan };
+    }
+    if (!cat) {
+      loadCategories().then(function () { openCategoryForm(id); });
+      return;
+    }
+    openSheet(Views.renderCategoryForm(cat));
+  }
+
+  function submitCategory(formEl) {
+    var id = formEl.getAttribute('data-id');
+    var v = formEl.elements;
+    var raw = String(v.plan.value || '').trim();
+    var plan = raw ? Fmt.parseAmount(raw) : 0;
+    var btn = formEl.querySelector('[type="submit"]');
+    if (isNaN(plan) || plan < 0) return badInput('Проверьте лимит', v.plan);
+    btn.disabled = true;
+    Api.call('save_category', { id: id, name: v.name.value, icon: v.icon.value, plan_monthly: plan })
+      .then(function () {
+        root.Tg.haptic('success');
+        st.categories = null;
+        st.summaryCache = {};
+        closeSheet();
+        toast('Лимит сохранён');
+        openSummary();
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        root.Tg.haptic('error');
+        if (err.code === 'subscription_expired') { closeSheet(); return fail(err); }
+        toast(err.message || 'Не удалось сохранить');
+      });
+  }
+
+  function deleteCategory(id) {
+    var msg = 'Удалить категорию? Траты этой категории останутся в истории, а категория скроется из списка.';
+    dialog(msg, 'Удалить').then(function (ok) {
+      if (!ok) return;
+      Api.call('archive_category', { id: id }).then(function (res) {
+        root.Tg.haptic('success');
+        st.categories = null;
+        st.summaryCache = {};
+        st.txCache = {};
+        closeSheet();
+        toast(res.archived ? 'Категория скрыта' : 'Категория удалена');
+        openSummary();
+      }).catch(function (err) {
+        root.Tg.haptic('error');
+        toast(err.message || 'Не удалось удалить');
+      });
+    });
+  }
+
   // --- Промокод ---
 
   function redeemPromo(code) {
@@ -619,6 +680,7 @@
       }
     } else {
       payload.name = formEl.elements.name.value.trim() || undefined;
+      payload.mode = onboarding.mode || 'pair';
     }
     btn.disabled = true;
     Api.call(action === 'join' ? 'join' : 'create_household', payload).then(function (res) {
@@ -676,8 +738,16 @@
       case 'go-settings': openSettings(); break;
       case 'buy': buyTariff(actionBtn.getAttribute('data-buy')); break;
       case 'delete-account': deleteAccount(); break;
+      case 'edit-cat': openCategoryForm(actionBtn.getAttribute('data-id')); break;
+      case 'delete-cat': deleteCategory(actionBtn.getAttribute('data-id')); break;
       case 'plans-tab': plansTab = actionBtn.getAttribute('data-plans'); openPlans(); break;
       case 'plan-add': openPlanForm(actionBtn.getAttribute('data-kind') || plansTab); break;
+      case 'onb-mode':
+        onboarding.mode = actionBtn.getAttribute('data-mode');
+        onboarding.member_name = (el.screen.querySelector('[name="member_name"]') || {}).value || '';
+        onboarding.household_name = (el.screen.querySelector('[name="name"]') || {}).value || '';
+        render(Views.renderOnboarding(onboarding));
+        break;
       case 'onb-tab':
         onboarding.tab = actionBtn.getAttribute('data-onb');
         onboarding.member_name = (el.screen.querySelector('[name="member_name"]') || {}).value || '';
@@ -728,6 +798,7 @@
     var kind = f.getAttribute('data-form');
     if (kind === 'add') submitAdd(f);
     else if (kind === 'plan') submitPlan(f);
+    else if (kind === 'category') submitCategory(f);
     else if (kind === 'promo') redeemPromo(f.elements.code.value);
     else if (kind === 'create' || kind === 'join') submitOnboarding(f, kind);
   });

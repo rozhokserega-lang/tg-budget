@@ -270,8 +270,20 @@ button {
 /* --- Категории с прогрессом --- */
 
 .cat {
-  padding: 12px 0;
+  display: block;
+  width: calc(100% + 2 * var(--pad));
+  margin: 0 calc(-1 * var(--pad));
+  padding: 12px var(--pad);
+  border: 0;
   border-bottom: 1px solid var(--c-border);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+}
+
+.cat:active {
+  background: var(--c-card-strong);
 }
 
 .cat:first-child {
