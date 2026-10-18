@@ -31,12 +31,13 @@
   // Категория, из которой открыли форму: после сохранения вернёмся к ней.
   var pendingFromCategory = null;
 
+  var ICON = function (d) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + d + '</svg>'; };
   var TABS = [
-    { id: 'summary', icon: '📊', label: 'Сводка' },
-    { id: 'tx', icon: '🧾', label: 'Траты' },
-    { id: 'plans', icon: '📈', label: 'Планы' },
-    { id: 'add', icon: '＋', label: 'Добавить', primary: true },
-    { id: 'settings', icon: '⚙️', label: 'Ещё' },
+    { id: 'summary', icon: ICON('<path d="M5 20v-7M12 20V5M19 20v-10"/>'), label: 'Сводка' },
+    { id: 'tx', icon: ICON('<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>'), label: 'Траты' },
+    { id: 'plans', icon: ICON('<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>'), label: 'Планы' },
+    { id: 'add', icon: ICON('<path d="M12 5v14M5 12h14"/>'), label: 'Добавить', primary: true },
+    { id: 'settings', icon: ICON('<path d="M3 7h11M18 7h3M3 17h3M10 17h11"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>'), label: 'Ещё' },
   ];
   var plansTab = 'goals';
 
@@ -75,9 +76,20 @@
     root.Tg.backButton(closeSheet);
   }
 
+  var sheetTimer = null;
   function closeSheet() {
-    el.sheet.hidden = true;
-    el.sheetBody.innerHTML = '';
+    clearTimeout(sheetTimer);
+    if (el.sheet.hidden) {
+      el.sheetBody.innerHTML = '';
+    } else {
+      // Плавное закрытие: панель уезжает вниз, фон гаснет (см. polish.css).
+      el.sheet.classList.add('sheet--closing');
+      sheetTimer = setTimeout(function () {
+        el.sheet.hidden = true;
+        el.sheet.classList.remove('sheet--closing');
+        el.sheetBody.innerHTML = '';
+      }, 170);
+    }
     syncBackButton();
   }
 
@@ -104,17 +116,37 @@
     }
     // «Добавить» — не место, а действие: подсвечиваем вкладку, с которой пришли.
     var active = route.name === 'add' ? 'summary' : route.name;
-    el.tabs.innerHTML = TABS.map(function (t) {
-      var cls = 'tab' + (t.primary ? ' tab--primary' : '') + (t.id === active ? ' tab--active' : '');
-      return '<button type="button" class="' + cls + '" data-tab="' + t.id + '">' +
-        '<span class="tab__icon">' + t.icon + '</span><span>' + t.label + '</span></button>';
-    }).join('');
+    // Меню создаём один раз: перерисовка на каждом переходе вызывала мигание иконок.
+    if (el.tabs.children.length !== TABS.length) {
+      el.tabs.innerHTML = TABS.map(function (t) {
+        return '<button type="button" class="tab' + (t.primary ? ' tab--primary' : '') + '" data-tab="' + t.id + '">' +
+          '<span class="tab__icon">' + t.icon + '</span><span>' + t.label + '</span></button>';
+      }).join('');
+    }
+    var activeIdx = 0;
+    Array.prototype.forEach.call(el.tabs.children, function (b, i) {
+      var on = b.getAttribute('data-tab') === active;
+      b.classList.toggle('tab--active', on);
+      if (on) activeIdx = i;
+    });
+    el.tabs.style.setProperty('--tab-i', activeIdx);
     syncBackButton();
   }
 
+  var lastScreen = null;
+  var enterTimer = null;
   function render(html) {
     el.screen.innerHTML = html;
     el.screen.scrollTop = 0;
+    // Анимация появления — только при смене экрана, не при каждом обновлении данных.
+    if (route.name !== lastScreen) {
+      lastScreen = route.name;
+      el.screen.classList.remove('screen--in');
+      void el.screen.offsetWidth;
+      el.screen.classList.add('screen--in');
+      clearTimeout(enterTimer);
+      enterTimer = setTimeout(function () { el.screen.classList.remove('screen--in'); }, 700);
+    }
     applyRouteUi();
   }
 

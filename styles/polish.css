@@ -1,0 +1,98 @@
+/* polish.css — подключается ПОСЛЕ app.css. Единые границы, спокойные поверхности, анимации.
+   Ничего не удаляет из app.css: откат = убрать <link> в index.html. */
+:root {
+  --c-border: color-mix(in srgb, var(--c-text) 9%, transparent); /* одна тонкая линия везде */
+  --dur: 220ms;
+  --dur-slow: 340ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* --- Панели: полупрозрачные, без жёстких линий --- */
+.screen-header,
+.tabs {
+  background: color-mix(in srgb, var(--c-bg) 88%, transparent);
+  -webkit-backdrop-filter: saturate(1.4) blur(16px);
+  backdrop-filter: saturate(1.4) blur(16px);
+}
+
+/* --- Вкладки: векторные иконки, скользящий индикатор, без пересоздания --- */
+.tabs::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 0;
+  width: 20%;
+  height: 2px;
+  background: linear-gradient(var(--c-accent), var(--c-accent)) center / 22px 2px no-repeat;
+  transform: translateX(calc(var(--tab-i, 0) * 100%));
+  transition: transform var(--dur-slow) var(--ease-out);
+  pointer-events: none;
+}
+.tab { font-size: 10.5px; letter-spacing: 0.01em; transition: color var(--dur) var(--ease-out); }
+.tab__icon { display: grid; place-items: center; height: 24px; }
+.tab__icon svg {
+  width: 23px; height: 23px; fill: none; stroke: currentColor;
+  stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+  transition: transform var(--dur) var(--ease-out);
+}
+.tab--active .tab__icon svg { transform: translateY(-1px) scale(1.08); }
+.tab:active .tab__icon svg { transform: scale(0.88); }
+.tab--primary .tab__icon { width: 24px; height: 24px; font-size: 0; } /* та же высота, что у соседних иконок — подписи на одной линии */
+.tab--primary .tab__icon svg { width: 14px; height: 14px; stroke-width: 2.6; }
+.tab--primary:active .tab__icon { transform: scale(0.92); }
+
+/* --- Ровный ритм экранов: одинаковый верхний отступ у всех вкладок --- */
+.screen > :first-child { margin-top: 0; }
+.screen > .section:first-child > .section__head:first-child,
+.screen > .section__head:first-child { margin-top: 4px; }
+
+/* --- Появление экрана: плавное, с лёгким каскадом --- */
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes grow { from { transform: scaleX(0); } }
+.screen--in > * { animation: rise var(--dur-slow) var(--ease-out) backwards; }
+.screen--in > :nth-child(2) { animation-delay: 30ms; }
+.screen--in > :nth-child(3) { animation-delay: 60ms; }
+.screen--in > :nth-child(4) { animation-delay: 90ms; }
+.screen--in > :nth-child(5) { animation-delay: 120ms; }
+.screen--in > :nth-child(n + 6) { animation-delay: 150ms; }
+.screen--in .progress__bar { transform-origin: left; animation: grow 650ms var(--ease-out) 120ms backwards; }
+
+/* --- Карточки и строки --- */
+.hero {
+  background: linear-gradient(160deg, var(--c-accent), color-mix(in srgb, var(--c-accent) 78%, #000));
+}
+.hero__balance { font-size: 34px; letter-spacing: -0.03em; }
+.cat, .settings-row, .tx, .plan, .cat-chip, .segment {
+  transition: background var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out), transform 140ms var(--ease-out);
+}
+.btn, .cat-chip, .month-nav__btn { transition: transform 140ms var(--ease-out), background var(--dur), opacity var(--dur); }
+.btn:active, .cat-chip:active { transform: scale(0.97); }
+.input { transition: border-color var(--dur), box-shadow var(--dur); }
+.input:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 18%, transparent); }
+.segment--active { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
+
+/* --- Список категорий: линии внутри карточки, раскрытие без сдвига текста --- */
+.cat { width: 100%; margin: 0; padding: 12px 0; }
+.cat-wrap { position: relative; border-radius: var(--radius-md); }
+.cat-wrap::before {
+  content: ''; position: absolute; inset: 0 -8px; z-index: 0; pointer-events: none;
+  border-radius: var(--radius-md); background: var(--c-card-strong);
+  opacity: 0; transition: opacity var(--dur) var(--ease-out);
+}
+.cat-wrap > * { position: relative; z-index: 1; }
+.cat-wrap--open { background: none; border-radius: var(--radius-md); }
+.cat-wrap--open::before { opacity: 1; }
+.cat-wrap--open .cat { padding-left: 0; padding-right: 0; border-radius: 0; }
+.cat:active { background: transparent; }
+.cat-wrap--open .cat-tx__inner { border-top: 1px solid var(--c-border); }
+.cat-tx { transition: grid-template-rows var(--dur-slow) var(--ease-out); }
+.cat__chev { transition: transform var(--dur) var(--ease-out); }
+.cat-wrap--open .cat__chev { transform: rotate(180deg); }
+
+/* --- Шторка: плавное открытие и закрытие --- */
+.sheet__backdrop { animation: fade-in var(--dur) var(--ease-out); }
+.sheet__panel { animation: slide-up var(--dur-slow) var(--ease-out); }
+@keyframes sheet-out { to { transform: translateY(100%); } }
+@keyframes fade-out { to { opacity: 0; } }
+.sheet--closing .sheet__panel { animation: sheet-out 170ms ease-in forwards; }
+.sheet--closing .sheet__backdrop { animation: fade-out 170ms ease-in forwards; }
