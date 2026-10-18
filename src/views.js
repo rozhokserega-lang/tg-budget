@@ -90,25 +90,52 @@
     );
   }
 
-  function categoryRow(c) {
+  // Строка категории на сводке: тап раскрывает записи месяца прямо под ней.
+  // expanded — множитель, если категория открыта (записи берутся из кэша месяца).
+  function categoryRow(c, expanded) {
     var plan = Number(c.plan) || 0;
     var fact = Number(c.fact) || 0;
     var pct = plan > 0 ? Math.round((fact / plan) * 100) : 0;
     var over = plan > 0 && fact > plan;
     var barCls = over ? ' progress__bar--over' : pct >= 85 ? ' progress__bar--warn' : '';
+    var open = !!expanded;
+    var list = expanded
+      ? (expanded.rows && expanded.rows.length
+          ? expanded.rows.slice(0, 50).map(function (t) { return categoryTxRow(t); }).join('')
+          : '<div class="cat-tx__empty">Записей за этот месяц нет</div>')
+      : '';
     return (
-      '<button type="button" class="cat" data-action="open-cat-tx" data-id="' + e(c.id) + '">' +
+      '<div class="cat-wrap' + (open ? ' cat-wrap--open' : '') + '">' +
+      '<button type="button" class="cat" data-action="toggle-cat" data-id="' + e(c.id) + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
       '<div class="cat__top">' +
       '<span class="cat__icon">' + e(c.icon || '🏷️') + '</span>' +
       '<span class="cat__name">' + e(c.name) + '</span>' +
       '<span class="cat__fact' + (over ? ' cat__fact--over' : '') + '">' + e(money(fact)) + '</span>' +
+      '<span class="cat__chev">' + (open ? '⌃' : '⌄') + '</span>' +
       '</div>' +
       (plan > 0
         ? '<div class="progress"><div class="progress__bar' + barCls + '" style="width:' + Math.min(100, pct) + '%"></div></div>' +
           '<div class="cat__meta"><span>из ' + e(money(plan)) + '</span><span class="' + (over ? 'amount--neg' : '') + '">' + pct + '%</span></div>'
         : '<div class="cat__meta"><span>без лимита</span></div>') +
-      '</button>'
+      '</button>' +
+      (open ? '<div class="cat-tx">' + list + '</div>' : '') +
+      '</div>'
     );
+  }
+
+  // Запись внутри раскрытой категории: дата, заметка/автор, сумма.
+  function categoryTxRow(t) {
+    var isIncome = t.categories && t.categories.kind === 'income';
+    var meta = [];
+    if (t.note) meta.push(e(t.note));
+    if (t.members && t.members.name && (!State.get().member || t.member_id !== State.get().member.id)) {
+      meta.push(e(t.members.name));
+    }
+    return '<div class="cat-tx__row">' +
+      '<span class="cat-tx__date">' + e(Fmt.dayLabel(t.occurred_on)) + '</span>' +
+      '<span class="cat-tx__note">' + (meta.length ? meta.join(' · ') : '—') + '</span>' +
+      '<span class="amount ' + (isIncome ? 'amount--pos' : '') + '">' + e(Fmt.signedMoney(t.amount, isIncome)) + '</span>' +
+      '</div>';
   }
 
   // Краткая строка о планах на сводке: показываем только если что-то заведено.
@@ -152,7 +179,8 @@
       '</button>';
   }
 
-  function renderSummary(s, plans) {
+  // expandedCat: { id, rows } — раскрытая категория и её записи за месяц.
+  function renderSummary(s, plans, expandedCat) {
     var st = State.get();
     s = s || { income: 0, expense: 0, balance: 0, categories: [], members: [] };
     plans = plans || st.plans;
@@ -163,7 +191,9 @@
         '<div class="small muted mt-8">Как делим: ' + e(State.splitModeLabel()) + '</div></div>'
       : '';
     var cats = s.categories && s.categories.length
-      ? s.categories.map(categoryRow).join('')
+      ? s.categories.map(function (c) {
+          return categoryRow(c, expandedCat && expandedCat.id === c.id ? expandedCat : null);
+        }).join('')
       : '<div class="empty">Категорий пока нет</div>';
     return (
       dueBanner(plans) +

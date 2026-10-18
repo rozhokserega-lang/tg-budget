@@ -283,6 +283,51 @@ button {
   cursor: pointer;
 }
 
+.cat-wrap--open .cat {
+  border-bottom: 0;
+}
+
+.cat__chev {
+  flex: none;
+  width: 18px;
+  text-align: center;
+  color: var(--c-hint);
+  font-size: 14px;
+}
+
+.cat-tx {
+  padding: 2px 0 10px;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.cat-tx__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 0 6px 42px;
+  font-size: 13px;
+}
+
+.cat-tx__date {
+  flex: none;
+  width: 92px;
+  color: var(--c-hint);
+}
+
+.cat-tx__note {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cat-tx__empty {
+  padding: 4px 0 6px 42px;
+  font-size: 13px;
+  color: var(--c-hint);
+}
+
 .filter-bar {
   display: flex;
   align-items: center;

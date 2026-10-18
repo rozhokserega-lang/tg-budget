@@ -26,6 +26,8 @@
   var dialogResolve = null;
   var catKind = 'expense';
   var pendingAdds = {};
+  // Раскрытая категория на сводке: { id, rows } или null.
+  var expandedCat = null;
 
   var TABS = [
     { id: 'summary', icon: '📊', label: 'Сводка' },
@@ -243,12 +245,12 @@
     var month = st.month;
     loadSummary(month).then(function (s) {
       if (seq !== reqSeq) return;
-      render(Views.renderSummary(s));
+      render(Views.renderSummary(s, null, expandedCat));
       if (State.isExpired()) banner('Пробный период закончился — новые записи недоступны.');
       // Планы подтягиваем вторым шагом, чтобы не задерживать сводку.
       loadPlans().then(function (plans) {
         if (seq === reqSeq && route.name === 'summary') {
-          render(Views.renderSummary(s, plans));
+          render(Views.renderSummary(s, plans, expandedCat));
           // banner() вставляет узел в DOM — повторный render() его стёр бы.
           if (State.isExpired()) banner('Пробный период закончился — новые записи недоступны.');
         }
@@ -271,6 +273,7 @@
     var next = Fmt.shiftMonth(st.month, delta);
     if (next > Fmt.currentMonth()) return;
     st.month = next;
+    expandedCat = null;
     root.Tg.haptic('light');
     if (route.name === 'tx') openTx();
     else openSummary();
@@ -1031,7 +1034,38 @@
       case 'month-next': changeMonth(1); break;
       case 'go-tx': openTx(null); break;
       case 'tx-clear-filter': clearTxFilter(); break;
-      // Категория на сводке: открыть траты по ней, фильтр выставляем до загрузки списка.
+      // Раскрыть/свернуть записи категории прямо на сводке.
+  function toggleCategory(id) {
+    if (expandedCat && expandedCat.id === id) {
+      expandedCat = null;
+      renderSummaryFromCache();
+      return;
+    }
+    root.Tg.haptic('light');
+    expandedCat = { id: id, rows: null };
+    renderSummaryFromCache();      // заголовок разворачиваем сразу, записи догрузим
+    loadTx(st.month).then(function (all) {
+      if (!expandedCat || expandedCat.id !== id) return;
+      expandedCat = { id: id, rows: (all || []).filter(function (t) { return t.category_id === id; }) };
+      renderSummaryFromCache();
+    }).catch(function () {
+      if (!expandedCat) return;
+      expandedCat = { id: id, rows: [] };
+      renderSummaryFromCache();
+    });
+  }
+
+  // Перерисовка сводки из кэша без запроса — нужна для раскрытия/сворачивания.
+  function renderSummaryFromCache() {
+    if (route.name !== 'summary') return;
+    var s = st.summaryCache[st.month] || st.lastSummary;
+    if (!s) return openSummary();
+    render(Views.renderSummary(s, st.plans, expandedCat));
+    if (State.isExpired()) banner('Пробный период закончился — новые записи недоступны.');
+  }
+
+  // Категория на сводке: открыть траты по ней, фильтр выставляем до загрузки списка.
+      case 'toggle-cat': toggleCategory(actionBtn.getAttribute('data-id')); break;
       case 'open-cat-tx':
         openTx(actionBtn.getAttribute('data-id'));
         break;
