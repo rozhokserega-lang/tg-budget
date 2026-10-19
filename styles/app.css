@@ -312,10 +312,24 @@ button,
 
 .cat__chev {
   flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 18px;
-  text-align: center;
+  height: 18px;
   color: var(--c-hint);
-  font-size: 14px;
+  transform: rotate(90deg);
+  transition: transform var(--dur) var(--ease-out);
+}
+
+.cat__chev svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .cat-tx {

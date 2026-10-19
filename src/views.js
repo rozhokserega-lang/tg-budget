@@ -108,17 +108,14 @@
     var rows = expanded && expanded.rows
       ? expanded.rows
       : cachedRows.filter(function (t) { return t.category_id === c.id; });
-    var list = rows.length
-      ? rows.slice(0, 50).map(function (t) { return categoryTxRow(t); }).join('')
-      : (expanded ? '<div class="cat-tx__empty">Записей за этот месяц нет</div>' : '');
     return (
-      '<div class="cat-wrap' + (open ? ' cat-wrap--open' : '') + '">' +
+      '<div class="cat-wrap' + (open ? ' cat-wrap--open' : '') + '" data-cat-id="' + e(c.id) + '">' +
       '<button type="button" class="cat" data-action="toggle-cat" data-id="' + e(c.id) + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
       '<div class="cat__top">' +
       '<span class="cat__icon">' + e(c.icon || '🏷️') + '</span>' +
       '<span class="cat__name">' + e(c.name) + '</span>' +
       '<span class="cat__fact' + (over ? ' cat__fact--over' : '') + '">' + e(money(fact)) + '</span>' +
-      '<span class="cat__chev">' + (open ? '⌃' : '⌄') + '</span>' +
+      '<span class="cat__chev" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>' +
       '</div>' +
       (plan > 0
         ? '<div class="progress"><div class="progress__bar' + barCls + '" style="width:' + Math.min(100, pct) + '%"></div></div>' +
@@ -126,12 +123,21 @@
         : '<div class="cat__meta"><span>без лимита</span></div>') +
       '</button>' +
       '<div class="cat-tx"><div class="cat-tx__inner">' +
-      list +
-      (open ? '<button type="button" class="btn btn--sm btn--primary cat-tx__add" data-action="add-in-cat" data-id="' + e(c.id) + '">' +
-        '+ Добавить в «' + e(c.name) + '»</button>' : '') +
+      '<div class="cat-tx__rows" data-count="' + rows.length + '">' + categoryTxList(rows, open) + '</div>' +
+      '<button type="button" class="btn btn--sm btn--primary cat-tx__add" data-action="add-in-cat" data-id="' + e(c.id) + '">' +
+      '+ Добавить в «' + e(c.name) + '»</button>' +
       '</div></div>' +
       '</div>'
     );
+  }
+
+  // Записи категории для раскрытого списка. Используется и при полной
+  // перерисовке, и при точечном обновлении уже открытой категории.
+  function categoryTxList(rows, open) {
+    rows = rows || [];
+    return rows.length
+      ? rows.slice(0, 50).map(function (t) { return categoryTxRow(t); }).join('')
+      : (open ? '<div class="cat-tx__empty">Записей за этот месяц нет</div>' : '');
   }
 
   // Запись внутри раскрытой категории: дата, заметка/автор, сумма.
@@ -801,6 +807,7 @@
   root.Views = {
     skeletonSummary: skeletonSummary,
     skeletonList: skeletonList,
+    categoryTxList: categoryTxList,
     renderSummary: renderSummary,
     renderPlans: renderPlans,
     renderPlanForm: renderPlanForm,

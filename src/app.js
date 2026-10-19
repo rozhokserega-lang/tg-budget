@@ -1498,29 +1498,67 @@
 
   // --- Сводка: раскрытие категории ---
 
+  // Категория на сводке: ищем обёртку по id, чтобы менять класс на месте.
+  function categoryWrap(id) {
+    var list = el.screen.querySelectorAll('.cat-wrap[data-cat-id]');
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].getAttribute('data-cat-id') === id) return list[i];
+    }
+    return null;
+  }
+
+  // Класс переключаем на уже существующем узле, без полной перерисовки:
+  // только так CSS-переход grid-template-rows успевает проиграть анимацию.
+  function setCategoryOpen(wrap, open) {
+    if (!wrap) return;
+    wrap.classList.toggle('cat-wrap--open', open);
+    var header = wrap.querySelector('[data-action="toggle-cat"]');
+    if (header) header.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
   // Раскрыть/свернуть записи категории прямо на сводке.
   function toggleCategory(id) {
+    var wrap = categoryWrap(id);
+    if (!wrap) return;
     if (expandedCat && expandedCat.id === id) {
       expandedCat = null;
-      renderSummaryFromCache();
+      setCategoryOpen(wrap, false);
       return;
     }
+    var prev = el.screen.querySelector('.cat-wrap--open');
+    if (prev && prev !== wrap) setCategoryOpen(prev, false);
     root.Tg.haptic('light');
     expandedCat = { id: id, rows: null };
-    renderSummaryFromCache();      // заголовок разворачиваем сразу, записи догрузим
+    setCategoryOpen(wrap, true);
     fillExpandedCat(null, id);
   }
 
-  // Догрузка строк раскрытой категории.
+  // Догрузка строк раскрытой категории. Обновляем только список внутри
+  // открытой карточки — шапка и остальная сводка не пересоздаются.
   function fillExpandedCat(s, id) {
     loadTx(st.month).then(function (all) {
       if (!expandedCat || expandedCat.id !== id) return;
-      expandedCat = { id: id, rows: (all || []).filter(function (t) { return t.category_id === id; }) };
-      renderSummaryFromCache();
+      var rows = (all || []).filter(function (t) { return t.category_id === id; });
+      expandedCat = { id: id, rows: rows };
+      var wrap = categoryWrap(id);
+      var rowsEl = wrap && wrap.querySelector('.cat-tx__rows');
+      if (!rowsEl || !wrap.classList.contains('cat-wrap--open')) return;
+      // Если в разметке уже тот же набор строк из кэша — не трогаем узлы,
+      // иначе каскад строк запустится повторно.
+      var sameCount = rowsEl.getAttribute('data-count') === String(rows.length);
+      if (sameCount && (rows.length > 0 || rowsEl.querySelector('.cat-tx__empty'))) return;
+      rowsEl.innerHTML = Views.categoryTxList(rows, true);
+      rowsEl.setAttribute('data-count', String(rows.length));
     }).catch(function () {
       if (!expandedCat || expandedCat.id !== id) return;
       expandedCat = { id: id, rows: [] };
-      renderSummaryFromCache();
+      var wrap = categoryWrap(id);
+      var rowsEl = wrap && wrap.querySelector('.cat-tx__rows');
+      if (!rowsEl || !wrap.classList.contains('cat-wrap--open')) return;
+      if (!rowsEl.querySelector('.cat-tx__row') && !rowsEl.querySelector('.cat-tx__empty')) {
+        rowsEl.innerHTML = Views.categoryTxList([], true);
+        rowsEl.setAttribute('data-count', '0');
+      }
     });
   }
 

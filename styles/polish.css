@@ -87,7 +87,19 @@
 .cat-wrap--open .cat-tx__inner { border-top: 1px solid var(--c-border); }
 .cat-tx { transition: grid-template-rows 240ms var(--ease-out); }
 .cat__chev { transition: transform var(--dur) var(--ease-out); }
-.cat-wrap--open .cat__chev { transform: rotate(180deg); }
+.cat-wrap--open .cat__chev { transform: rotate(270deg); }
+
+/* Стрелка «подпрыгивает» у закрытой категории — как в CSS-аккордеоне. */
+@media (hover: hover) {
+  .cat-wrap:not(.cat-wrap--open) .cat:hover .cat__chev {
+    animation: cat-chev-bounce 0.5s infinite;
+  }
+}
+
+@keyframes cat-chev-bounce {
+  25% { transform: rotate(90deg) translateX(4px); }
+  75% { transform: rotate(90deg) translateX(-4px); }
+}
 
 /* --- Раскрытие категории: строки поднимаются каскадом, шеврон крутится --- */
 /* Обёртка анимируется по высоте (grid-rows), а записи — по появлению. */
@@ -105,10 +117,27 @@
     transform 240ms var(--ease-out);
 }
 
+/* Кнопка есть в DOM всегда, но у закрытой категории невидима и не берёт фокус. */
+.cat-tx__add {
+  visibility: hidden;
+  transition:
+    opacity 200ms var(--ease-out),
+    transform 240ms var(--ease-out),
+    visibility 0s linear 240ms;
+}
+
 .cat-wrap--open .cat-tx__row,
 .cat-wrap--open .cat-tx__add {
   opacity: 1;
   transform: translateY(0);
+}
+
+.cat-wrap--open .cat-tx__add {
+  visibility: visible;
+  transition:
+    opacity 200ms var(--ease-out),
+    transform 240ms var(--ease-out),
+    visibility 0s;
 }
 
 /* Каскад: каждая следующая строка появляется на 35 мс позже */
