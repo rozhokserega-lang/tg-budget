@@ -5,6 +5,7 @@
  */
 
 (function (root) {
+  var T = root.I18n ? root.I18n.t : function (s) { return s; };
   var params = new URLSearchParams(root.location.search);
   var apiUrl = params.get('api') || root.APP_API_URL || '';
   var demo = params.has('demo');
@@ -14,7 +15,7 @@
     this.code = code || 'network';
     this.status = status || 0;
     this.data = data || null;
-    this.message = MESSAGES[this.code] || 'Что-то пошло не так. Попробуйте ещё раз.';
+    this.message = T(MESSAGES[this.code] || 'Что-то пошло не так. Попробуйте ещё раз.');
   }
   ApiError.prototype = Object.create(Error.prototype);
   ApiError.prototype.constructor = ApiError;

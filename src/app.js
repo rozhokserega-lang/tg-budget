@@ -4,6 +4,7 @@
  */
 
 (function (root) {
+  var T = I18n.t;
   var $ = function (sel) { return document.querySelector(sel); };
   var el = {
     header: $('#screen-header'),
@@ -14,6 +15,7 @@
     dialog: $('#dialog'),
     dialogText: $('#dialog-text'),
     dialogOk: $('#dialog-ok'),
+    dialogCancel: $('#dialog .dialog__btn[data-dialog-close]'),
     sheet: $('#sheet'),
     sheetBody: $('#sheet-body'),
   };
@@ -61,7 +63,8 @@
     return new Promise(function (resolve) {
       dialogResolve = resolve;
       el.dialogText.textContent = text;
-      el.dialogOk.textContent = okLabel || 'Удалить';
+      el.dialogOk.textContent = okLabel || T('Удалить');
+      if (el.dialogCancel) el.dialogCancel.textContent = T('Отмена');
       el.dialog.hidden = false;
     });
   }
@@ -126,7 +129,7 @@
     if (el.tabs.children.length !== TABS.length) {
       el.tabs.innerHTML = TABS.map(function (t) {
         return '<button type="button" class="tab' + (t.primary ? ' tab--primary' : '') + '" data-tab="' + t.id + '">' +
-          '<span class="tab__icon">' + t.icon + '</span><span>' + t.label + '</span></button>';
+          '<span class="tab__icon">' + t.icon + '</span><span>' + T(t.label) + '</span></button>';
       }).join('');
     }
     var activeIdx = 0;
@@ -172,29 +175,29 @@
     }
     var opts = {
       icon: '📡',
-      title: 'Не удалось загрузить',
-      text: (err && err.message) || 'Проверьте соединение и попробуйте ещё раз.',
+      title: T('Не удалось загрузить'),
+      text: (err && err.message) || T('Проверьте соединение и попробуйте ещё раз.'),
       retry: true,
     };
     if (code === 'unauthorized') {
       opts = {
         icon: '🔒',
-        title: 'Нужен доступ из бота',
-        text: 'Откройте приложение кнопкой «Открыть бюджет» в Telegram-боте.',
+        title: T('Нужен доступ из бота'),
+        text: T('Откройте приложение кнопкой «Открыть бюджет» в Telegram-боте.'),
         retry: false,
       };
     } else if (code === 'no_config') {
       opts = {
         icon: '⚙️',
-        title: 'Не настроено',
-        text: 'В index.html укажите APP_API_URL — адрес Edge Function `api`.',
+        title: T('Не настроено'),
+        text: T('В index.html укажите APP_API_URL — адрес Edge Function `api`.'),
         retry: false,
       };
     } else if (code === 'subscription_expired') {
       opts = {
         icon: '⌛',
-        title: 'Пробный период закончился',
-        text: 'Добавлять записи нельзя. Активируйте промокод, чтобы восстановить доступ.',
+        title: T('Пробный период закончился'),
+        text: T('Добавлять записи нельзя. Активируйте промокод, чтобы восстановить доступ.'),
         retry: true,
         promo: true,
       };
@@ -334,13 +337,13 @@
       }).catch(function () {});
       // Категория была раскрыта (например, только что добавили запись) — догружаем её строки.
       if (expandedCat && !expandedCat.rows) fillExpandedCat(s, expandedCat.id);
-      if (State.isExpired()) banner('Пробный период закончился — новые записи недоступны.');
+      if (State.isExpired()) banner(T('Пробный период закончился — новые записи недоступны.'));
       // Планы подтягиваем вторым шагом, чтобы не задерживать сводку.
       loadPlans().then(function (plans) {
         if (seq === reqSeq && route.name === 'summary') {
           render(Views.renderSummary(s, plans, expandedCat));
           // banner() вставляет узел в DOM — повторный render() его стёр бы.
-          if (State.isExpired()) banner('Пробный период закончился — новые записи недоступны.');
+          if (State.isExpired()) banner(T('Пробный период закончился — новые записи недоступны.'));
         }
       });
     }).catch(function (err) {
@@ -350,7 +353,7 @@
       var cachedS = cached('summaryCache:' + month) || st.lastSummary;
       if (cachedS) {
         render(Views.renderSummary(cachedS));
-        banner('Нет связи с сервером — показываем сохранённое');
+        banner(T('Нет связи с сервером — показываем сохранённое'));
         return;
       }
       fail(err);
@@ -388,7 +391,7 @@
     loadTx(month).then(function (all) {
       if (seq !== reqSeq) return;
       render(Views.renderTxList(all || [], st.txFilter));
-      if (State.isExpired()) banner('Пробный период закончился — новые записи недоступны.');
+      if (State.isExpired()) banner(T('Пробный период закончился — новые записи недоступны.'));
     }).catch(function (err) {
       if (seq !== reqSeq) return;
       fail(err);
@@ -417,7 +420,7 @@
     loadCategories().then(function () {
       pendingFromCategory = preset || null;
       render(Views.renderForm(form));
-      if (State.isExpired()) banner('Пробный период закончился — добавлять записи нельзя.');
+      if (State.isExpired()) banner(T('Пробный период закончился — добавлять записи нельзя.'));
     }).catch(function (err) {
       fail(err);
     });
@@ -497,7 +500,7 @@
       if (!tg || !tg.openInvoice) {
         st.buying = false;
         render(Views.renderSettings());
-        toast('Оплата доступна только в Telegram');
+        toast(T('Оплата доступна только в Telegram'));
         return;
       }
       tg.openInvoice(res.url, function (status) {
@@ -507,20 +510,20 @@
           setTimeout(function () {
             loadMember().then(function () {
               if (st.member && st.member.households) clearCache();
-              toast('Спасибо! Доступ продлён');
+              toast(T('Спасибо! Доступ продлён'));
               if (route.name === 'settings') render(Views.renderSettings());
             });
           }, 1500);
         } else {
-          toast(status === 'cancelled' ? 'Оплата отменена' : 'Оплата не прошла');
+          toast(status === 'cancelled' ? T('Оплата отменена') : T('Оплата не прошла'));
           if (route.name === 'settings') render(Views.renderSettings());
         }
       });
     }).catch(function (err) {
       st.buying = false;
       if (route.name === 'settings') render(Views.renderSettings());
-      if (err.code === 'telegram_error') return toast('Не удалось создать счёт');
-      toast(err.message || 'Не удалось создать счёт');
+      if (err.code === 'telegram_error') return toast(T('Не удалось создать счёт'));
+      toast(err.message || T('Не удалось создать счёт'));
     });
   }
 
@@ -534,7 +537,7 @@
     loadPlans(true).then(function (plans) {
       if (seq !== reqSeq) return;
       render(Views.renderPlans(plans, plansTab));
-      if (State.isExpired()) banner('Пробный период закончился — изменения недоступны.');
+      if (State.isExpired()) banner(T('Пробный период закончился — изменения недоступны.'));
     }).catch(function (err) {
       if (seq !== reqSeq) return;
       fail(err);
@@ -557,9 +560,9 @@
     var v = formEl.elements;
     var amt = Fmt.parseAmount(v.amount.value);
     var day = parseInt(v.day.value, 10);
-    if (!v.name.value.trim()) return badInput('Введите название', v.name);
-    if (!(amt > 0)) return badInput('Укажите сумму', v.amount);
-    if (!(day >= 1 && day <= 31)) return badInput('День от 1 до 31', v.day);
+    if (!v.name.value.trim()) return badInput(T('Введите название'), v.name);
+    if (!(amt > 0)) return badInput(T('Укажите сумму'), v.amount);
+    if (!(day >= 1 && day <= 31)) return badInput(T('День от 1 до 31'), v.day);
     var catId = v.category_id && v.category_id.value ? v.category_id.value : null;
     // Оптимистично: платёж появляется в списке сразу.
     var plans = st.plans || { goals: [], debts: [], wishes: [], recurring: [] };
@@ -581,7 +584,7 @@
     });
     root.Tg.haptic('success');
     closeSheet();
-    toast('Платёж сохранён');
+    toast(T('Платёж сохранён'));
     openPlans();
 
     var op = Queue.push('save_recurring', { id: id, name: v.name.value, amount: amt, day_of_month: day, category_id: catId });
@@ -595,7 +598,7 @@
       root.removeEventListener('queue-failed', onFailed);
       st.plans = null;
       root.Tg.haptic('error');
-      toast(ev.detail.error && ev.detail.error.message || 'Не сохранилось');
+      toast(ev.detail.error && ev.detail.error.message || T('Не сохранилось'));
       openPlans();
     });
   }
@@ -613,38 +616,38 @@
       payload.target = Fmt.parseAmount(v.target.value);
       payload.saved = v.saved.value ? Fmt.parseAmount(v.saved.value) : 0;
       payload.monthly = v.monthly.value ? Fmt.parseAmount(v.monthly.value) : 0;
-      if (!(payload.target > 0)) return badInput('Укажите сумму цели', v.target);
-      if (isNaN(payload.saved) || isNaN(payload.monthly)) return badInput('Проверьте суммы', v.saved);
-      if (payload.saved > payload.target) return badInput('Накоплено не может быть больше цели', v.saved);
+      if (!(payload.target > 0)) return badInput(T('Укажите сумму цели'), v.target);
+      if (isNaN(payload.saved) || isNaN(payload.monthly)) return badInput(T('Проверьте суммы'), v.saved);
+      if (payload.saved > payload.target) return badInput(T('Накоплено не может быть больше цели'), v.saved);
     } else if (kind === 'debts') {
       action = 'save_debt';
       payload.total = Fmt.parseAmount(v.total.value);
       payload.remaining = v.remaining.value ? Fmt.parseAmount(v.remaining.value) : payload.total;
       payload.monthly = v.monthly.value ? Fmt.parseAmount(v.monthly.value) : 0;
       payload.creditor = v.creditor.value.trim();
-      if (!(payload.total > 0)) return badInput('Укажите сумму долга', v.total);
-      if (isNaN(payload.remaining) || isNaN(payload.monthly)) return badInput('Проверьте суммы', v.remaining);
-      if (payload.remaining > payload.total) return badInput('Остаток больше суммы долга', v.remaining);
+      if (!(payload.total > 0)) return badInput(T('Укажите сумму долга'), v.total);
+      if (isNaN(payload.remaining) || isNaN(payload.monthly)) return badInput(T('Проверьте суммы'), v.remaining);
+      if (payload.remaining > payload.total) return badInput(T('Остаток больше суммы долга'), v.remaining);
     } else {
       action = 'save_wish';
       payload.price = Fmt.parseAmount(v.price.value);
       payload.priority = v.priority.value;
       payload.goal_id = v.goal_id && v.goal_id.value ? v.goal_id.value : null;
-      if (!(payload.price > 0)) return badInput('Укажите цену', v.price);
+      if (!(payload.price > 0)) return badInput(T('Укажите цену'), v.price);
     }
-    if (!payload.name.trim()) return badInput('Введите название', v.name);
+    if (!payload.name.trim()) return badInput(T('Введите название'), v.name);
 
     btn.disabled = true;
     Api.call(action, payload).then(function () {
       root.Tg.haptic('success');
       closeSheet();
-      toast('Сохранено');
+      toast(T('Сохранено'));
       openPlans();
     }).catch(function (err) {
       btn.disabled = false;
       root.Tg.haptic('error');
       if (err.code === 'subscription_expired') { closeSheet(); fail(err); return; }
-      toast(err.message || 'Не удалось сохранить');
+      toast(err.message || T('Не удалось сохранить'));
     });
   }
 
@@ -657,7 +660,7 @@
   // Быстрое действие с деньгами внутри карточки: сумма → API → перерисовка.
   function planAction(action, id, amount, label) {
     if (State.isExpired()) return fail(new Api.ApiError('subscription_expired', 402));
-    if (!(amount > 0) || isNaN(amount)) return toast('Введите сумму');
+    if (!(amount > 0) || isNaN(amount)) return toast(T('Введите сумму'));
     Api.call(action, { id: id, amount: amount }).then(function () {
       root.Tg.haptic('success');
       toast(label);
@@ -665,23 +668,23 @@
     }).catch(function (err) {
       root.Tg.haptic('error');
       if (err.code === 'subscription_expired') return fail(err);
-      toast(err.message || 'Не получилось');
+      toast(err.message || T('Не получилось'));
     });
   }
 
   function removePlan(kind, id) {
-    var labels = { goals: ['Удалить цель?', 'delete_goal'], debts: ['Удалить долг?', 'delete_debt'], wishes: ['Удалить желание?', 'delete_wish'] };
+    var labels = { goals: [T('Удалить цель?'), 'delete_goal'], debts: [T('Удалить долг?'), 'delete_debt'], wishes: [T('Удалить желание?'), 'delete_wish'] };
     var l = labels[kind];
-    dialog(l[0], 'Удалить').then(function (ok) {
+    dialog(l[0], T('Удалить')).then(function (ok) {
       if (!ok) return;
       Api.call(l[1], { id: id }).then(function () {
         root.Tg.haptic('success');
-        toast('Удалено');
+        toast(T('Удалено'));
         openPlans();
       }).catch(function (err) {
         root.Tg.haptic('error');
         if (err.code === 'subscription_expired') return fail(err);
-        toast(err.message || 'Не удалось удалить');
+        toast(err.message || T('Не удалось удалить'));
       });
     });
   }
@@ -690,7 +693,7 @@
 
   function deleteAccount() {
     if (st.deleting) return;
-    dialog('Удалить аккаунт вместе со всей семьёй и записями? Это необратимо.', 'Удалить').then(function (ok) {
+    dialog(T('Удалить аккаунт вместе со всей семьёй и записями? Это необратимо.'), T('Удалить')).then(function (ok) {
       if (!ok) return;
       st.deleting = true;
       if (route.name === 'settings') render(Views.renderSettings());
@@ -703,13 +706,13 @@
         st.tariffs = null;
         st.deleting = false;
         onboarding = { tab: 'create', member_name: '', code: '', household_name: '' };
-        toast('Аккаунт удалён');
+        toast(T('Аккаунт удалён'));
         render(Views.renderOnboarding(onboarding));
       }).catch(function (err) {
         st.deleting = false;
         if (route.name === 'settings') render(Views.renderSettings());
         root.Tg.haptic('error');
-        toast(err.message || 'Не удалось удалить аккаунт');
+        toast(err.message || T('Не удалось удалить аккаунт'));
       });
     });
   }
@@ -844,8 +847,8 @@
     var raw = String(v.plan.value || '').trim();
     var plan = raw ? Fmt.parseAmount(raw) : 0;
     var btn = formEl.querySelector('[type="submit"]');
-    if (isNaN(plan) || plan < 0) return badInput('Проверьте лимит', v.plan);
-    if (!id && !v.name.value.trim()) return badInput('Введите название', v.name);
+    if (isNaN(plan) || plan < 0) return badInput(T('Проверьте лимит'), v.plan);
+    if (!id && !v.name.value.trim()) return badInput(T('Введите название'), v.name);
     // Оптимистично: обновляем локальную копию и закрываем панель сразу.
     var categories = st.categories || [];
     if (id) {
@@ -867,7 +870,7 @@
     clearCache();
     root.Tg.haptic('success');
     closeSheet();
-    toast(id ? 'Лимит сохранён' : 'Категория добавлена');
+    toast(id ? T('Лимит сохранён') : T('Категория добавлена'));
     if (route.name === 'limits') openLimits();
     else openSummary();
 
@@ -885,39 +888,39 @@
       st.categories = null;      // перечитаем с сервера — локальная правка откатилась
       clearCache();
       root.Tg.haptic('error');
-      if (code === 'category_exists') toast('Такая категория уже есть');
-      else toast(ev.detail.error && ev.detail.error.message || 'Не сохранилось');
+      if (code === 'category_exists') toast(T('Такая категория уже есть'));
+      else toast(ev.detail.error && ev.detail.error.message || T('Не сохранилось'));
       if (route.name === 'limits') openLimits();
     });
   }
 
   function removeRecurring(id) {
-    dialog('Удалить напоминание о платеже?', 'Удалить').then(function (ok) {
+    dialog(T('Удалить напоминание о платеже?'), T('Удалить')).then(function (ok) {
       if (!ok) return;
       Api.call('delete_recurring', { id: id }).then(function () {
         root.Tg.haptic('success');
         st.plans = null;
-        toast('Удалено');
+        toast(T('Удалено'));
         openPlans();
-      }).catch(function (err) { toast(err.message || 'Не удалось удалить'); });
+      }).catch(function (err) { toast(err.message || T('Не удалось удалить')); });
     });
   }
 
   function deleteCategory(id) {
-    var msg = 'Удалить категорию? Траты этой категории останутся в истории, а категория скроется из списка.';
-    dialog(msg, 'Удалить').then(function (ok) {
+    var msg = T('Удалить категорию? Траты этой категории останутся в истории, а категория скроется из списка.');
+    dialog(msg, T('Удалить')).then(function (ok) {
       if (!ok) return;
       Api.call('archive_category', { id: id }).then(function (res) {
         root.Tg.haptic('success');
         st.categories = null;
         clearCache();
         closeSheet();
-        toast(res.archived ? 'Категория скрыта' : 'Категория удалена');
+        toast(res.archived ? T('Категория скрыта') : T('Категория удалена'));
         if (route.name === 'limits') openLimits();
         else openSummary();
       }).catch(function (err) {
         root.Tg.haptic('error');
-        toast(err.message || 'Не удалось удалить');
+        toast(err.message || T('Не удалось удалить'));
       });
     });
   }
@@ -949,12 +952,12 @@
         st.member = Object.assign({}, st.member, { notifications: res.notifications });
       }
       root.Tg.haptic('light');
-      toast(next[key] ? 'Включено' : 'Выключено');
+      toast(next[key] ? T('Включено') : T('Выключено'));
     }).catch(function (err) {
       el.checked = !el.checked;
       st.member = Object.assign({}, st.member, { notifications: current });
       root.Tg.haptic('error');
-      toast(err.message || 'Не удалось сохранить');
+      toast(err.message || T('Не удалось сохранить'));
     });
   }
 
@@ -962,19 +965,19 @@
 
   function redeemPromo(code) {
     code = String(code || '').trim();
-    if (!code) return toast('Введите промокод');
+    if (!code) return toast(T('Введите промокод'));
     return Api.call('redeem_promo', { code: code }).then(function (res) {
       root.Tg.haptic('success');
       clearCache();
       return loadMember().then(function () {
-        toast('Доступ до ' + Fmt.dayLabel(res.plan_until));
+        toast(T('Доступ до {date}', { date: Fmt.dayLabel(res.plan_until) }));
         if (route.name === 'settings') render(Views.renderSettings());
       });
     }).catch(function (err) {
       root.Tg.haptic('error');
-      if (err.code === 'bad_promo') return toast('Такого промокода нет');
-      if (err.code === 'promo_used') return toast('Этот код уже активирован');
-      toast(err.message || 'Не удалось активировать');
+      if (err.code === 'bad_promo') return toast(T('Такого промокода нет'));
+      if (err.code === 'promo_used') return toast(T('Этот код уже активирован'));
+      toast(err.message || T('Не удалось активировать'));
     });
   }
 
@@ -995,13 +998,13 @@
     var btn = formEl.querySelector('[type="submit"]');
     if (!(amount > 0) || amount > 1e9) {
       root.Tg.haptic('error');
-      toast('Введите сумму цифрами');
+      toast(T('Введите сумму цифрами'));
       formEl.elements.amount.focus();
       return;
     }
     if (!values.category_id) {
       root.Tg.haptic('error');
-      toast('Выберите категорию');
+      toast(T('Выберите категорию'));
       return;
     }
     var occurred = values.date || Fmt.todayIso();
@@ -1022,7 +1025,7 @@
     form = {};
     btn.disabled = true;
     root.Tg.haptic('success');
-    toast('Записано');
+    toast(T('Записано'));
     openSummary();
 
     var op = Queue.push('add_tx', Object.assign({ local_id: local.id }, payload));
@@ -1049,7 +1052,7 @@
       // Откатываем локальную запись: сервер её не принял.
       removeOptimisticTx(local);
       if (code === 'subscription_expired') fail(ev.detail.error);
-      else toast('Не сохранилось: ' + ((ev.detail.error && ev.detail.error.message) || 'ошибка'));
+      else toast(T('Не сохранилось: {error}', { error: (ev.detail.error && ev.detail.error.message) || T('ошибка') }));
       if (route.name === 'summary') openSummary();
       if (route.name === 'tx') openTx();
     });
@@ -1074,7 +1077,7 @@
   }
 
   function deleteTx(id) {
-    dialog('Удалить эту запись?', 'Удалить').then(function (ok) {
+    dialog(T('Удалить эту запись?'), T('Удалить')).then(function (ok) {
       if (!ok) return;
       // Оптимистично: убираем из кэшей сразу, сервер догонит.
       var removed = null;
@@ -1087,7 +1090,7 @@
       if (removed) removeOptimisticTx(removed);
       removeLocalTx(id);
       root.Tg.haptic('success');
-      toast('Удалено');
+      toast(T('Удалено'));
       closeSwipes();
       if (route.name === 'tx') openTx();
       else openSummary();
@@ -1103,7 +1106,7 @@
         root.removeEventListener('queue-failed', onFailed);
         delete deletingTx[id];
         root.Tg.haptic('error');
-        toast('Не удалилось: ' + ((ev.detail.error && ev.detail.error.message) || 'ошибка'));
+        toast(T('Не удалилось: {error}', { error: (ev.detail.error && ev.detail.error.message) || T('ошибка') }));
         clearCache();
         if (route.name === 'tx') openTx();
       });
@@ -1132,7 +1135,7 @@
     if (action === 'join') {
       payload.code = formEl.elements.code.value.trim();
       if (!payload.code) {
-        toast('Введите код приглашения');
+        toast(T('Введите код приглашения'));
         formEl.elements.code.focus();
         return;
       }
@@ -1146,7 +1149,7 @@
       onboarding = { tab: 'create', member_name: name, code: '', household_name: '' };
       return loadMember().then(function (me) {
         if (!me) {
-          toast('Семья не найдена, попробуйте ещё раз');
+          toast(T('Семья не найдена, попробуйте ещё раз'));
           btn.disabled = false;
           return;
         }
@@ -1159,7 +1162,7 @@
     }).catch(function (err) {
       btn.disabled = false;
       root.Tg.haptic('error');
-      toast(err.message || 'Не получилось');
+      toast(err.message || T('Не получилось'));
     });
   }
 
@@ -1183,7 +1186,7 @@
     var hiddenAbove = btn ? Math.max(0, -btn.getBoundingClientRect().top + 8) : 0;
 
     render(Views.renderSummary(s, st.plans, expandedCat));
-    if (State.isExpired()) banner('Пробный период закончился — новые записи недоступны.');
+    if (State.isExpired()) banner(T('Пробный период закончился — новые записи недоступны.'));
     el.screen.scrollTop = Math.max(0, scroll - hiddenAbove);
   }
 
@@ -1212,7 +1215,7 @@
     var due = el.screen.querySelector('.due');
     if (due) due.remove();
     root.Tg.haptic('light');
-    toast('Напоминание скрыто до завтра');
+    toast(T('Напоминание скрыто до завтра'));
   }
 
   // Делегирование на document: кнопки часто перерисовываются самим обработчиком,
@@ -1249,7 +1252,7 @@
       case 'refresh':
         clearCache();
         st.categories = null;
-        toast('Обновлено');
+        toast(T('Обновлено'));
         openTab(route.name === 'settings' ? 'summary' : route.name);
         break;
       case 'retry':
@@ -1308,7 +1311,7 @@
         if (root.DEMO_API) root.DEMO_API.reset();
         clearCache();
         st.categories = null;
-        toast('Демо-данные сброшены');
+        toast(T('Демо-данные сброшены'));
         goHome();
         break;
     }
@@ -1371,13 +1374,13 @@
         // Оптимистично: платеж уходит в очередь, список обновляется сразу.
         root.Tg.haptic('success');
         clearCache();
-        toast('Оплата записана');
+        toast(T('Оплата записана'));
         var payOp = Queue.push('pay_recurring', { id: recId });
         root.addEventListener('queue-failed', function onFailed(e2) {
           if (e2.detail.op.id !== payOp.id) return;
           root.removeEventListener('queue-failed', onFailed);
           root.Tg.haptic('error');
-          toast(e2.detail.error && e2.detail.error.message || 'Не удалось записать');
+          toast(e2.detail.error && e2.detail.error.message || T('Не удалось записать'));
         });
         st.plans = null;
         openPlans();
@@ -1428,6 +1431,28 @@
       toggleNotification(t);
       return;
     }
+    if (t.matches('[data-locale]')) {
+      if (!I18n.setLocale(t.value)) return;
+      root.Tg.haptic('light');
+      // Вкладки создаются один раз — пересобираем их на новом языке.
+      el.tabs.innerHTML = '';
+      var scroll = el.screen.scrollTop;
+      render(Views.renderSettings());
+      el.screen.scrollTop = scroll;
+      document.documentElement.lang = I18n.locale();
+      document.title = T('Бюджет пары');
+      toast(t.options[t.selectedIndex].text);
+      return;
+    }
+    if (t.matches('[data-currency]')) {
+      if (!Fmt.setCurrency(t.value)) return;
+      root.Tg.haptic('light');
+      var scroll = el.screen.scrollTop;
+      render(Views.renderSettings());
+      el.screen.scrollTop = scroll;
+      toast(T('Валюта: {name}', { name: T(Fmt.currencyName()) }));
+      return;
+    }
     if (!st.txFilter) return;
     if (t.matches('[data-tx-member]')) {
       st.txFilter.member_id = t.value || null;
@@ -1456,7 +1481,7 @@
     if (ev.target.closest('[data-plan-more]')) {
       card.classList.toggle('plan--open');
       var more = card.querySelector('.plan__more');
-      if (more) more.textContent = card.classList.contains('plan--open') ? 'Удалить' : '···';
+      if (more) more.textContent = card.classList.contains('plan--open') ? T('Удалить') : '···';
       return;
     }
     if (card.classList.contains('plan--open') && ev.target.closest('.plan__more') === null &&
@@ -1485,8 +1510,8 @@
     if (ev.target.closest('[data-plan-save]')) {
       var amountField = card.querySelector('[data-plan-amount]');
       var value = amountField ? Fmt.parseAmount(amountField.value) : NaN;
-      if (kind === 'goal') planAction('add_to_goal', id, value, 'Добавлено');
-      else planAction('pay_debt', id, value, 'Выплачено');
+      if (kind === 'goal') planAction('add_to_goal', id, value, T('Добавлено'));
+      else planAction('pay_debt', id, value, T('Выплачено'));
       return;
     }
 
@@ -1495,7 +1520,7 @@
       var raw = pay.getAttribute('data-debt-pay');
       // «весь остаток» — сумма берётся из data-remaining на карточке.
       var amt = raw === 'all' ? Number(card.getAttribute('data-remaining') || 0) : Number(raw);
-      planAction('pay_debt', id, amt, 'Выплачено');
+      planAction('pay_debt', id, amt, T('Выплачено'));
       return;
     }
 
@@ -1503,9 +1528,9 @@
     if (buy) {
       Api.call('buy_wish', { id: id }).then(function () {
         root.Tg.haptic('success');
-        toast('Отмечено купленным');
+        toast(T('Отмечено купленным'));
         openPlans();
-      }).catch(function (err) { toast(err.message || 'Не удалось'); });
+      }).catch(function (err) { toast(err.message || T('Не удалось')); });
     }
   });
 
@@ -1672,9 +1697,13 @@
   // --- Старт ---
 
   function boot() {
+    document.documentElement.lang = I18n.locale();
+    document.title = T('Бюджет пары');
+    var loaderText = document.querySelector('.loader__text');
+    if (loaderText) loaderText.textContent = T('Загружаем бюджет…');
     root.Tg.init().then(function () {
       if (!root.Tg.isInsideTelegram()) {
-        console.info('Mini App открыт вне Telegram — демо-режим.');
+        console.info(T('Mini App открыт вне Telegram — демо-режим.'));
       }
       return loadMember();
     }).then(function (me) {

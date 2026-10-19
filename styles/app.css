@@ -1723,6 +1723,30 @@ textarea.input {
   color: var(--c-hint);
 }
 
+/* --- Валюта отображения --- */
+
+.currency-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.currency-row__label {
+  font-size: 14px;
+}
+
+.currency-row__select {
+  max-width: 62%;
+  padding: 8px 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-card);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+
 .settings-row--link {
   display: flex;
   width: 100%;

@@ -18,7 +18,7 @@
 
   function displayName(m) {
     if (!m) return '';
-    return (m.households && m.households.name) || 'Наша семья';
+    return (m.households && m.households.name) || (root.I18n ? root.I18n.t('Наша семья') : 'Наша семья');
   }
 
   function planDaysLeft() {
@@ -41,7 +41,8 @@
 
   function splitModeLabel() {
     var mode = state.member && state.member.households && state.member.households.split_mode;
-    return mode === 'equal' ? 'Поровну' : 'Пропорционально доходу';
+    var label = mode === 'equal' ? 'Поровну' : 'Пропорционально доходу';
+    return root.I18n ? root.I18n.t(label) : label;
   }
 
   // Баннер «Сегодня/Завтра платёж» можно скрыть крестиком.
