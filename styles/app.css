@@ -244,11 +244,14 @@ button,
   opacity: 0.9;
 }
 
-.hero--cover {
+/* Два класса, чтобы перебить background-shorthand из polish.css. */
+.hero.hero--cover {
   overflow: hidden;
   background-color: var(--c-accent);
   background-position: center;
-  background-size: cover;
+  background-repeat: no-repeat;
+  /* Показываем обложку целиком: карта шире исходного кадра 2.5:1. */
+  background-size: 100% 100%;
 }
 
 .hero--cover::before {
