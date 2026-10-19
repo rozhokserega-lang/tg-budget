@@ -1144,6 +1144,16 @@
     return delta > 2 && delta > TOUCH_MOVE_LIMIT / 5;
   }
 
+  // Крестик на баннере платежа: скрываем до конца дня и убираем узел без
+  // перерисовки экрана, чтобы не сбить прокрутку.
+  function dismissDueBanner() {
+    State.dismissDue();
+    var due = el.screen.querySelector('.due');
+    if (due) due.remove();
+    root.Tg.haptic('light');
+    toast('Напоминание скрыто до завтра');
+  }
+
   // Делегирование на document: кнопки часто перерисовываются самим обработчиком,
   // и слушатель, привязанный к контейнеру экрана, может не дожить до клика.
   document.addEventListener('click', function (ev) {
@@ -1184,6 +1194,7 @@
       case 'start': goHome(); break;
       case 'go-plans': openPlans(); break;
       case 'go-recurring': openPlans('recurring'); break;
+      case 'dismiss-due': dismissDueBanner(); break;
       case 'go-settings': openSettings(); break;
       case 'buy': buyTariff(actionBtn.getAttribute('data-buy')); break;
       case 'delete-account': deleteAccount(); break;

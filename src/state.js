@@ -44,6 +44,22 @@
     return mode === 'equal' ? 'Поровну' : 'Пропорционально доходу';
   }
 
+  // Баннер «Сегодня/Завтра платёж» можно скрыть крестиком.
+  // Запоминаем дату, чтобы после перезапуска Mini App он не вернулся в тот же день.
+  var DUE_STORAGE_KEY = 'budget.dueDismissedOn';
+  var dueDismissedOn = '';
+
+  function isDueDismissed() {
+    var stored = dueDismissedOn;
+    try { stored = root.localStorage.getItem(DUE_STORAGE_KEY) || ''; } catch (e) {}
+    return stored === Fmt.todayIso();
+  }
+
+  function dismissDue() {
+    dueDismissedOn = Fmt.todayIso();
+    try { root.localStorage.setItem(DUE_STORAGE_KEY, dueDismissedOn); } catch (e) {}
+  }
+
   function remember(action, payload) {
     if (action !== 'add_tx' && action !== 'delete_tx') return;
     var month = (payload && payload.occurred_on) || '';
@@ -68,6 +84,8 @@
     planDaysLeft: planDaysLeft,
     isExpired: isExpired,
     splitModeLabel: splitModeLabel,
+    isDueDismissed: isDueDismissed,
+    dismissDue: dismissDue,
     remember: remember,
     reset: function () {
       state.member = null;

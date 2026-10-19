@@ -167,7 +167,9 @@
 
   // Ближайший повторяющийся платёж: за день до даты и в сам день — баннер сверху.
   // Показываем только первый, остальные — в «Планы → Платежи».
+  // Крестик скрывает баннер до конца дня (State.dismissDue).
   function dueBanner(plans) {
+    if (State.isDueDismissed()) return '';
     var list = (plans && plans.recurring) || [];
     var now = new Date();
     var today = now.getDate();
@@ -181,13 +183,18 @@
     var x = soon[0];
     var more = soon.length - 1;
     var when = x.diff === 0 ? 'Сегодня платёж' : 'Завтра платёж';
-    return '<button type="button" class="due" data-action="go-recurring">' +
+    return '<div class="due">' +
+      '<button type="button" class="due__main" data-action="go-recurring">' +
       '<span class="due__icon">🔔</span>' +
       '<span class="due__body">' +
       '<span class="due__title">' + e(when) + ': ' + e(x.r.name) + ' · ' + e(money(x.r.amount)) + '</span>' +
       '<span class="due__hint">' + (more > 0 ? 'и ещё ' + more + ' · ' : '') + 'отметить оплату ›</span>' +
       '</span>' +
-      '</button>';
+      '</button>' +
+      '<button type="button" class="due__close" data-action="dismiss-due" aria-label="Скрыть напоминание">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>' +
+      '</button>' +
+      '</div>';
   }
 
   // expandedCat: { id, rows } — раскрытая категория и её записи за месяц.
