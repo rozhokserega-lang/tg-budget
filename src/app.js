@@ -40,6 +40,8 @@
     { id: 'settings', icon: ICON('<path d="M3 7h11M18 7h3M3 17h3M10 17h11"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>'), label: 'Ещё' },
   ];
   var plansTab = 'goals';
+  // Откуда открыли аналитику: из «Ещё» или из вкладки «Траты».
+  var analyticsBack = 'settings';
 
   // --- UI-помощники ---
 
@@ -102,7 +104,7 @@
     if (route.name === 'add') return root.Tg.backButton(goHome);
     // Лимиты — подэкран настроек: «Назад» возвращает к ним.
     if (route.name === 'limits') return root.Tg.backButton(openSettings);
-    if (route.name === 'analytics') return root.Tg.backButton(openSettings);
+    if (route.name === 'analytics') return root.Tg.backButton(analyticsBack === 'tx' ? openTx : openSettings);
     root.Tg.backButton(null);
   }
 
@@ -116,9 +118,9 @@
       return;
     }
     // «Добавить» — не место, а действие: подсвечиваем вкладку, с которой пришли.
-    // Аналитика — подэкран «Ещё», поэтому подсвечиваем настройки.
+    // Аналитика — подэкран «Ещё» или «Трат»: подсвечиваем вкладку, откуда пришли.
     var active = route.name === 'add' ? 'summary'
-      : route.name === 'analytics' ? 'settings'
+      : route.name === 'analytics' ? (analyticsBack === 'tx' ? 'tx' : 'settings')
       : route.name;
     // Меню создаём один раз: перерисовка на каждом переходе вызывала мигание иконок.
     if (el.tabs.children.length !== TABS.length) {
@@ -449,7 +451,8 @@
   }
 
   // Аналитика: месяцы текущего года, итоги и динамика по категориям.
-  function openAnalytics() {
+  function openAnalytics(back) {
+    if (back) analyticsBack = back;
     route = { name: 'analytics' };
     render(Views.skeletonList());
     var seq = ++reqSeq;
@@ -1250,7 +1253,7 @@
         openTab(route.name === 'settings' ? 'summary' : route.name);
         break;
       case 'retry':
-        if (route.name === 'analytics') openAnalytics();
+        if (route.name === 'analytics') openAnalytics(analyticsBack);
         else goHome();
         break;
       case 'start': goHome(); break;
@@ -1264,7 +1267,9 @@
       case 'open-cat': openLimits(actionBtn.getAttribute('data-id')); break;
       case 'add-cat': openCategoryForm(null, actionBtn.getAttribute('data-kind')); break;
       case 'go-limits': openLimits(); break;
-      case 'go-analytics': openAnalytics(); break;
+      case 'go-analytics':
+        openAnalytics(route.name === 'tx' ? 'tx' : 'settings');
+        break;
       case 'cat-kind':
         catKind = actionBtn.getAttribute('data-kind');
         el.sheetBody.querySelectorAll('[data-action="cat-kind"]').forEach(function (b) {

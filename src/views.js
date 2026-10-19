@@ -436,12 +436,17 @@
     var q = String(f.q || '');
     var selects = txSelect('Кто', 'data-tx-member', f.member_id || '', opts.members, 'Все') +
       txSelect('Категория', 'data-tx-category', f.category_id || '', opts.categories, 'Все');
-    return '<div class="tx-search">' +
+    return '<div class="tx-search-row">' +
+      '<div class="tx-search">' +
       '<span class="tx-search__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg></span>' +
       '<input id="tx-search" class="tx-search__input" type="search" autocomplete="off" enterkeyhint="search" ' +
-      'placeholder="Заметка, категория или имя" aria-label="Поиск по тратам" value="' + e(q) + '">' +
+      'placeholder="Заметка, категория" aria-label="Поиск по тратам" value="' + e(q) + '">' +
       '<button type="button" class="tx-search__clear" data-action="tx-search-clear" aria-label="Очистить поиск"' +
       (q ? '' : ' hidden') + '>&times;</button>' +
+      '</div>' +
+      '<button type="button" class="tx-analytics" data-action="go-analytics" aria-label="Открыть аналитику">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>' +
+      '<span>Аналитика</span></button>' +
       '</div>' +
       (selects ? '<div class="tx-filters">' + selects + '</div>' : '');
   }
@@ -471,10 +476,8 @@
 
   function renderTxList(all, filter) {
     var st = State.get();
-    var active = txFilterActive(filter);
     var pending = (root.Queue && Queue.size()) ? '<div class="sync-note">Изменения отправятся, когда появится связь</div>' : '';
-    var controls = (all && all.length) || active ? txControls(all, filter) : '';
-    return monthNav(st.month) + pending + controls +
+    return monthNav(st.month) + pending + txControls(all, filter) +
       '<div id="tx-results">' + txResults(all, filter) + '</div>';
   }
 
@@ -910,6 +913,58 @@
     }).join('') + '</div>';
   }
 
+  var DONUT_COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
+    '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#64748b', '#14b8a6', '#a855f7'];
+
+  // Круговая диаграмма расходов текущего месяца: SVG без библиотек.
+  // Подписи вынесены в список под диаграммой — на узком экране это читается лучше,
+  // чем выноски по краям, как в настольных отчётах.
+  function analyticsDonut(data) {
+    var cur = data && data[data.length - 1];
+    var cats = ((cur && cur.summary && cur.summary.categories) || [])
+      .map(function (c) { return { name: c.name, icon: c.icon, fact: Number(c.fact) || 0 }; })
+      .filter(function (c) { return c.fact > 0; })
+      .sort(function (a, b) { return b.fact - a.fact; });
+    var total = cats.reduce(function (s, c) { return s + c.fact; }, 0);
+    if (!total) return '';
+
+    var C = 2 * Math.PI * 44;
+    var offset = 0;
+    var segments = cats.map(function (c, i) {
+      var len = (c.fact / total) * C;
+      var draw = Math.max(0.5, len - C * 0.012);
+      var color = DONUT_COLORS[i % DONUT_COLORS.length];
+      var seg = '<circle cx="60" cy="60" r="44" fill="none" stroke="' + color +
+        '" stroke-width="18" stroke-dasharray="' + draw + ' ' + (C - draw) +
+        '" stroke-dashoffset="' + (-offset) + '"></circle>';
+      offset += len;
+      return seg;
+    }).join('');
+
+    var legend = cats.map(function (c, i) {
+      var pct = Math.round((c.fact / total) * 100);
+      return '<div class="donut-legend__row">' +
+        '<span class="donut-legend__dot" style="background:' + DONUT_COLORS[i % DONUT_COLORS.length] + '"></span>' +
+        '<span class="donut-legend__name">' + e(c.icon || '🏷️') + ' ' + e(c.name) + '</span>' +
+        '<span class="donut-legend__pct">' + (pct < 1 ? '&lt;1%' : pct + '%') + '</span>' +
+        '<span class="donut-legend__amount">' + e(money(c.fact)) + '</span>' +
+        '</div>';
+    }).join('');
+
+    return '<div class="section"><div class="section__head"><span class="section__title">Расходы по категориям · ' +
+      e(monthName(cur.month)) + '</span></div>' +
+      '<div class="card donut-card">' +
+      '<div class="donut">' +
+      '<svg viewBox="0 0 120 120" role="img" aria-label="' + e('Расходы по категориям: всего ' + money(total)) + '">' +
+      '<g transform="rotate(-90 60 60)">' + segments + '</g>' +
+      '</svg>' +
+      '<div class="donut__center"><span class="donut__sum">' + e(money(total)) + '</span>' +
+      '<span class="donut__label">расходы</span></div>' +
+      '</div>' +
+      '<div class="donut-legend">' + legend + '</div>' +
+      '</div></div>';
+  }
+
   function analyticsCategories(data) {
     if (!data || data.length < 2) return '';
     var cur = data[data.length - 1];
@@ -976,6 +1031,7 @@
       '<span><i class="analytics-legend__dot analytics-legend__dot--income"></i>Доходы</span>' +
       '<span><i class="analytics-legend__dot analytics-legend__dot--expense"></i>Расходы</span>' +
       '</div></div>' +
+      analyticsDonut(data) +
       analyticsCategories(data);
   }
 
