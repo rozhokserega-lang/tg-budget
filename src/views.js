@@ -885,6 +885,19 @@
       '</div></div>';
   }
 
+  // Баланс карты из банковских SMS: показывается, если бот его получил.
+  function cardBalanceCard(h) {
+    if (h.card_balance == null) return '';
+    var when = h.card_balance_at ? Fmt.dayLabel(String(h.card_balance_at).slice(0, 10)) : '';
+    return '<div class="section"><div class="section__head"><span class="section__title">Карта</span></div>' +
+      '<div class="card">' +
+      '<div class="settings-row"><span class="settings-row__label">Баланс из SMS</span>' +
+      '<span class="settings-row__value">' + e(money(h.card_balance)) + '</span></div>' +
+      (when ? '<p class="small muted mt-8">Обновлён ' + e(when) + ' · приходит из сообщений банка</p>' : '') +
+      '<button type="button" class="btn btn--sm btn--ghost mt-8" data-action="clear-balance">Сбросить</button>' +
+      '</div></div>';
+  }
+
   function limitsCard() {
     var cats = ((State.get().categories) || []).filter(function (c) { return c.kind === 'expense' && !c.archived; });
     var total = cats.reduce(function (s, c) { return s + (Number(c.plan_monthly) || 0); }, 0);
@@ -1117,6 +1130,7 @@
       '<div class="settings-row"><span class="settings-row__label">' + e(T('Доступ')) + '</span><span class="settings-row__value' + (left !== null && left < 0 ? ' amount--neg' : '') + '">' + e(planText) +
         (untilText ? e(T(' · до {date}', { date: untilText })) : '') + '</span></div>' +
       '</div>' +
+      cardBalanceCard(h) +
       currencyCard() +
       languageCard() +
       coverCard() +
