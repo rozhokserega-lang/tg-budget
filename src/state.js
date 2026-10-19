@@ -11,7 +11,7 @@
     buying: false,
     deleting: false,
     month: Fmt.currentMonth(),
-    txFilter: null,
+    txFilter: { category_id: null, member_id: null, q: '' },
     summaryCache: {},
     txCache: {},
   };
@@ -92,6 +92,7 @@
       state.categories = null;
       state.summaryCache = {};
       state.txCache = {};
+      state.txFilter = { category_id: null, member_id: null, q: '' };
       state.month = Fmt.currentMonth();
     },
   };

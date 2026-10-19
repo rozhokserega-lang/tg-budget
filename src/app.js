@@ -102,6 +102,7 @@
     if (route.name === 'add') return root.Tg.backButton(goHome);
     // Лимиты — подэкран настроек: «Назад» возвращает к ним.
     if (route.name === 'limits') return root.Tg.backButton(openSettings);
+    if (route.name === 'analytics') return root.Tg.backButton(openSettings);
     root.Tg.backButton(null);
   }
 
@@ -115,7 +116,10 @@
       return;
     }
     // «Добавить» — не место, а действие: подсвечиваем вкладку, с которой пришли.
-    var active = route.name === 'add' ? 'summary' : route.name;
+    // Аналитика — подэкран «Ещё», поэтому подсвечиваем настройки.
+    var active = route.name === 'add' ? 'summary'
+      : route.name === 'analytics' ? 'settings'
+      : route.name;
     // Меню создаём один раз: перерисовка на каждом переходе вызывала мигание иконок.
     if (el.tabs.children.length !== TABS.length) {
       el.tabs.innerHTML = TABS.map(function (t) {
@@ -270,11 +274,19 @@
     st[key] = { data: value, at: Date.now() };
   }
 
-  function loadSummary(month) {
+  // Сводка месяца без побочного эффекта на lastSummary: нужна аналитике,
+  // которая грузит несколько месяцев параллельно.
+  function fetchSummary(month) {
     var hit = cached('summaryCache:' + month);
     if (hit && fresh()) return Promise.resolve(hit);
     return Api.call('summary', { month: month }).then(function (s) {
       cached('summaryCache:' + month, s);
+      return s;
+    });
+  }
+
+  function loadSummary(month) {
+    return fetchSummary(month).then(function (s) {
       st.lastSummary = s;
       return s;
     });
@@ -359,16 +371,21 @@
   }
 
   // categoryId — показать только записи этой категории (переход со сводки).
+  // Любой явный переход сбрасывает поиск и фильтры участника.
   function openTx(categoryId) {
     route = { name: 'tx' };
-    if (categoryId !== undefined) st.txFilter = categoryId || null;
+    if (categoryId !== undefined) {
+      st.txFilter = { category_id: categoryId || null, member_id: null, q: '' };
+    }
+    if (!st.txFilter || typeof st.txFilter !== 'object') {
+      st.txFilter = { category_id: null, member_id: null, q: '' };
+    }
     render(Views.skeletonList());
     var seq = ++reqSeq;
     var month = st.month;
     loadTx(month).then(function (all) {
       if (seq !== reqSeq) return;
-      var list = filterTx(all, st.txFilter);
-      render(Views.renderTxList(list, st.txFilter));
+      render(Views.renderTxList(all || [], st.txFilter));
       if (State.isExpired()) banner('Пробный период закончился — новые записи недоступны.');
     }).catch(function (err) {
       if (seq !== reqSeq) return;
@@ -429,6 +446,31 @@
       if (route.name === 'settings') render(Views.renderSettings());
     }).catch(function () {});
     render(Views.renderSettings());
+  }
+
+  // Аналитика: месяцы текущего года, итоги и динамика по категориям.
+  function openAnalytics() {
+    route = { name: 'analytics' };
+    render(Views.skeletonList());
+    var seq = ++reqSeq;
+    var current = Fmt.currentMonth();
+    var year = current.slice(0, 4);
+    var lastMonth = Number(current.slice(5, 7));
+    var months = [];
+    for (var i = 1; i <= lastMonth; i++) {
+      months.push(year + '-' + String(i).padStart(2, '0'));
+    }
+    Promise.all(months.map(function (month) {
+      return fetchSummary(month).then(function (s) {
+        return { month: month, summary: s };
+      });
+    })).then(function (data) {
+      if (seq !== reqSeq || route.name !== 'analytics') return;
+      render(Views.renderAnalytics(data, current));
+    }).catch(function (err) {
+      if (seq !== reqSeq || route.name !== 'analytics') return;
+      fail(err);
+    });
   }
 
   function loadTariffs() {
@@ -727,16 +769,32 @@
     st.lastSummary = next;
   }
 
-  // Показываем только выбранную категорию, если фильтр включён.
-  function filterTx(list, categoryId) {
-    if (!categoryId) return list;
-    return (list || []).filter(function (t) { return t.category_id === categoryId; });
+  // Сброс фильтров: кнопка «Сбросить» в списке.
+  function clearTxFilter() {
+    st.txFilter = { category_id: null, member_id: null, q: '' };
+    openTx();
   }
 
-  // Сброс фильтра: кнопка «Все траты» в шапке списка.
-  function clearTxFilter() {
-    st.txFilter = null;
-    openTx();
+  // Перерисовываем только результаты: поле поиска и селекты не теряют фокус.
+  function refreshTxResults() {
+    if (route.name !== 'tx') return;
+    var all = cached('txCache:' + st.month) || [];
+    var box = el.screen.querySelector('#tx-results');
+    if (!box) return;
+    box.innerHTML = Views.txResults(all, st.txFilter);
+  }
+
+  function clearTxSearch() {
+    if (!st.txFilter) return;
+    st.txFilter.q = '';
+    var input = el.screen.querySelector('#tx-search');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+    var clear = el.screen.querySelector('[data-action="tx-search-clear"]');
+    if (clear) clear.hidden = true;
+    refreshTxResults();
   }
 
   // Убираем запись из локальных кэшей: для оптимистичного удаления и после отправки.
@@ -1177,6 +1235,7 @@
       case 'month-next': changeMonth(1); break;
       case 'go-tx': openTx(null); break;
       case 'tx-clear-filter': clearTxFilter(); break;
+      case 'tx-search-clear': clearTxSearch(); break;
 
       case 'toggle-cat': toggleCategory(actionBtn.getAttribute('data-id')); break;
       case 'add-in-cat': openAdd({ category_id: actionBtn.getAttribute('data-id'), kind: 'expense' }); break;
@@ -1190,7 +1249,10 @@
         toast('Обновлено');
         openTab(route.name === 'settings' ? 'summary' : route.name);
         break;
-      case 'retry': goHome(); break;
+      case 'retry':
+        if (route.name === 'analytics') openAnalytics();
+        else goHome();
+        break;
       case 'start': goHome(); break;
       case 'go-plans': openPlans(); break;
       case 'go-recurring': openPlans('recurring'); break;
@@ -1202,6 +1264,7 @@
       case 'open-cat': openLimits(actionBtn.getAttribute('data-id')); break;
       case 'add-cat': openCategoryForm(null, actionBtn.getAttribute('data-kind')); break;
       case 'go-limits': openLimits(); break;
+      case 'go-analytics': openAnalytics(); break;
       case 'cat-kind':
         catKind = actionBtn.getAttribute('data-kind');
         el.sheetBody.querySelectorAll('[data-action="cat-kind"]').forEach(function (b) {
@@ -1334,9 +1397,44 @@
     }
   });
 
+  // Поиск по истории: обновляем только результаты, чтобы поле не теряло фокус.
+  var txSearchTimer = null;
+  el.screen.addEventListener('input', function (ev) {
+    var input = ev.target;
+    if (!input || input.id !== 'tx-search') return;
+    var value = input.value;
+    clearTimeout(txSearchTimer);
+    txSearchTimer = setTimeout(function () {
+      if (route.name !== 'tx') return;
+      var current = el.screen.querySelector('#tx-search');
+      if (!current || current.value !== value) return;
+      if (!st.txFilter) st.txFilter = { category_id: null, member_id: null, q: '' };
+      st.txFilter.q = value;
+      var clear = el.screen.querySelector('[data-action="tx-search-clear"]');
+      if (clear) clear.hidden = !value;
+      refreshTxResults();
+    }, 120);
+  });
+
   el.screen.addEventListener('change', function (ev) {
     var t = ev.target;
-    if (t && t.matches && t.matches('[data-notif]')) toggleNotification(t);
+    if (!t || !t.matches) return;
+    if (t.matches('[data-notif]')) {
+      toggleNotification(t);
+      return;
+    }
+    if (!st.txFilter) return;
+    if (t.matches('[data-tx-member]')) {
+      st.txFilter.member_id = t.value || null;
+      root.Tg.haptic('light');
+      refreshTxResults();
+      return;
+    }
+    if (t.matches('[data-tx-category]')) {
+      st.txFilter.category_id = t.value || null;
+      root.Tg.haptic('light');
+      refreshTxResults();
+    }
   });
 
   el.sheet.addEventListener('click', function (ev) {

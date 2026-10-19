@@ -129,6 +129,7 @@
     dayLabel: dayLabel,
     dayFull: dayFull,
     weekdayShort: weekdayShort,
+    monthGenitive: monthGenitive,
     parseAmount: parseAmount,
     plural: plural,
     escapeHtml: escapeHtml,

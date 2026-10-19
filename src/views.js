@@ -203,6 +203,85 @@
       '</div>';
   }
 
+  // Ближайшие регулярные платежи, которые ещё не отмечены оплатой.
+  // Отметка оплаты создаёт транзакцию с тем же названием и суммой.
+  function upcomingRecurring(plans, today, daysInMonth) {
+    var st = State.get();
+    var cache = st['txCache:' + st.month];
+    var tx = (cache && cache.data) || [];
+    var total = 0;
+    var count = 0;
+    ((plans && plans.recurring) || []).forEach(function (r) {
+      if (r.active === false) return;
+      var day = Math.min(Number(r.day_of_month) || 1, daysInMonth);
+      if (day < today) return;
+      var name = String(r.name || '').trim().toLowerCase();
+      var amount = Number(r.amount) || 0;
+      var paid = tx.some(function (t) {
+        return name &&
+          String(t.note || '').trim().toLowerCase() === name &&
+          Math.abs(Number(t.amount) - amount) < 0.005;
+      });
+      if (paid) return;
+      total += amount;
+      count++;
+    });
+    return { total: total, count: count };
+  }
+
+  // Прогноз расходов на конец текущего месяца: текущий темп + будущие
+  // регулярные платежи. Дневной лимит — сколько можно тратить, чтобы
+  // уложиться в доходы после обязательных платежей.
+  function forecastCard(s, plans) {
+    var st = State.get();
+    if (st.month !== Fmt.currentMonth()) return '';
+    s = s || {};
+    var income = Number(s.income) || 0;
+    var expense = Number(s.expense) || 0;
+
+    var now = new Date();
+    var day = now.getDate();
+    var daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    var daysLeft = daysInMonth - day + 1;
+    var afterToday = daysInMonth - day;
+    var avgDaily = expense / Math.max(day, 1);
+    var upcoming = upcomingRecurring(plans, day, daysInMonth);
+    if (!income && !expense && !upcoming.total) return '';
+    var forecastExpense = Math.round(expense + avgDaily * afterToday + upcoming.total);
+    var overspend = income > 0 && forecastExpense > income;
+    var free = income - expense - upcoming.total;
+    var overBudget = income > 0 && free < 0;
+    var perDay = income > 0 ? Math.round(free / daysLeft) : null;
+
+    var dateLabel = daysInMonth + ' ' + Fmt.monthGenitive(now.getMonth());
+    var hint = 'Осталось ' + daysLeft + ' ' + Fmt.plural(daysLeft, 'день', 'дня', 'дней');
+    if (upcoming.count) hint += ' · с учётом платежей';
+    var dailyHtml;
+    if (income > 0) {
+      dailyHtml = '<span class="forecast__daily-value' + (perDay < 0 ? ' amount--neg' : '') + '">' +
+        e(money(Math.max(0, perDay))) + '<small>/день</small></span>';
+      if (overBudget) {
+        hint = 'Доходы уже превышены на ' + e(money(-free)) + ' · осталось ' + daysLeft + ' ' +
+          Fmt.plural(daysLeft, 'день', 'дня', 'дней');
+      }
+    } else {
+      dailyHtml = '<span class="forecast__daily-value muted">—</span>';
+      hint = 'Добавьте доход, чтобы рассчитать дневной лимит';
+    }
+
+    return '<div class="forecast">' +
+      '<div class="forecast__head">' +
+      '<span class="forecast__label">Прогноз расходов к ' + e(dateLabel) + '</span>' +
+      '<span class="forecast__value' + (overspend ? ' amount--neg' : '') + '">' + e(money(forecastExpense)) + '</span>' +
+      '</div>' +
+      '<div class="forecast__daily">' +
+      '<span class="forecast__daily-label">Можно тратить</span>' +
+      dailyHtml +
+      '</div>' +
+      '<div class="forecast__hint' + (overBudget ? ' forecast__hint--warn' : '') + '">' + e(hint) + '</div>' +
+      '</div>';
+  }
+
   // expandedCat: { id, rows } — раскрытая категория и её записи за месяц.
   function renderSummary(s, plans, expandedCat) {
     var st = State.get();
@@ -231,6 +310,7 @@
       '<div class="hero__item"><span class="hero__item-label">Расходы</span><span class="hero__item-value">' + e(money(s.expense)) + '</span></div>' +
       '</div>' +
       '</div>' +
+      forecastCard(s, plans) +
       plansTeaser(plans) +
       (partners ? '<div class="section"><div class="section__head"><span class="section__title">Между партнёрами</span></div>' + partners + '</div>' : '') +
       '<div class="section"><div class="section__head"><span class="section__title">Категории</span></div><div class="card">' + cats + '</div></div>'
@@ -280,33 +360,122 @@
     return groups;
   }
 
-  function renderTxList(list, filterId) {
+  function filterTx(list, filter) {
+    var f = filter || {};
+    var q = String(f.q || '').trim().toLowerCase();
+    var parts = q ? q.split(/\s+/) : [];
+    return (list || []).filter(function (t) {
+      if (f.category_id && t.category_id !== f.category_id) return false;
+      if (f.member_id && t.member_id !== f.member_id) return false;
+      if (!parts.length) return true;
+      var hay = (String(t.note || '') + ' ' +
+        String((t.categories && t.categories.name) || '') + ' ' +
+        String((t.members && t.members.name) || '')).toLowerCase();
+      return parts.every(function (part) { return hay.indexOf(part) !== -1; });
+    });
+  }
+
+  function txFilterActive(filter) {
+    var f = filter || {};
+    return !!(f.category_id || f.member_id || String(f.q || '').trim());
+  }
+
+  // Участники и категории для фильтров берутся из загруженного месяца,
+  // а активный фильтр добавляется, даже если записей по нему уже нет.
+  function txFilterOptions(all, filter) {
     var st = State.get();
-    list = reconcileList(list).filter(function (t) {
+    var f = filter || {};
+    var members = [];
+    var cats = [];
+    var seenM = {};
+    var seenC = {};
+    (all || []).forEach(function (t) {
+      if (t.member_id && !seenM[t.member_id]) {
+        seenM[t.member_id] = true;
+        members.push({ id: t.member_id, name: (t.members && t.members.name) || 'Участник' });
+      }
+      if (t.category_id && !seenC[t.category_id]) {
+        seenC[t.category_id] = true;
+        cats.push({
+          id: t.category_id,
+          name: (t.categories && t.categories.name) || 'Без категории',
+          icon: (t.categories && t.categories.icon) || '🏷️',
+        });
+      }
+    });
+    if (f.member_id && !seenM[f.member_id]) {
+      var sm = ((st.lastSummary && st.lastSummary.members) || []).find(function (m) { return m.id === f.member_id; });
+      members.push({ id: f.member_id, name: sm ? sm.name : 'Участник' });
+    }
+    if (f.category_id && !seenC[f.category_id]) {
+      var sc = (st.categories || []).find(function (c) { return c.id === f.category_id; });
+      if (!sc && st.lastSummary) {
+        sc = (st.lastSummary.categories || []).find(function (c) { return c.id === f.category_id; });
+      }
+      cats.push({ id: f.category_id, name: sc ? sc.name : 'Категория', icon: (sc && sc.icon) || '🏷️' });
+    }
+    cats.sort(function (a, b) { return a.name.localeCompare(b.name, 'ru'); });
+    return { members: members, categories: cats };
+  }
+
+  function txSelect(label, attr, current, options, allLabel) {
+    if (!options.length || (options.length === 1 && !current)) return '';
+    return '<label class="tx-filter"><span class="tx-filter__label">' + e(label) + '</span>' +
+      '<select class="tx-filter__select" ' + attr + '>' +
+      '<option value="">' + e(allLabel) + '</option>' +
+      options.map(function (o) {
+        return '<option value="' + e(o.id) + '"' + (current === o.id ? ' selected' : '') + '>' +
+          (o.icon ? e(o.icon) + ' ' : '') + e(o.name) + '</option>';
+      }).join('') +
+      '</select></label>';
+  }
+
+  function txControls(all, filter) {
+    var f = filter || {};
+    var opts = txFilterOptions(all, f);
+    var q = String(f.q || '');
+    var selects = txSelect('Кто', 'data-tx-member', f.member_id || '', opts.members, 'Все') +
+      txSelect('Категория', 'data-tx-category', f.category_id || '', opts.categories, 'Все');
+    return '<div class="tx-search">' +
+      '<span class="tx-search__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg></span>' +
+      '<input id="tx-search" class="tx-search__input" type="search" autocomplete="off" enterkeyhint="search" ' +
+      'placeholder="Заметка, категория или имя" aria-label="Поиск по тратам" value="' + e(q) + '">' +
+      '<button type="button" class="tx-search__clear" data-action="tx-search-clear" aria-label="Очистить поиск"' +
+      (q ? '' : ' hidden') + '>&times;</button>' +
+      '</div>' +
+      (selects ? '<div class="tx-filters">' + selects + '</div>' : '');
+  }
+
+  function txResults(all, filter) {
+    var st = State.get();
+    var f = filter || {};
+    var list = reconcileList(filterTx(all, f)).filter(function (t) {
       return !(root.AppState && root.AppState.isDeleting(t.id));
     });
-    var cat = filterId ? (st.categories || []).find(function (c) { return c.id === filterId; }) : null;
-    // category_id в записях есть всегда; для истории берём имя из первой записи, если категории уже нет.
-    if (filterId && !cat && list[0] && list[0].categories) {
-      cat = { id: filterId, name: list[0].categories.name, icon: list[0].categories.icon };
+    var active = txFilterActive(f);
+    if (!list.length) {
+      return active
+        ? empty('🔍', 'Ничего не найдено', 'Попробуйте изменить запрос или сбросить фильтры.',
+            '<button type="button" class="btn" data-action="tx-clear-filter">Сбросить фильтры</button>')
+        : empty('🧾', 'Записей нет', 'За ' + Fmt.monthTitle(st.month) + ' пока ничего не записано.',
+            '<button type="button" class="btn btn--primary" data-action="go-add">Добавить запись</button>');
     }
-    var body;
-    if (!list || !list.length) {
-      body = filterId
-        ? empty('🧾', 'В этой категории пусто', 'За ' + Fmt.monthTitle(st.month) + ' записей нет.', '<button type="button" class="btn" data-action="tx-clear-filter">Показать все траты</button>')
-        : empty('🧾', 'Записей нет', 'За ' + Fmt.monthTitle(st.month) + ' пока ничего не записано.', '<button type="button" class="btn btn--primary" data-action="go-add">Добавить запись</button>');
-    } else {
-      body = groupByDay(list).map(function (g) {
+    var count = '<div class="tx-count"><span>Найдено: ' + list.length + ' ' +
+      Fmt.plural(list.length, 'запись', 'записи', 'записей') + '</span>' +
+      '<button type="button" class="tx-count__reset" data-action="tx-clear-filter">Сбросить</button></div>';
+    return (active ? count : '') +
+      groupByDay(list).map(function (g) {
         return '<div class="tx-group"><div class="tx-group__title">' + e(Fmt.dayLabel(g.day)) + '</div>' + g.items.map(txRow).join('') + '</div>';
       }).join('');
-    }
+  }
+
+  function renderTxList(all, filter) {
+    var st = State.get();
+    var active = txFilterActive(filter);
     var pending = (root.Queue && Queue.size()) ? '<div class="sync-note">Изменения отправятся, когда появится связь</div>' : '';
-    var filterBar = filterId
-      ? '<div class="filter-bar"><span class="filter-bar__chip">' + e((cat && cat.icon) || '🏷️') + ' ' +
-        e((cat && cat.name) || 'Категория') + '</span>' +
-        '<button type="button" class="btn btn--sm btn--ghost" data-action="tx-clear-filter">Все траты</button></div>'
-      : '';
-    return monthNav(st.month) + pending + filterBar + body;
+    var controls = (all && all.length) || active ? txControls(all, filter) : '';
+    return monthNav(st.month) + pending + controls +
+      '<div id="tx-results">' + txResults(all, filter) + '</div>';
   }
 
   // --- Форма добавления ---
@@ -704,6 +873,119 @@
       '</div></div>';
   }
 
+  // --- Аналитика: месяцы года и динамика категорий ---
+
+  var MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'май', 'июн',
+    'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+
+  function monthShort(ym) {
+    return MONTHS_SHORT[Number(String(ym).slice(5, 7)) - 1] || '';
+  }
+
+  function monthName(ym) {
+    return String(Fmt.monthTitle(ym)).split(' ')[0];
+  }
+
+  function analyticsBars(data) {
+    var max = 0;
+    (data || []).forEach(function (d) {
+      var s = d.summary || {};
+      max = Math.max(max, Number(s.income) || 0, Number(s.expense) || 0);
+    });
+    var H = 84;
+    return '<div class="analytics-bars">' + (data || []).map(function (d) {
+      var s = d.summary || {};
+      var income = Number(s.income) || 0;
+      var expense = Number(s.expense) || 0;
+      var hI = income > 0 ? Math.max(2, Math.round((income / max) * H)) : 0;
+      var hE = expense > 0 ? Math.max(2, Math.round((expense / max) * H)) : 0;
+      return '<div class="analytics-bar" title="' + e(monthName(d.month)) + ': доходы ' + e(money(income)) +
+        ', расходы ' + e(money(expense)) + '">' +
+        '<div class="analytics-bar__pair">' +
+        '<span class="analytics-bar__fill analytics-bar__fill--income" style="height:' + hI + 'px"></span>' +
+        '<span class="analytics-bar__fill analytics-bar__fill--expense" style="height:' + hE + 'px"></span>' +
+        '</div>' +
+        '<span class="analytics-bar__label">' + e(monthShort(d.month)) + '</span>' +
+        '</div>';
+    }).join('') + '</div>';
+  }
+
+  function analyticsCategories(data) {
+    if (!data || data.length < 2) return '';
+    var cur = data[data.length - 1];
+    var prev = data[data.length - 2];
+    var curCats = (cur.summary && cur.summary.categories) || [];
+    var prevCats = (prev.summary && prev.summary.categories) || [];
+    var prevMap = {};
+    prevCats.forEach(function (c) {
+      prevMap[c.id] = Number(c.fact) || 0;
+    });
+    var seen = {};
+    var rows = curCats.map(function (c) {
+      seen[c.id] = true;
+      var now = Number(c.fact) || 0;
+      return { name: c.name, icon: c.icon, now: now, delta: now - (prevMap[c.id] || 0) };
+    }).concat(prevCats.filter(function (c) { return !seen[c.id]; }).map(function (c) {
+      return { name: c.name, icon: c.icon, now: 0, delta: -(Number(c.fact) || 0) };
+    }))
+      .filter(function (r) { return r.now > 0 || r.delta !== 0; })
+      .sort(function (a, b) { return b.now - a.now; });
+    if (!rows.length) return '';
+    return '<div class="section"><div class="section__head"><span class="section__title">Категории за ' + e(monthName(cur.month)) + '</span>' +
+      '<span class="small muted">Δ к прошлому</span></div>' +
+      '<div class="card analytics-cats">' + rows.map(function (r) {
+        var delta = r.delta > 0
+          ? '<span class="amount--neg">+' + e(money(r.delta)) + '</span>'
+          : r.delta < 0
+            ? '<span class="amount--pos">' + e(money(r.delta)) + '</span>'
+            : '<span class="muted">—</span>';
+        return '<div class="analytics-cat">' +
+          '<span class="analytics-cat__name">' + e(r.icon || '🏷️') + ' ' + e(r.name) + '</span>' +
+          '<span class="analytics-cat__cur">' + e(money(r.now)) + '</span>' +
+          '<span class="analytics-cat__delta">' + delta + '</span>' +
+          '</div>';
+      }).join('') + '</div></div>';
+  }
+
+  function renderAnalytics(data, current) {
+    var year = String(current || Fmt.currentMonth()).slice(0, 4);
+    var totals = { income: 0, expense: 0 };
+    (data || []).forEach(function (d) {
+      var s = d.summary || {};
+      totals.income += Number(s.income) || 0;
+      totals.expense += Number(s.expense) || 0;
+    });
+    totals.balance = totals.income - totals.expense;
+    var head = '<div class="analytics-head"><span class="analytics-head__title">Аналитика</span>' +
+      '<span class="analytics-head__meta">' + e(year) + ' · с начала года</span></div>';
+    if (!totals.income && !totals.expense) {
+      return head + empty('📊', 'Пока нет данных', 'За ' + e(year) + ' год записей ещё нет.', '');
+    }
+    return head +
+      '<div class="analytics-totals">' +
+      '<div class="analytics-total"><span class="analytics-total__label">Доходы</span>' +
+      '<span class="analytics-total__value amount--pos">' + e(money(totals.income)) + '</span></div>' +
+      '<div class="analytics-total"><span class="analytics-total__label">Расходы</span>' +
+      '<span class="analytics-total__value amount--neg">' + e(money(totals.expense)) + '</span></div>' +
+      '<div class="analytics-total"><span class="analytics-total__label">Остаток</span>' +
+      '<span class="analytics-total__value' + (totals.balance < 0 ? ' amount--neg' : '') + '">' + e(money(totals.balance)) + '</span></div>' +
+      '</div>' +
+      '<div class="section"><div class="section__head"><span class="section__title">По месяцам</span></div>' +
+      analyticsBars(data) +
+      '<div class="analytics-legend">' +
+      '<span><i class="analytics-legend__dot analytics-legend__dot--income"></i>Доходы</span>' +
+      '<span><i class="analytics-legend__dot analytics-legend__dot--expense"></i>Расходы</span>' +
+      '</div></div>' +
+      analyticsCategories(data);
+  }
+
+  function analyticsCard() {
+    return '<div class="section"><div class="section__head"><span class="section__title">Аналитика</span></div>' +
+      '<button type="button" class="settings-row settings-row--link" data-action="go-analytics">' +
+      '<span class="settings-row__label">Сравнение месяцев и итоги года</span>' +
+      '<span class="settings-row__value">открыть ›</span></button></div>';
+  }
+
   function renderSettings() {
     var st = State.get();
     var m = st.member;
@@ -726,6 +1008,7 @@
       '</div>' +
       notificationsCard(notif) +
       limitsCard() +
+      analyticsCard() +
       starsCard(st.tariffs, st.buying) +
       promoCard(st.promo) +
       legalCard(st.deleting) +
@@ -814,7 +1097,9 @@
     renderCategoryForm: renderCategoryForm,
     renderRecurringForm: renderRecurringForm,
     renderLimits: renderLimits,
+    renderAnalytics: renderAnalytics,
     renderTxList: renderTxList,
+    txResults: txResults,
     renderForm: renderForm,
     renderSettings: renderSettings,
     starsCard: starsCard,
