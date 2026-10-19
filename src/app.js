@@ -990,6 +990,16 @@
     else if (tab === 'settings') openSettings();
   }
 
+  // Обложка главной карточки: хранится на устройстве, как валюта и язык.
+  function setCover(id) {
+    if (!root.Covers || !Covers.set(id)) return;
+    root.Tg.haptic('light');
+    var scroll = el.screen.scrollTop;
+    render(Views.renderSettings());
+    el.screen.scrollTop = scroll;
+    toast(T('Обложка обновлена'));
+  }
+
   // --- Действия ---
 
   function submitAdd(formEl) {
@@ -1270,6 +1280,7 @@
       case 'open-cat': openLimits(actionBtn.getAttribute('data-id')); break;
       case 'add-cat': openCategoryForm(null, actionBtn.getAttribute('data-kind')); break;
       case 'go-limits': openLimits(); break;
+      case 'pick-cover': setCover(actionBtn.getAttribute('data-cover')); break;
       case 'go-analytics':
         openAnalytics(route.name === 'tx' ? 'tx' : 'settings');
         break;

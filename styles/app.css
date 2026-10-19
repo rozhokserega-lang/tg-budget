@@ -244,6 +244,50 @@ button,
   opacity: 0.9;
 }
 
+.hero--cover {
+  overflow: hidden;
+  background-color: var(--c-accent);
+  background-position: center;
+  background-size: cover;
+}
+
+.hero--cover::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.42));
+}
+
+/* Светлые обложки: тёмный текст на мягкой белой вуали. */
+.hero--cover--light {
+  color: #1c1c1e;
+}
+
+.hero--cover--light::before {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.52));
+}
+
+.hero--cover--light .hero__balance--negative {
+  color: #b3261e;
+}
+
+.hero--cover--light .hero__link {
+  color: #1c1c1e;
+}
+
+.hero--cover > .hero__label,
+.hero--cover > .hero__balance,
+.hero--cover > .hero__row {
+  position: relative;
+  z-index: 1;
+}
+
+.hero--cover > .hero__link {
+  z-index: 2;
+}
+
 /* --- Прогноз расходов и дневной лимит --- */
 
 .forecast {
@@ -1745,6 +1789,74 @@ textarea.input {
   color: inherit;
   font: inherit;
   font-size: 13px;
+}
+
+/* --- Обложки главной карты --- */
+
+.cover-label {
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.cover-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cover-option {
+  position: relative;
+  aspect-ratio: 2.5 / 1;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  background-color: var(--c-accent);
+  background-position: center;
+  background-size: cover;
+  color: #fff;
+  font: inherit;
+}
+
+.cover-option--active {
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--c-accent) 30%, transparent);
+}
+
+.cover-option[data-cover="default"] {
+  background: var(--c-accent);
+}
+
+.cover-option__name {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 8px 6px 3px;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.55));
+  color: #fff;
+  font-size: 11px;
+  text-align: left;
+}
+
+.cover-option__check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.cover-option:active {
+  filter: brightness(0.95);
 }
 
 .settings-row--link {

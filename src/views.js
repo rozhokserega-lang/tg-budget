@@ -303,10 +303,12 @@
           return categoryRow(c, expandedCat && expandedCat.id === c.id ? expandedCat : null);
         }).join('')
       : '<div class="empty">' + e(T('Категорий пока нет')) + '</div>';
+    var cover = root.Covers ? Covers.current() : null;
     return (
       dueBanner(plans) +
       monthNav(st.month) +
-      '<div class="hero">' +
+      '<div class="hero' + (cover ? ' hero--cover' + (cover.tone === 'light' ? ' hero--cover--light' : '') : '') + '"' +
+      (cover ? ' style="background-image:url(\'' + e(cover.file) + '\')"' : '') + '>' +
       '<button type="button" class="hero__link" data-action="go-tx">' + e(T('Все траты →')) + '</button>' +
       '<div class="hero__label">' + e(T('Остаток за месяц')) + '</div>' +
       '<div class="hero__balance' + (balance < 0 ? ' hero__balance--negative' : '') + '">' + e(money(balance)) + '</div>' +
@@ -845,6 +847,26 @@
       '</div></div>';
   }
 
+  function coverCard() {
+    var current = root.Covers ? Covers.id() : 'default';
+    var options = (root.Covers ? Covers.list : []).map(function (c) {
+      var bg = c.file ? ' style="background-image:url(\'' + e(c.file) + '\')"' : '';
+      var active = c.id === current;
+      return '<button type="button" class="cover-option' + (active ? ' cover-option--active' : '') + '"' +
+        ' data-action="pick-cover" data-cover="' + e(c.id) + '"' +
+        ' aria-label="' + e(T(c.name)) + '" aria-pressed="' + (active ? 'true' : 'false') + '"' + bg + '>' +
+        '<span class="cover-option__name">' + e(T(c.name)) + '</span>' +
+        (active ? '<span class="cover-option__check">✓</span>' : '') +
+        '</button>';
+    }).join('');
+    return '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Оформление')) + '</span></div>' +
+      '<div class="card">' +
+      '<div class="cover-label">' + e(T('Обложка главной карты')) + '</div>' +
+      '<div class="cover-grid">' + options + '</div>' +
+      '<p class="small muted mt-8">' + e(T('Применяется к карточке остатка на главной. Выбор сохраняется на этом устройстве.')) + '</p>' +
+      '</div></div>';
+  }
+
   // Уведомления в Telegram: платежи и лимиты включены, сводка — по желанию.
   function notificationsCard(notif) {
     notif = notif || {};
@@ -1097,6 +1119,7 @@
       '</div>' +
       currencyCard() +
       languageCard() +
+      coverCard() +
       notificationsCard(notif) +
       limitsCard() +
       analyticsCard() +
