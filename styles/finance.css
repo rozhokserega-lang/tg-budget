@@ -219,6 +219,16 @@ body { background: var(--c-bg); }
   grid-column: 1 / -1;
   background: #202027;
 }
+/* Keep a right-hand tile in its original row, ahead of its left neighbour.
+   DOM order stays intact so closing restores the original pairs and colours. */
+.categories--grid > .cat-wrap {
+  order: calc(var(--cat-order) * 2);
+  transform-origin: top left;
+}
+.categories--grid > .cat-wrap:nth-child(even) { transform-origin: top right; }
+.categories--grid > .cat-wrap--open:nth-child(even) {
+  order: calc(var(--cat-order) * 2 - 3);
+}
 .cat-wrap--open .cat { min-height: 100px; padding: 12px; }
 .cat-tx__inner { padding: 0 10px 10px; }
 .cat-tx__row { background: #17171d; padding-left: 9px; }

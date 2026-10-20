@@ -1532,6 +1532,43 @@
     el.screen.scrollTop = Math.max(0, scroll - hiddenAbove);
   }
 
+  function changeCategoryView(button) {
+    var categories = el.screen.querySelector('.categories--' + categoryView);
+    if (!categories) return;
+    var tiles = Array.prototype.slice.call(categories.querySelectorAll('.cat-wrap'));
+    var before = tiles.map(function (tile) { return tile.getBoundingClientRect(); });
+    tiles.forEach(function (tile) {
+      if (tile.categoryMotion) tile.categoryMotion.cancel();
+    });
+    categoryView = button.getAttribute('data-view') === 'list' ? 'list' : 'grid';
+    try { root.localStorage.setItem('budget.categoryView', categoryView); } catch (e) {}
+    root.Tg.haptic('light');
+    // Keep the existing cards and the open category while changing layout.
+    categories.classList.toggle('categories--grid', categoryView === 'grid');
+    categories.classList.toggle('categories--list', categoryView === 'list');
+    var label = T(categoryView === 'grid' ? 'Показать списком' : 'Показать сеткой');
+    button.setAttribute('data-view', categoryView === 'grid' ? 'list' : 'grid');
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+    button.setAttribute('aria-pressed', categoryView === 'list' ? 'true' : 'false');
+    button.querySelector('svg').innerHTML = categoryView === 'grid'
+      ? '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>'
+      : '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>';
+    if (root.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // FLIP: start at each card's previous rectangle and settle into the new one.
+    tiles.forEach(function (tile, index) {
+      if (!tile.animate) return;
+      var old = before[index];
+      var after = tile.getBoundingClientRect();
+      if (!after.width || !after.height) return;
+      tile.categoryMotion = tile.animate([
+        { transformOrigin: 'top left', transform: 'translate(' + (old.left - after.left) + 'px,' +
+          (old.top - after.top) + 'px) scale(' + (old.width / after.width) + ',' + (old.height / after.height) + ')' },
+        { transformOrigin: 'top left', transform: 'none' },
+      ], { duration: 380, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+    });
+  }
+
   // Категория на сводке: открыть траты по ней, фильтр выставляем до загрузки списка.
 
   // Защита от ложных тапов: при скролле клик не должен раскрывать категорию.
@@ -1583,10 +1620,7 @@
       case 'month-next': changeMonth(1); break;
       case 'go-tx': openTx(null); break;
       case 'toggle-category-view':
-        categoryView = actionBtn.getAttribute('data-view') === 'list' ? 'list' : 'grid';
-        try { root.localStorage.setItem('budget.categoryView', categoryView); } catch (e) {}
-        root.Tg.haptic('light');
-        renderSummaryFromCache();
+        changeCategoryView(actionBtn);
         break;
       case 'quick-actions-page':
         // Точки переключают без перерисовки листа, чтобы лента анимировалась.
@@ -2020,17 +2054,41 @@
   function toggleCategory(id) {
     var wrap = categoryWrap(id);
     if (!wrap) return;
+    var grid = wrap.parentElement;
+    var tiles = grid.classList.contains('categories--grid')
+      ? Array.prototype.slice.call(grid.children) : [];
+    var animate = !root.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // Capture current visual positions, including an interrupted animation.
+    var before = tiles.map(function (tile) { return tile.getBoundingClientRect(); });
+    tiles.forEach(function (tile) {
+      if (tile.categoryMotion) tile.categoryMotion.cancel();
+    });
     if (expandedCat && expandedCat.id === id) {
       expandedCat = null;
       setCategoryOpen(wrap, false);
-      return;
+    } else {
+      var prev = el.screen.querySelector('.cat-wrap--open');
+      if (prev && prev !== wrap) setCategoryOpen(prev, false);
+      root.Tg.haptic('light');
+      expandedCat = { id: id, rows: null };
+      setCategoryOpen(wrap, true);
+      fillExpandedCat(null, id);
     }
-    var prev = el.screen.querySelector('.cat-wrap--open');
-    if (prev && prev !== wrap) setCategoryOpen(prev, false);
-    root.Tg.haptic('light');
-    expandedCat = { id: id, rows: null };
-    setCategoryOpen(wrap, true);
-    fillExpandedCat(null, id);
+    // Animate from the original tile edge; the existing accordion handles height.
+    // Moving neighbours use the same transition when opening, closing or switching.
+    tiles.forEach(function (tile, index) {
+      if (!animate || !tile.animate) return;
+      var after = tile.getBoundingClientRect();
+      var old = before[index];
+      var right = index % 2 === 1;
+      var dx = right ? old.right - after.right : old.left - after.left;
+      var dy = old.top - after.top;
+      if (!after.width) return;
+      tile.categoryMotion = tile.animate([
+        { transform: 'translate(' + dx + 'px,' + dy + 'px) scaleX(' + (old.width / after.width) + ')' },
+        { transform: 'none' },
+      ], { duration: 320, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+    });
   }
 
   // Догрузка строк раскрытой категории. Обновляем только список внутри

@@ -95,7 +95,7 @@
 
   // Строка категории на сводке: тап раскрывает записи месяца прямо под ней.
   // expanded — множитель, если категория открыта (записи берутся из кэша месяца).
-  function categoryRow(c, expanded) {
+  function categoryRow(c, expanded, index) {
     var plan = Number(c.plan) || 0;
     var fact = Number(c.fact) || 0;
     var pct = plan > 0 ? Math.round((fact / plan) * 100) : 0;
@@ -112,7 +112,7 @@
       ? expanded.rows
       : cachedRows.filter(function (t) { return t.category_id === c.id; });
     return (
-      '<div class="cat-wrap' + (open ? ' cat-wrap--open' : '') + '" data-cat-id="' + e(c.id) + '">' +
+      '<div class="cat-wrap' + (open ? ' cat-wrap--open' : '') + '" style="--cat-order:' + index + '" data-cat-id="' + e(c.id) + '">' +
       '<button type="button" class="cat" data-action="toggle-cat" data-id="' + e(c.id) + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
       '<div class="cat__top">' +
       '<span class="cat__icon">' + e(c.icon || '🏷️') + '</span>' +
@@ -410,8 +410,8 @@
         '<div class="small muted mt-8">' + e(T('Как делим: {mode}', { mode: T(State.splitModeLabel()) })) + '</div></div>'
       : '';
     var cats = s.categories && s.categories.length
-      ? s.categories.map(function (c) {
-          return categoryRow(c, expandedCat && expandedCat.id === c.id ? expandedCat : null);
+      ? s.categories.map(function (c, index) {
+          return categoryRow(c, expandedCat && expandedCat.id === c.id ? expandedCat : null, index);
         }).join('')
       : '<div class="empty">' + e(T('Категорий пока нет')) + '</div>';
     var cover = root.Covers ? Covers.current() : null;
