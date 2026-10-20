@@ -8,6 +8,9 @@
   var seq = 100;
   var id = function () { return 'demo-' + ++seq; };
   var iso = function (d) { return Fmt.isoDate(d); };
+  var timezone = function () {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { return ''; }
+  };
   var daysAgo = function (n) { return iso(new Date(Date.now() - n * 86400000)); };
 
   // ?onboarding — демо начинается без семьи, чтобы проверить создание и вступление.
@@ -74,7 +77,7 @@
     ];
     return {
       me: { id: 'm1', household_id: 'h1', name: 'Аня', telegram_id: 1, households: null,
-        notifications: { payments: true, limits: true, digest: false } },
+        notifications: { payments: true, limits: true, digest: false, daily: false, daily_time: '22:00', timezone: timezone() } },
       recurring: [
         { id: 'r1', household_id: 'h1', name: 'Аренда', amount: 35000, day_of_month: 5, active: true,
           categories: { name: 'Жильё и коммуналка', icon: '🏠' } },
@@ -149,7 +152,7 @@
       return state.member
         ? { member: Object.assign({}, state.member.me, {
             households: state.member.households,
-            notifications: state.member.notifications || { payments: true, limits: true, digest: false },
+            notifications: state.member.notifications || { payments: true, limits: true, digest: false, daily: false, daily_time: '22:00', timezone: timezone() },
           }), promo: state.promo || [] }
         : {};
     },
@@ -323,10 +326,14 @@
       return { card_balance: null, card_balance_at: null };
     },
     save_notifications: function (p) {
+      var n = p.notifications || {};
       state.member.notifications = {
-        payments: p.notifications.payments !== false,
-        limits: p.notifications.limits !== false,
-        digest: p.notifications.digest === true,
+        payments: n.payments !== false,
+        limits: n.limits !== false,
+        digest: n.digest === true,
+        daily: n.daily === true,
+        daily_time: /^([01]\d|2[0-3]):[0-5]\d$/.test(n.daily_time || '') ? n.daily_time : '22:00',
+        timezone: typeof n.timezone === 'string' ? n.timezone : timezone(),
       };
       return { notifications: state.member.notifications };
     },

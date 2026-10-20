@@ -885,10 +885,45 @@
       '</div></div>';
   }
 
+  // Ежедневный отчёт: время по часовому поясу телефона, настройка на участника.
+  function dailyReportCard(notif) {
+    notif = notif || {};
+    var on = notif.daily === true;
+    var time = /^([01]\d|2[0-3]):[0-5]\d$/.test(notif.daily_time || '') ? notif.daily_time : '22:00';
+    return '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Ежедневный отчёт')) + '</span></div>' +
+      '<div class="card card--stack">' +
+      '<label class="switch-row"><span class="switch-row__text">' +
+      '<span class="switch-row__title">' + e(T('Присылать каждый день')) + '</span>' +
+      '<span class="switch-row__hint">' + e(T('Траты за день и топ категорий')) + '</span></span>' +
+      '<span class="switch"><input type="checkbox" data-notif="daily"' + (on ? ' checked' : '') + '>' +
+      '<span class="switch__track"></span></span></label>' +
+      '<div class="daily-time" data-notif-time-wrap' + (on ? '' : ' hidden') + '>' +
+      '<label class="daily-time__row">' +
+      '<span class="daily-time__label">' + e(T('Время отчёта')) + '</span>' +
+      '<input type="time" class="input daily-time__input" data-notif-time value="' + e(time) + '" step="300" aria-label="' + e(T('Время ежедневного отчёта')) + '">' +
+      '</label>' +
+      '<p class="small muted daily-time__hint">' + e(T('По времени телефона')) + '</p>' +
+      '</div></div></div>';
+  }
+
   // Баланс карты из банковских SMS: показывается, если бот его получил.
   function cardBalanceCard(h) {
     if (h.card_balance == null) return '';
-    var when = h.card_balance_at ? Fmt.dayLabel(String(h.card_balance_at).slice(0, 10)) : '';
+    var when = '';
+    if (h.card_balance_at) {
+      var raw = String(h.card_balance_at);
+      // Дата без времени уже локальная; timestamp переводим в локальный день.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        when = Fmt.dayLabel(raw);
+      } else {
+        var at = new Date(h.card_balance_at);
+        if (!isNaN(at.getTime())) when = Fmt.dayLabel(Fmt.isoDate(at));
+      }
+    }
+    // «Сегодня»/«Вчера» в середине фразы пишем со строчной; остальные даты не трогаем.
+    if (when === T('Сегодня') || when === T('Вчера')) {
+      when = when.charAt(0).toLowerCase() + when.slice(1);
+    }
     return '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Карта')) + '</span></div>' +
       '<div class="card">' +
       '<div class="settings-row"><span class="settings-row__label">' + e(T('Баланс из SMS')) + '</span>' +
@@ -1135,6 +1170,7 @@
       languageCard() +
       coverCard() +
       notificationsCard(notif) +
+      dailyReportCard(notif) +
       limitsCard() +
       analyticsCard() +
       starsCard(st.tariffs, st.buying) +

@@ -940,21 +940,78 @@
 
   // --- Уведомления ---
 
+  function notificationDefaults(n) {
+    return Object.assign({ payments: true, limits: true, digest: false, daily: false, daily_time: '22:00' }, n || {});
+  }
+
+  function localTimezone() {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function dailyTimeValue(value) {
+    return /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : '22:00';
+  }
+
+  function dailyTimeWrap(el) {
+    var card = el.closest('.card');
+    return card ? card.querySelector('[data-notif-time-wrap]') : null;
+  }
+
   function toggleNotification(el) {
     var key = el.getAttribute('data-notif');
-    var current = (st.member && st.member.notifications) || { payments: true, limits: true, digest: false };
+    var current = notificationDefaults(st.member && st.member.notifications);
     var next = Object.assign({}, current);
     next[key] = !!el.checked;
+    next.timezone = localTimezone();
     // Оптимистично: переключатель уже нажат.
     st.member = Object.assign({}, st.member, { notifications: next });
+    var wrap = key === 'daily' ? dailyTimeWrap(el) : null;
+    if (wrap) wrap.hidden = !next.daily;
     Api.call('save_notifications', { notifications: next }).then(function (res) {
       if (res && res.notifications) {
         st.member = Object.assign({}, st.member, { notifications: res.notifications });
       }
+      if (wrap) wrap.hidden = st.member.notifications.daily !== true;
       root.Tg.haptic('light');
       toast(next[key] ? T('Включено') : T('Выключено'));
     }).catch(function (err) {
       el.checked = !el.checked;
+      st.member = Object.assign({}, st.member, { notifications: current });
+      if (wrap) wrap.hidden = current.daily !== true;
+      root.Tg.haptic('error');
+      toast(err.message || T('Не удалось сохранить'));
+    });
+  }
+
+  function saveNotificationTime(input) {
+    var current = notificationDefaults(st.member && st.member.notifications);
+    var previous = dailyTimeValue(current.daily_time);
+    var value = String(input.value || '');
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) {
+      input.value = previous;
+      return;
+    }
+    if (value === previous) return;
+    var next = Object.assign({}, current, { daily_time: value });
+    next.timezone = localTimezone();
+    st.member = Object.assign({}, st.member, { notifications: next });
+    Api.call('save_notifications', { notifications: next }).then(function (res) {
+      var saved = value;
+      if (res && res.notifications) {
+        st.member = Object.assign({}, st.member, { notifications: res.notifications });
+        if (/^([01]\d|2[0-3]):[0-5]\d$/.test(res.notifications.daily_time || '')) {
+          saved = res.notifications.daily_time;
+          input.value = saved;
+        }
+      }
+      root.Tg.haptic('light');
+      toast(T('Время отчёта: {time}', { time: saved }));
+    }).catch(function (err) {
+      input.value = previous;
       st.member = Object.assign({}, st.member, { notifications: current });
       root.Tg.haptic('error');
       toast(err.message || T('Не удалось сохранить'));
@@ -1281,9 +1338,13 @@
           if (st.member && st.member.households) {
             st.member.households = Object.assign({}, st.member.households, { card_balance: null, card_balance_at: null });
           }
-          toast('Баланс сброшен');
+          root.Tg.haptic('success');
+          toast(T('Баланс сброшен'));
           if (route.name === 'settings') render(Views.renderSettings());
-        }).catch(function (err) { toast(err.message || 'Не удалось сбросить'); });
+        }).catch(function (err) {
+          root.Tg.haptic('error');
+          toast(err.message || T('Не удалось сбросить баланс'));
+        });
         break;
       case 'edit-cat': openCategoryForm(actionBtn.getAttribute('data-id')); break;
       case 'open-cat': openLimits(actionBtn.getAttribute('data-id')); break;
@@ -1449,6 +1510,10 @@
     if (!t || !t.matches) return;
     if (t.matches('[data-notif]')) {
       toggleNotification(t);
+      return;
+    }
+    if (t.matches('[data-notif-time]')) {
+      saveNotificationTime(t);
       return;
     }
     if (t.matches('[data-locale]')) {

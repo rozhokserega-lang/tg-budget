@@ -1081,6 +1081,43 @@ textarea.input {
   color: var(--c-hint);
 }
 
+/* Время ежедневного отчёта: строка раскрывается под включённым переключателем. */
+.daily-time {
+  padding: 0 14px 12px;
+  border-top: 1px solid var(--c-border);
+}
+
+.daily-time__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+}
+
+.daily-time__label {
+  color: var(--c-hint);
+  font-size: 14px;
+}
+
+.daily-time__input {
+  flex: none;
+  width: auto;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-card);
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.daily-time__hint {
+  margin: 8px 0 0;
+}
+
 .switch {
   position: relative;
   flex: none;
