@@ -10,7 +10,7 @@
   var busy = false;
   var lastError = null;
   var TERMINAL = ['bad_amount', 'bad_category', 'bad_name', 'bad_goal', 'bad_day', 'no_category',
-    'subscription_expired', 'not_found', 'forbidden', 'unauthorized'];
+    'subscription_expired', 'not_found', 'forbidden', 'unauthorized', 'bad_reminder_days'];
 
   function load() {
     try {

@@ -8,6 +8,31 @@
   var T = I18n.t;
   var P = I18n.plural;
 
+  // Duotone category illustrations: shared geometry and colour across screens.
+  var categoryArtwork = {
+    '🛒': '<path class="category-art__fill" d="M8 12h26l-3 14H12z"/><path d="M5 7h4l4 22h19M12 17h20M18 13l2 12m7-12-2 12"/><circle cx="16" cy="34" r="2"/><circle cx="29" cy="34" r="2"/><path d="M17 10V6m6 4V4m6 6V7"/>',
+    '🏠': '<path class="category-art__fill" d="M9 18 21 7l12 11v17H9z"/><path d="m5 19 16-14 16 14M10 16v19h22V16M17 35V24h8v11M27 7V4h5v8"/><path d="M14 19h3m8 0h3"/>',
+    '🚌': '<rect class="category-art__fill" x="9" y="5" width="24" height="30" rx="6"/><rect x="9" y="5" width="24" height="30" rx="6"/><path d="M10 22h22M21 11v11M14 9h14M7 15H5v7h3m27-7h2v7h-3M13 35v3m16-3v3"/><circle cx="15" cy="28" r="2"/><circle cx="27" cy="28" r="2"/>',
+    '☕': '<path class="category-art__fill" d="M9 17h22v10a8 8 0 0 1-8 8h-6a8 8 0 0 1-8-8z"/><path d="M9 17h22v10a8 8 0 0 1-8 8h-6a8 8 0 0 1-8-8zM31 19h3a5 5 0 0 1 0 10h-4M6 38h29M15 11c-4-4 4-4 0-8m7 8c-4-4 4-4 0-8"/>',
+    '💊': '<path class="category-art__fill" d="m10 29 17-17a8 8 0 0 1 11 11L21 40z" transform="translate(-3 -4)"/><path d="m9 20 11-11a9 9 0 0 1 13 13L22 33A9 9 0 0 1 9 20zm6-6 13 13M25 11l3-3"/><path d="M6 7v6m-3-3h6M33 32v6m-3-3h6"/>',
+    '👕': '<path class="category-art__fill" d="m14 6-10 8 6 9 5-3v17h14V20l5 3 6-9-10-8z"/><path d="m14 6-10 8 6 9 5-3v17h14V20l5 3 6-9-10-8M16 6a6 6 0 0 0 12 0M19 30h7"/>',
+    '🎬': '<rect class="category-art__fill" x="6" y="16" width="30" height="21" rx="3"/><path d="M6 17h30v17a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3zM6 17 4 9l29-6 2 8zM11 7l5 6m4-8 5 6m4-8 5 6"/><path class="category-art__solid" d="m18 22 9 5-9 5z"/>',
+    '📱': '<rect class="category-art__fill" x="12" y="4" width="21" height="34" rx="4"/><rect x="12" y="4" width="21" height="34" rx="4"/><path d="M18 8h9M20 34h5M6 14a10 10 0 0 0 0 14m3-11a6 6 0 0 0 0 8M18 17h9v9h-9z"/>',
+    '🎁': '<path class="category-art__fill" d="M7 20h28v17H7zM5 13h32v8H5z"/><path d="M7 21v16h28V21M5 13h32v8H5zM21 13v24M21 13C7 15 8 1 16 5c4 2 5 8 5 8zm0 0C35 15 34 1 26 5c-4 2-5 8-5 8z"/>',
+    '🧺': '<path class="category-art__fill" d="M5 17h32l-5 20H10z"/><path d="M5 17h32l-5 20H10zM11 17l6-12m14 12L25 5M15 23l1 8m10-8-1 8m-4-8v8M4 17h34"/>',
+    '✈️': '<path class="category-art__fill" d="m5 22 13-5 1-11a3 3 0 0 1 6 0l1 11 12 5v5l-13-3-1 9 5 3v3l-8-2-8 2v-3l5-3-1-9-12 3z"/><path d="m5 22 13-5 1-11a3 3 0 0 1 6 0l1 11 12 5v5l-13-3-1 9 5 3v3l-8-2-8 2v-3l5-3-1-9-12 3z"/>',
+    '📦': '<path class="category-art__fill" d="m5 12 16-8 16 8v19l-16 8-16-8z"/><path d="m5 12 16-8 16 8v19l-16 8-16-8zM5 12l16 8 16-8M21 20v19M13 8l16 8v8M10 27l5 3"/>',
+    '💼': '<rect class="category-art__fill" x="5" y="12" width="32" height="24" rx="4"/><rect x="5" y="12" width="32" height="24" rx="4"/><path d="M14 12V6h14v6M5 21l12 4m8 0 12-4M18 21h6v7h-6zM11 32h5"/>',
+    '🧩': '<path class="category-art__fill" d="M7 8h11a5 5 0 1 1 9 0h8v12a5 5 0 1 0 0 9v8H23a5 5 0 1 0-9 0H7V25a5 5 0 1 0 0-9z"/><path d="M7 8h11a5 5 0 1 1 9 0h8v12a5 5 0 1 0 0 9v8H23a5 5 0 1 0-9 0H7V25a5 5 0 1 0 0-9z"/>',
+    '🏆': '<path class="category-art__fill" d="M12 5h18v11a9 9 0 0 1-18 0z"/><path d="M12 5h18v11a9 9 0 0 1-18 0zM12 9H5v5a8 8 0 0 0 9 8m16-13h7v5a8 8 0 0 1-9 8M21 25v9m-8 4v-4h16v4z"/><path d="m21 10 1 3 4 1-3 2 1 4-3-2-3 2 1-4-3-2 4-1z"/>',
+    '➕': '<rect class="category-art__fill" x="5" y="9" width="32" height="26" rx="5"/><rect x="5" y="9" width="32" height="26" rx="5"/><path d="M5 16h32M21 21v9m-5-4h10M10 5h20"/>',
+  };
+  function categoryIcon(c) {
+    var artwork = categoryArtwork[c.icon];
+    if (!artwork) return e(c.icon || '🏷️');
+    return '<svg class="category-art" viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + artwork + '</svg>';
+  }
+
   // Локальные (ещё не отправленные) записи заменяем серверными, когда те пришли.
   function reconcileList(list) {
     if (!Array.isArray(list)) return list;
@@ -115,7 +140,7 @@
       '<div class="cat-wrap' + (open ? ' cat-wrap--open' : '') + '" style="--cat-order:' + index + '" data-cat-id="' + e(c.id) + '">' +
       '<button type="button" class="cat" data-action="toggle-cat" data-id="' + e(c.id) + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
       '<div class="cat__top">' +
-      '<span class="cat__icon">' + e(c.icon || '🏷️') + '</span>' +
+      '<span class="cat__icon">' + categoryIcon(c) + '</span>' +
       '<span class="cat__name">' + e(c.name) + '</span>' +
       '<span class="cat__fact' + (over ? ' cat__fact--over' : '') + '">' + e(money(fact)) + '</span>' +
       '<span class="cat__chev" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>' +
@@ -161,17 +186,44 @@
   // Краткая строка о планах на сводке: показываем только если что-то заведено.
   function plansTeaser(plans) {
     if (!plans) return '';
-    var goals = (plans.goals || []).length;
-    var debts = (plans.debts || []).filter(function (d) { return Number(d.remaining) > 0; }).length;
-    var wishes = (plans.wishes || []).filter(function (w) { return !w.purchased; }).length;
-    if (!goals && !debts && !wishes) return '';
-    var parts = [];
-    if (goals) parts.push(T('Цели: {n}', { n: goals }));
-    if (debts) parts.push(T('Долги: {n}', { n: debts }));
-    if (wishes) parts.push(T('Желания: {n}', { n: wishes }));
-    return '<button type="button" class="plans-teaser" data-action="go-plans">' +
-      '<span class="plans-teaser__title">' + e(T('📈 Планы')) + '</span>' +
-      '<span class="plans-teaser__meta">' + e(parts.join(' · ')) + ' ›</span></button>';
+    var goals = plans.goals || [], debts = plans.debts || [], wishes = plans.wishes || [];
+    if (!goals.length && !debts.length && !wishes.length) return '';
+    function positive(value) { return Math.max(0, Number(value) || 0); }
+    var target = 0, saved = 0, debtTotal = 0, remaining = 0;
+    goals.forEach(function (goal) {
+      var amount = positive(goal.target);
+      target += amount;
+      saved += Math.min(amount, positive(goal.saved));
+    });
+    debts.forEach(function (debt) {
+      var balance = positive(debt.remaining);
+      debtTotal += Math.max(positive(debt.total), balance);
+      remaining += balance;
+    });
+    var bought = wishes.filter(function (wish) { return wish.purchased; }).length;
+    var wishTotal = wishes.filter(function (wish) { return !wish.purchased; }).reduce(function (sum, wish) {
+      return sum + positive(wish.price);
+    }, 0);
+    function section(tab, title, icon, count, value, caption, done, total, footer) {
+      var pct = total > 0 ? Math.min(100, Math.round(done / total * 100)) : 0;
+      return '<button type="button" class="plans-overview__section plans-overview__section--' + tab + '" data-action="go-plans" data-plans-tab="' + tab + '">' +
+        '<span class="plans-overview__top"><span class="plans-overview__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + icon + '</svg></span>' +
+        '<span class="plans-overview__name">' + e(T(title)) + '</span><span class="plans-overview__count">' + count + '</span><span class="plans-overview__arrow" aria-hidden="true">›</span></span>' +
+        '<span class="plans-overview__amount">' + e(value) + '</span><span class="plans-overview__caption">' + e(caption) + '</span>' +
+        (count && total > 0 ? '<span class="plans-overview__progress" role="progressbar" aria-label="' + e(T(title)) + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '"><span style="width:' + pct + '%"></span></span>' : '') +
+        '<span class="plans-overview__footer"><span>' + e(footer) + '</span>' + (count && total > 0 ? '<strong>' + pct + '%</strong>' : '') + '</span></button>';
+    }
+    return '<section class="plans-overview" aria-label="' + e(T('Планы')) + '"><div class="plans-overview__heading"><h2>' + e(T('Планы')) + '</h2>' +
+      '<button type="button" data-action="go-plans">' + e(T('Все планы')) + ' <span aria-hidden="true">›</span></button></div>' +
+      section('goals', 'Цели', '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+        goals.length, goals.length ? money(saved) : T('Пока нет целей'), goals.length ? T('Накоплено из {amount}', { amount: money(target) }) : T('Начните копить на важное'),
+        saved, target, goals.length ? T('Осталось {amount}', { amount: money(Math.max(0, target - saved)) }) : T('Добавить цель')) +
+      section('debts', 'Долги', '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 9h18m-6 5h3M6 14h3"/>',
+        debts.length, debts.length ? money(remaining) : T('Долгов нет'), debts.length ? T('Остаток к погашению') : T('Здесь появятся ваши долги'),
+        debtTotal - remaining, debtTotal, debts.length ? T('Погашено {amount}', { amount: money(debtTotal - remaining) }) : T('Добавить долг')) +
+      section('wishes', 'Желания', '<path d="M20 13 12 21 4 13a5 5 0 0 1 8-6 5 5 0 0 1 8 6z"/>',
+        wishes.length, wishes.length ? money(wishTotal) : T('Список пока пуст'), wishes.length ? T('Стоимость оставшихся желаний') : T('Сохраните желанные покупки'),
+        bought, wishes.length, wishes.length ? T('Куплено {done} из {total}', { done: bought, total: wishes.length }) : T('Добавить желание')) + '</section>';
   }
 
   // Ближайший повторяющийся платёж: за день до даты и в сам день — баннер сверху.
@@ -180,26 +232,37 @@
   function dueBanner(plans) {
     if (State.isDueDismissed()) return '';
     var list = (plans && plans.recurring) || [];
+    var cache = State.get()['txCache:' + Fmt.currentMonth()];
+    var transactions = (cache && cache.data) || [];
     var now = new Date();
-    var today = now.getDate();
-    var monthDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    var soon = list.filter(function (r) { return r.active !== false; }).map(function (r) {
-      var day = Math.min(Number(r.day_of_month) || 1, monthDays);
-      return { r: r, day: day, diff: day - today };
-    }).filter(function (x) { return x.diff === 0 || x.diff === 1; })
+    var soon = list.filter(function (r) {
+      if (r.active === false) return false;
+      return !transactions.some(function (tx) {
+        return String(tx.note || '').trim().toLowerCase() === String(r.name || '').trim().toLowerCase() &&
+          Math.abs(Number(tx.amount) - Number(r.amount)) < 0.005 &&
+          (!r.category_id || tx.category_id === r.category_id);
+      });
+    }).map(function (r) {
+      var due = Recurring.upcoming(r, now);
+      return { r: r, diff: due.diff, visible: due.visible };
+    }).filter(function (x) { return x.visible; })
       .sort(function (a, b) { return a.diff - b.diff; });
     if (!soon.length) return '';
     var x = soon[0];
     var more = soon.length - 1;
-    var when = T(x.diff === 0 ? 'Сегодня платёж' : 'Завтра платёж');
+    var when = x.diff < 2 ? T(x.diff === 0 ? 'Сегодня платёж' : 'Завтра платёж') : T('Платёж через {days}', { days: P('days', x.diff) });
     return '<div class="due">' +
       '<button type="button" class="due__main" data-action="go-recurring">' +
-      '<span class="due__icon">🔔</span>' +
+      '<span class="due__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="4"/><path d="M7 3v4m10-4v4M3 11h18m-13 5 3 2 5-4"/></svg></span>' +
       '<span class="due__body">' +
-      '<span class="due__title">' + e(when) + ': ' + e(x.r.name) + ' · ' + e(money(x.r.amount)) + '</span>' +
-      '<span class="due__hint">' + (more > 0 ? e(T('и ещё {n} · ', { n: more })) : '') + e(T('отметить оплату ›')) + '</span>' +
+      '<span class="due__when">' + e(when) + '</span>' +
+      '<span class="due__title">' + e(x.r.name) + '</span>' +
+      '<span class="due__amount">' + e(money(x.r.amount)) + '</span>' +
+      '<span class="due__hint">' + (more > 0 ? e(T('и ещё {n} · ', { n: more })) : '') + e(T('Все платежи')) + ' <span aria-hidden="true">›</span></span>' +
       '</span>' +
       '</button>' +
+      '<button type="button" class="due__pay" data-action="pay-due" data-id="' + e(x.r.id) + '" aria-label="' + e(T('Отметить оплату') + ': ' + x.r.name) + '" title="' + e(T('Отметить оплату')) + '">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></button>' +
       '<button type="button" class="due__close" data-action="dismiss-due" aria-label="' + e(T('Скрыть напоминание')) + '">' +
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>' +
       '</button>' +
@@ -454,7 +517,7 @@
     return (
       '<div class="tx" data-tx-id="' + e(t.id) + '">' +
       '<div class="tx__row" data-tx-row>' +
-      '<span class="cat__icon">' + e(c.icon || '🏷️') + '</span>' +
+      '<span class="cat__icon">' + categoryIcon(c) + '</span>' +
       '<div class="tx__body">' +
       '<div class="tx__head"><button type="button" class="tx__name tx__name--link" data-cat-link="' + e(t.category_id) + '">' +
       e(c.name || T('Без категории')) +
@@ -542,23 +605,26 @@
   }
 
   function txSelect(label, attr, current, options, allLabel) {
-    if (!options.length || (options.length === 1 && !current)) return '';
-    return '<label class="tx-filter"><span class="tx-filter__label">' + e(label) + '</span>' +
-      '<select class="tx-filter__select" ' + attr + '>' +
-      '<option value="">' + e(allLabel) + '</option>' +
-      options.map(function (o) {
-        return '<option value="' + e(o.id) + '"' + (current === o.id ? ' selected' : '') + '>' +
-          (o.icon ? e(o.icon) + ' ' : '') + e(o.name) + '</option>';
-      }).join('') +
-      '</select></label>';
+    if (!options.length && !current) return '';
+    var list = [{ id: '', name: allLabel }].concat(options);
+    var selected = list.find(function (o) { return o.id === current; }) || list[0];
+    function optionContent(o) {
+      return '<span class="category-picker__icon">' + (o.id ? categoryIcon(o) :
+        '<svg class="category-art" viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="3"/><rect x="26" y="6" width="12" height="12" rx="3"/><rect x="6" y="26" width="12" height="12" rx="3"/><rect x="26" y="26" width="12" height="12" rx="3"/></svg>') + '</span><span>' + e(o.name) + '</span>';
+    }
+    return '<div class="tx-filter"><span class="tx-filter__label">' + e(label) + '</span>' +
+      '<details class="category-picker"><summary aria-label="' + e(label) + '"><span class="category-picker__current">' + optionContent(selected) +
+      '</span><svg class="category-picker__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></summary>' +
+      '<div class="category-picker__options" role="group" aria-label="' + e(label) + '">' + list.map(function (o) {
+        return '<button type="button" class="category-picker__option" aria-label="' + e(o.name) + '" data-tx-choice="' + e(o.id) + '" aria-pressed="' + (o.id === current) + '">' + optionContent(o) + '</button>';
+      }).join('') + '</div></details></div>';
   }
 
   function txControls(all, filter) {
     var f = filter || {};
     var opts = txFilterOptions(all, f);
     var q = String(f.q || '');
-    var selects = txSelect(T('Кто'), 'data-tx-member', f.member_id || '', opts.members, T('Все')) +
-      txSelect(T('Категория'), 'data-tx-category', f.category_id || '', opts.categories, T('Все'));
+    var selects = txSelect(T('Категория'), 'data-tx-category', f.category_id || '', opts.categories, T('Все'));
     return '<div class="tx-search-row">' +
       '<div class="tx-search">' +
       '<span class="tx-search__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg></span>' +
@@ -567,9 +633,6 @@
       '<button type="button" class="tx-search__clear" data-action="tx-search-clear" aria-label="' + e(T('Очистить поиск')) + '"' +
       (q ? '' : ' hidden') + '>&times;</button>' +
       '</div>' +
-      '<button type="button" class="tx-analytics" data-action="go-analytics" aria-label="' + e(T('Открыть аналитику')) + '">' +
-      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>' +
-      '<span>' + e(T('Аналитика')) + '</span></button>' +
       '</div>' +
       (selects ? '<div class="tx-filters">' + selects + '</div>' : '');
   }
@@ -592,15 +655,72 @@
       '<button type="button" class="tx-count__reset" data-action="tx-clear-filter">' + e(T('Сбросить')) + '</button></div>';
     return (active ? count : '') +
       groupByDay(list).map(function (g) {
-        return '<div class="tx-group"><div class="tx-group__title">' + e(Fmt.dayLabel(g.day)) + '</div>' + g.items.map(txRow).join('') + '</div>';
+        return '<div class="tx-group"><div class="tx-group__title">' + e(Fmt.dayLabel(g.day)) + '</div>' + g.items.map(financeHistoryRow).join('') + '</div>';
       }).join('');
   }
 
   function renderTxList(all, filter) {
     var st = State.get();
     var pending = (root.Queue && Queue.size()) ? '<div class="sync-note">' + e(T('Изменения отправятся, когда появится связь')) + '</div>' : '';
-    return monthNav(st.month) + pending + txControls(all, filter) +
-      '<div id="tx-results">' + txResults(all, filter) + '</div>';
+    return '<div class="finance-page"><div class="finance-heading"><h1>' + e(T('Траты')) + '</h1></div>' +
+      monthNav(st.month) + pending + financeOverview(all) +
+      '<div class="finance-ledger">' + txControls(all, filter) +
+      '<h2 class="finance-history-title">' + e(T('История')) + '</h2>' +
+      '<div id="tx-results">' + txResults(all, filter) + '</div></div></div>';
+  }
+
+  function financeHistoryRow(t) {
+    var c = t.categories || {};
+    var income = c.kind === 'income';
+    return '<div class="tx finance-operation" data-tx-id="' + e(t.id) + '"><div class="tx__row" data-tx-row tabindex="0" aria-label="' + e((t.note || c.name || '') + ' · ' + Fmt.signedMoney(t.amount, income)) + '">' +
+      '<span class="cat__icon">' + categoryIcon(c) + '</span><div class="tx__body">' +
+      '<div class="tx__head"><span class="finance-operation__name">' + e(t.note || c.name || T('Без категории')) +
+      (t._local ? '<span class="badge">' + e(T('отправляется')) + '</span>' : '') + '</span>' +
+      '<span class="amount ' + (income ? 'amount--pos' : 'amount--neg') + '">' + e(Fmt.signedMoney(t.amount, income)) + '</span></div>' +
+      '<div class="finance-operation__meta"><button type="button" data-cat-link="' + e(t.category_id) + '">' + e(c.name || T('Без категории')) + '</button>' +
+      '<span>' + e(Fmt.dayLabel(t.occurred_on)) + '</span></div></div>' +
+      '</div><button type="button" class="tx__delete-inline" tabindex="-1" data-tx-delete="' + e(t.id) + '">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7"/></svg>' + e(T('Удалить')) + '</button></div>';
+  }
+
+  function financeOverview(all) {
+    var income = 0, expense = 0, groups = {};
+    reconcileList(all || []).forEach(function (tx) {
+      if (root.AppState && root.AppState.isDeleting(tx.id)) return;
+      var amount = Number(tx.amount) || 0;
+      if (tx.categories && tx.categories.kind === 'income') { income += amount; return; }
+      expense += amount;
+      var key = tx.category_id || 'other';
+      if (!groups[key]) groups[key] = { name: (tx.categories && tx.categories.name) || T('Прочее'), amount: 0 };
+      groups[key].amount += amount;
+    });
+    var cards = [
+      ['income', T('Доходы'), '+' + money(income), '<path d="M6 18 18 6M6 6h12v12"/>'],
+      ['expense', T('Расходы'), '−' + money(expense), '<path d="m6 6 12 12M6 18h12V6"/>'],
+      ['balance', T('Остаток'), money(income - expense), '<rect x="3" y="6" width="18" height="15" rx="3"/><path d="M3 10h18M16 14h5v4h-5zM6 6V3h12"/>'],
+    ].map(function (item) {
+      return '<div class="finance-stat finance-stat--' + item[0] + '"><span class="finance-stat__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + item[3] +
+        '</svg></span><span class="finance-stat__label">' + e(item[1]) + '</span><strong>' + e(item[2]) + '</strong></div>';
+    }).join('');
+    var cats = Object.keys(groups).map(function (key) { return groups[key]; }).sort(function (a, b) { return b.amount - a.amount; });
+    if (cats.length > 5) cats = cats.slice(0, 4).concat([{ name: T('Прочее'), amount: cats.slice(4).reduce(function (sum, c) { return sum + c.amount; }, 0) }]);
+    var colors = ['#54ef9c', '#ff637c', '#7989ff', '#eb62e4', '#b984ff'];
+    var offset = 0, circumference = 2 * Math.PI * 70;
+    var segments = cats.map(function (c, i) {
+      var length = expense ? c.amount / expense * circumference : 0;
+      var gap = Math.min(8, length * .2);
+      var segment = '<circle cx="100" cy="100" r="70" stroke="' + colors[i] + '" stroke-dasharray="' + Math.max(0, length - gap) + ' ' + (circumference - Math.max(0, length - gap)) + '" stroke-dashoffset="' + (-offset) + '"/>';
+      offset += length;
+      return segment;
+    }).join('');
+    var legend = cats.map(function (c, i) {
+      return '<div class="finance-legend__item" style="--segment:' + colors[i] + '"><span>' + e(c.name) + '</span><small>' + Math.round(c.amount / expense * 100) + '%</small></div>';
+    });
+    return '<div class="finance-stats">' + cards + '</div><div class="finance-breakdown">' +
+      '<div class="finance-legend finance-legend--left">' + legend.filter(function (_, i) { return i % 2 === 1; }).join('') + '</div>' +
+      '<div class="finance-ring"><svg viewBox="0 0 200 200" role="img" aria-label="' + e(T('Расходы по категориям')) + '"><circle class="finance-ring__track" cx="100" cy="100" r="70"/><g transform="rotate(-90 100 100)">' + segments + '</g></svg>' +
+      '<div class="finance-ring__center"><strong>' + e('−' + money(expense)) + '</strong><span>' + e(T('Траты за месяц')) + '</span></div></div>' +
+      '<div class="finance-legend finance-legend--right">' + legend.filter(function (_, i) { return i % 2 === 0; }).join('') + '</div></div>';
   }
 
   // --- Форма добавления ---
@@ -617,7 +737,7 @@
     var chips = list.length
       ? list.map(function (c) {
           return '<button type="button" class="cat-chip' + (c.id === cid ? ' cat-chip--active' : '') + '" data-action="pick-cat" data-id="' + e(c.id) + '">' +
-            '<span class="cat-chip__icon">' + e(c.icon || '🏷️') + '</span><span>' + e(c.name) + '</span></button>';
+            '<span class="cat-chip__icon">' + categoryIcon(c) + '</span><span>' + e(c.name) + '</span></button>';
         }).join('')
       : '<div class="muted small">' + e(T('Нет категорий — обновите приложение')) + '</div>';
     return (
@@ -669,7 +789,7 @@
     return (
       '<div class="plan" data-plan="goal" data-id="' + e(g.id) + '">' +
       '<div class="plan__top"><span class="plan__name">' + e(g.name) + '</span>' +
-      '<span class="plan__amount' + (done ? ' amount--pos' : '') + '">' + e(money(saved)) + ' / ' + e(money(target)) + '</span>' +
+      '<span class="plan__amount' + (done ? ' amount--pos' : '') + '">' + e(money(saved)) + '<small> / ' + e(money(target)) + '</small></span>' +
       '<button type="button" class="plan__more" data-plan-more>···</button></div>' +
       '<div class="progress"><div class="progress__bar' + (done ? ' progress__bar--done' : '') + '" style="width:' + Math.min(100, pct) + '%"></div></div>' +
       '<div class="plan__meta">' +
@@ -696,7 +816,7 @@
     return (
       '<div class="plan" data-plan="debt" data-id="' + e(d.id) + '" data-remaining="' + remaining + '">' +
       '<div class="plan__top"><span class="plan__name">' + e(d.name) + (d.creditor ? ' · ' + e(d.creditor) : '') + '</span>' +
-      '<span class="plan__amount' + (closed ? ' amount--pos' : '') + '">' + e(money(paid)) + ' / ' + e(money(total)) + '</span>' +
+      '<span class="plan__amount' + (closed ? ' amount--pos' : '') + '">' + e(money(remaining)) + '<small> ' + e(T('осталось')) + '</small></span>' +
       '<button type="button" class="plan__more" data-plan-more>···</button></div>' +
       '<div class="progress"><div class="progress__bar' + (closed ? ' progress__bar--done' : '') + '" style="width:' + Math.min(100, pct) + '%"></div></div>' +
       '<div class="plan__meta">' +
@@ -739,7 +859,7 @@
     return (
       '<div class="plan" data-recurring="' + e(r.id) + '">' +
       '<div class="plan__top">' +
-      '<span class="cat__icon">' + e(cat.icon || '🔁') + '</span>' +
+      '<span class="cat__icon">' + categoryIcon(cat) + '</span>' +
       '<span class="plan__name">' + e(r.name) + '</span>' +
       '<span class="plan__amount">' + e(money(r.amount)) + '</span>' +
       '<button type="button" class="plan__more" data-recurring-more>···</button></div>' +
@@ -747,6 +867,7 @@
         day: r.day_of_month,
         category: cat.name || T('без категории'),
       })) + '</div>' +
+      '<div class="plan__meta">' + e(Recurring.reminderDays(r.reminder_days) === 0 ? T('На главной: в день платежа') : T('На главной: за {days}', { days: P('days', Recurring.reminderDays(r.reminder_days)) })) + '</div>' +
       '<div class="plan__actions">' +
       '<button type="button" class="btn btn--sm btn--ghost" data-recurring-pay>' + e(T('Отметить оплату')) + '</button>' +
       '<button type="button" class="btn btn--sm btn--ghost" data-recurring-edit>' + e(T('Изменить')) + '</button>' +
@@ -774,14 +895,28 @@
       var row = { goals: goalRow, debts: debtRow, wishes: wishRow, recurring: recurringRow }[tab];
       body = list.map(row).join('');
     }
+    var total = 0, completed = 0, target = 0;
+    list.forEach(function (item) {
+      if (tab === 'goals') { total += Math.max(0, Number(item.saved) || 0); target += Math.max(0, Number(item.target) || 0); if (Number(item.saved) >= Number(item.target)) completed++; }
+      if (tab === 'debts') { total += Math.max(0, Number(item.remaining) || 0); if (Number(item.remaining) <= 0) completed++; }
+      if (tab === 'wishes') { if (item.purchased) completed++; else total += Math.max(0, Number(item.price) || 0); }
+      if (tab === 'recurring' && item.active !== false) total += Math.max(0, Number(item.amount) || 0);
+    });
+    var labels = { goals: ['Накоплено на цели', 'Двигайтесь к тому, что важно'], debts: ['Осталось погасить', 'Держите обязательства под контролем'], wishes: ['На будущие покупки', 'Всё, что хочется осуществить'], recurring: ['Регулярные платежи в месяц', 'Запланированные расходы без сюрпризов'] };
+    var addLabels = { goals: 'Новая цель', debts: 'Новый долг', wishes: 'Новое желание', recurring: 'Новый платёж' };
     return (
-      '<div class="segments">' +
+      '<div class="plans-page plans-page--' + tab + '"><div class="plans-heading"><div><h1>' + e(T('Планы')) + '</h1><p>' + e(T(labels[tab][1])) + '</p></div>' +
+      '<button type="button" class="plans-create" data-action="plan-add" data-kind="' + tab + '" aria-label="' + e(T(addLabels[tab])) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>' +
+      '<div class="segments plans-segments" role="group" aria-label="' + e(T('Разделы планов')) + '">' +
       PLANS_TABS.map(function (t) {
-        return '<button type="button" class="segment' + (t.id === tab ? ' segment--active' : '') + '" data-action="plans-tab" data-plans="' + t.id + '">' + e(T(t.label)) + '</button>';
+        return '<button type="button" class="segment' + (t.id === tab ? ' segment--active' : '') + '" aria-pressed="' + (t.id === tab) + '" data-action="plans-tab" data-plans="' + t.id + '">' + e(T(t.label)) + '</button>';
       }).join('') +
       '</div>' +
+      '<div class="plans-total"><span>' + e(T(labels[tab][0])) + '</span><strong>' + e(money(total)) + '</strong><div class="plans-total__footer"><span>' + e(T('Всего: {n}', { n: list.length })) + '</span><span>' +
+      (tab === 'goals' ? e(T('из {amount}', { amount: money(target) })) : tab === 'recurring' ? e(T('В месяц')) : e(T('Завершено: {n}', { n: completed }))) + '</span></div></div>' +
+      '<div class="plans-list-heading"><h2>' + e(T(PLANS_TABS.find(function (item) { return item.id === tab; }).label)) + '</h2><span>' + list.length + '</span></div>' +
       '<div class="plans">' + body + '</div>' +
-      (list.length ? '<div class="actions"><button type="button" class="btn btn--primary btn--full" data-action="plan-add" data-kind="' + tab + '">' + e(T('Добавить')) + '</button></div>' : '')
+      (list.length ? '<div class="actions"><button type="button" class="btn btn--primary btn--full" data-action="plan-add" data-kind="' + tab + '">+ ' + e(T(addLabels[tab])) + '</button></div>' : '') + '</div>'
     );
   }
 
@@ -848,7 +983,9 @@
       '<select class="input" name="category_id">' + cats.map(function (c) {
         return '<option value="' + e(c.id) + '"' + (selected === c.id ? ' selected' : '') + '>' + e(c.icon || '🏷️') + ' ' + e(c.name) + '</option>';
       }).join('') + '</select></label>' +
-      '<p class="small muted">' + e(T('Напомним за день до платежа. 31-е в коротком месяце сдвигаем на последний день.')) + '</p>' +
+      '<label class="field"><span class="field__label">' + e(T('Напоминание на главной — за сколько дней')) + '</span>' +
+      '<input class="input" type="number" name="reminder_days" min="0" max="30" step="1" inputmode="numeric" required value="' + Recurring.reminderDays(opts.reminder_days) + '"></label>' +
+      '<p class="small muted">' + e(T('От 0 до 30 дней. 0 — только в день платежа. Напоминание отображается до даты оплаты включительно. 31-е в коротком месяце сдвигаем на последний день.')) + '</p>' +
       '<div class="actions"><button type="submit" class="btn btn--primary btn--full">' + e(T('Сохранить')) + '</button></div>' +
       '</form>'
     );
@@ -914,7 +1051,7 @@
     function row(c) {
       var plan = Number(c.plan_monthly) || 0;
       return '<button type="button" class="limit" data-action="edit-cat" data-id="' + e(c.id) + '">' +
-        '<span class="cat__icon">' + e(c.icon || '🏷️') + '</span>' +
+        '<span class="cat__icon">' + categoryIcon(c) + '</span>' +
         '<span class="limit__name">' + e(c.name) + '</span>' +
         '<span class="limit__value' + (plan > 0 ? '' : ' muted') + '">' + (plan > 0 ? e(money(plan)) : e(T('без лимита'))) + '</span>' +
         '<span class="limit__chev">›</span>' +
@@ -922,6 +1059,7 @@
     }
 
     return (
+      '<div class="profile-detail__heading"><button type="button" class="profile-back" data-action="open-profile-section" data-section="budget" aria-label="' + e(T('Назад')) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button><h1>' + e(T('Категории и лимиты')) + '</h1></div>' +
       '<div class="card limits-head"><span class="muted small">' + e(T('Расходы в месяц по плану')) + '</span>' +
       '<div class="limits-total">' + e(money(totalPlan)) + '</div></div>' +
       '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Расходы')) + '</span>' +
@@ -1090,166 +1228,7 @@
       '</div></div>';
   }
 
-  // --- Аналитика: месяцы года и динамика категорий ---
-
-  function analyticsBars(data) {
-    var max = 0;
-    (data || []).forEach(function (d) {
-      var s = d.summary || {};
-      max = Math.max(max, Number(s.income) || 0, Number(s.expense) || 0);
-    });
-    var H = 84;
-    return '<div class="analytics-bars">' + (data || []).map(function (d) {
-      var s = d.summary || {};
-      var income = Number(s.income) || 0;
-      var expense = Number(s.expense) || 0;
-      var hI = income > 0 ? Math.max(2, Math.round((income / max) * H)) : 0;
-      var hE = expense > 0 ? Math.max(2, Math.round((expense / max) * H)) : 0;
-      return '<div class="analytics-bar" title="' + e(T('{month}: доходы {income}, расходы {expense}', {
-        month: Fmt.monthName(d.month),
-        income: money(income),
-        expense: money(expense),
-      })) + '">' +
-        '<div class="analytics-bar__pair">' +
-        '<span class="analytics-bar__fill analytics-bar__fill--income" style="height:' + hI + 'px"></span>' +
-        '<span class="analytics-bar__fill analytics-bar__fill--expense" style="height:' + hE + 'px"></span>' +
-        '</div>' +
-        '<span class="analytics-bar__label">' + e(Fmt.monthShort(d.month)) + '</span>' +
-        '</div>';
-    }).join('') + '</div>';
-  }
-
-  var DONUT_COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
-    '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#64748b', '#14b8a6', '#a855f7'];
-
-  // Круговая диаграмма расходов текущего месяца: SVG без библиотек.
-  // Подписи вынесены в список под диаграммой — на узком экране это читается лучше,
-  // чем выноски по краям, как в настольных отчётах.
-  function analyticsDonut(data) {
-    var cur = data && data[data.length - 1];
-    var cats = ((cur && cur.summary && cur.summary.categories) || [])
-      .map(function (c) { return { name: c.name, icon: c.icon, fact: Number(c.fact) || 0 }; })
-      .filter(function (c) { return c.fact > 0; })
-      .sort(function (a, b) { return b.fact - a.fact; });
-    var total = cats.reduce(function (s, c) { return s + c.fact; }, 0);
-    if (!total) return '';
-
-    var C = 2 * Math.PI * 44;
-    var offset = 0;
-    var segments = cats.map(function (c, i) {
-      var len = (c.fact / total) * C;
-      var draw = Math.max(0.5, len - C * 0.012);
-      var color = DONUT_COLORS[i % DONUT_COLORS.length];
-      var seg = '<circle cx="60" cy="60" r="44" fill="none" stroke="' + color +
-        '" stroke-width="18" stroke-dasharray="' + draw + ' ' + (C - draw) +
-        '" stroke-dashoffset="' + (-offset) + '"></circle>';
-      offset += len;
-      return seg;
-    }).join('');
-
-    var legend = cats.map(function (c, i) {
-      var pct = Math.round((c.fact / total) * 100);
-      return '<div class="donut-legend__row">' +
-        '<span class="donut-legend__dot" style="background:' + DONUT_COLORS[i % DONUT_COLORS.length] + '"></span>' +
-        '<span class="donut-legend__name">' + e(c.icon || '🏷️') + ' ' + e(c.name) + '</span>' +
-        '<span class="donut-legend__pct">' + (pct < 1 ? '&lt;1%' : pct + '%') + '</span>' +
-        '<span class="donut-legend__amount">' + e(money(c.fact)) + '</span>' +
-        '</div>';
-    }).join('');
-
-    return '<div class="section"><div class="section__head"><span class="section__title">' +
-      e(T('Расходы по категориям · {month}', { month: Fmt.monthName(cur.month) })) + '</span></div>' +
-      '<div class="card donut-card">' +
-      '<div class="donut">' +
-      '<svg viewBox="0 0 120 120" role="img" aria-label="' + e(T('Расходы по категориям: всего {amount}', { amount: money(total) })) + '">' +
-      '<g transform="rotate(-90 60 60)">' + segments + '</g>' +
-      '</svg>' +
-      '<div class="donut__center"><span class="donut__sum">' + e(money(total)) + '</span>' +
-      '<span class="donut__label">' + e(T('расходы')) + '</span></div>' +
-      '</div>' +
-      '<div class="donut-legend">' + legend + '</div>' +
-      '</div></div>';
-  }
-
-  function analyticsCategories(data) {
-    if (!data || data.length < 2) return '';
-    var cur = data[data.length - 1];
-    var prev = data[data.length - 2];
-    var curCats = (cur.summary && cur.summary.categories) || [];
-    var prevCats = (prev.summary && prev.summary.categories) || [];
-    var prevMap = {};
-    prevCats.forEach(function (c) {
-      prevMap[c.id] = Number(c.fact) || 0;
-    });
-    var seen = {};
-    var rows = curCats.map(function (c) {
-      seen[c.id] = true;
-      var now = Number(c.fact) || 0;
-      return { name: c.name, icon: c.icon, now: now, delta: now - (prevMap[c.id] || 0) };
-    }).concat(prevCats.filter(function (c) { return !seen[c.id]; }).map(function (c) {
-      return { name: c.name, icon: c.icon, now: 0, delta: -(Number(c.fact) || 0) };
-    }))
-      .filter(function (r) { return r.now > 0 || r.delta !== 0; })
-      .sort(function (a, b) { return b.now - a.now; });
-    if (!rows.length) return '';
-    return '<div class="section"><div class="section__head"><span class="section__title">' +
-      e(T('Категории за {month}', { month: Fmt.monthName(cur.month) })) + '</span>' +
-      '<span class="small muted">' + e(T('Δ к прошлому')) + '</span></div>' +
-      '<div class="card analytics-cats">' + rows.map(function (r) {
-        var delta = r.delta > 0
-          ? '<span class="amount--neg">+' + e(money(r.delta)) + '</span>'
-          : r.delta < 0
-            ? '<span class="amount--pos">' + e(money(r.delta)) + '</span>'
-            : '<span class="muted">—</span>';
-        return '<div class="analytics-cat">' +
-          '<span class="analytics-cat__name">' + e(r.icon || '🏷️') + ' ' + e(r.name) + '</span>' +
-          '<span class="analytics-cat__cur">' + e(money(r.now)) + '</span>' +
-          '<span class="analytics-cat__delta">' + delta + '</span>' +
-          '</div>';
-      }).join('') + '</div></div>';
-  }
-
-  function renderAnalytics(data, current) {
-    var year = String(current || Fmt.currentMonth()).slice(0, 4);
-    var totals = { income: 0, expense: 0 };
-    (data || []).forEach(function (d) {
-      var s = d.summary || {};
-      totals.income += Number(s.income) || 0;
-      totals.expense += Number(s.expense) || 0;
-    });
-    totals.balance = totals.income - totals.expense;
-    var head = '<div class="analytics-head"><span class="analytics-head__title">' + e(T('Аналитика')) + '</span>' +
-      '<span class="analytics-head__meta">' + e(T('{year} · с начала года', { year: year })) + '</span></div>';
-    if (!totals.income && !totals.expense) {
-      return head + empty('📊', T('Пока нет данных'), T('За {year} год записей ещё нет.', { year: year }), '');
-    }
-    return head +
-      '<div class="analytics-totals">' +
-      '<div class="analytics-total"><span class="analytics-total__label">' + e(T('Доходы')) + '</span>' +
-      '<span class="analytics-total__value amount--pos">' + e(money(totals.income)) + '</span></div>' +
-      '<div class="analytics-total"><span class="analytics-total__label">' + e(T('Расходы')) + '</span>' +
-      '<span class="analytics-total__value amount--neg">' + e(money(totals.expense)) + '</span></div>' +
-      '<div class="analytics-total"><span class="analytics-total__label">' + e(T('Остаток')) + '</span>' +
-      '<span class="analytics-total__value' + (totals.balance < 0 ? ' amount--neg' : '') + '">' + e(money(totals.balance)) + '</span></div>' +
-      '</div>' +
-      '<div class="section"><div class="section__head"><span class="section__title">' + e(T('По месяцам')) + '</span></div>' +
-      analyticsBars(data) +
-      '<div class="analytics-legend">' +
-      '<span><i class="analytics-legend__dot analytics-legend__dot--income"></i>' + e(T('Доходы')) + '</span>' +
-      '<span><i class="analytics-legend__dot analytics-legend__dot--expense"></i>' + e(T('Расходы')) + '</span>' +
-      '</div></div>' +
-      analyticsDonut(data) +
-      analyticsCategories(data);
-  }
-
-  function analyticsCard() {
-    return '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Аналитика')) + '</span></div>' +
-      '<button type="button" class="settings-row settings-row--link" data-action="go-analytics">' +
-      '<span class="settings-row__label">' + e(T('Сравнение месяцев и итоги года')) + '</span>' +
-      '<span class="settings-row__value">' + e(T('открыть ›')) + '</span></button></div>';
-  }
-
-  function renderSettings() {
+  function renderSettings(section) {
     var st = State.get();
     var m = st.member;
     var h = (m && m.households) || {};
@@ -1261,24 +1240,31 @@
     else if (left < 0) planText = T('закончился');
     else if (left === 0) planText = T('последний день');
     else planText = P('days', left);
-    return (
-      '<div class="card">' +
+    var sections = [
+      ['family', 'Семья и участники', 'Участники, общие траты и приглашение', '<circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3m1-16a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 5v2"/>'],
+      ['budget', 'Бюджет и лимиты', 'Категории, лимиты и баланс карты', '<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 9h18m-5 5h5v3h-5z"/>'],
+      ['appearance', 'Оформление и язык', 'Обложка, язык и обозначение валюты', '<path d="M12 3a9 9 0 0 0 0 18h2a2 2 0 0 0 1-4 2 2 0 0 1 1-4h2a3 3 0 0 0 3-3 9 9 0 0 0-9-7z"/><path d="M7 10h.01M10 6h.01M15 7h.01"/>'],
+      ['notifications', 'Уведомления', 'Напоминания, лимиты и отчёты в Telegram', '<path d="M5 17h14l-2-4V9a5 5 0 0 0-10 0v4zM10 21h4M12 2v2"/>'],
+      ['subscription', 'Подписка и промокоды', 'Срок доступа, продление и промокоды', '<path d="m12 3 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/>'],
+      ['about', 'О приложении и данные', 'Документы, обновление и управление данными', '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/>'],
+    ];
+    var current = sections.find(function (item) { return item[0] === section; });
+    if (!current) {
+      return '<div class="profile-page"><h1 class="profile-title">' + e(T('Профиль')) + '</h1>' +
+        '<div class="profile-identity"><span class="profile-avatar">' + initLetter(m && m.name) + '</span><div><strong>' + e(m && m.name || T('Участник')) + '</strong>' +
+        '<span>' + e(h.name || T('Наша семья')) + '</span></div></div>' +
+        '<div class="profile-menu">' + sections.map(function (item) {
+          return '<button type="button" class="profile-menu__item" data-action="open-profile-section" data-section="' + item[0] + '">' +
+            '<span class="profile-menu__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + item[3] + '</svg></span>' +
+            '<span class="profile-menu__text"><strong>' + e(T(item[1])) + '</strong><small>' + e(T(item[2])) + '</small></span><span class="profile-menu__arrow" aria-hidden="true">›</span></button>';
+        }).join('') + '</div></div>';
+    }
+    var content = '';
+    if (section === 'family') content = '<div class="card family-details">' +
       '<div class="settings-row"><span class="settings-row__label">' + e(T('Семья')) + '</span><span class="settings-row__value">' + e(h.name || '—') + '</span></div>' +
       '<div class="settings-row"><span class="settings-row__label">' + e(T('Вы')) + '</span><span class="settings-row__value">' + e(m ? m.name : '—') + '</span></div>' +
       '<div class="settings-row"><span class="settings-row__label">' + e(T('Деление общих трат')) + '</span><span class="settings-row__value">' + e(State.splitModeLabel()) + '</span></div>' +
-      '<div class="settings-row"><span class="settings-row__label">' + e(T('Доступ')) + '</span><span class="settings-row__value' + (left !== null && left < 0 ? ' amount--neg' : '') + '">' + e(planText) +
-        (untilText ? e(T(' · до {date}', { date: untilText })) : '') + '</span></div>' +
       '</div>' +
-      cardBalanceCard(h) +
-      currencyCard() +
-      languageCard() +
-      coverCard() +
-      notificationsCard(notif) +
-      limitsCard() +
-      analyticsCard() +
-      starsCard(st.tariffs, st.buying) +
-      promoCard(st.promo) +
-      legalCard(st.deleting) +
       (State.isSolo()
         ? '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Режим')) + '</span></div>' +
           '<div class="card"><p class="small muted">' + e(T('Личный бюджет: партнёр не подключён, расчёт между участниками не показывается.')) + '</p></div></div>'
@@ -1286,16 +1272,23 @@
           '<div class="card"><p class="small muted">' + e(T('Передайте код партнёру — в приложении он выберет «Подключиться» и введёт его.')) + '</p>' +
           '<div class="invite"><span class="invite__code">' + e(h.invite_code || '—') + '</span>' +
           '<button type="button" class="btn btn--sm btn--primary" data-action="copy-invite">' + e(T('Копировать')) + '</button></div>' +
-          '</div></div>') +
-      '<div class="section"><div class="section__head"><span class="section__title">' + e(T('О приложении')) + '</span></div>' +
+          '</div></div>');
+    if (section === 'budget') content = limitsCard() + (cardBalanceCard(h) ||
+      '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Карта')) + '</span></div><div class="card small muted">' + e(T('Баланс карты появится после получения банковского SMS через бота.')) + '</div></div>');
+    if (section === 'appearance') content = coverCard() + languageCard() + currencyCard();
+    if (section === 'notifications') content = notificationsCard(notif);
+    if (section === 'subscription') content = '<div class="card subscription-access"><div class="settings-row"><span class="settings-row__label">' + e(T('Доступ')) + '</span><span class="settings-row__value' + (left !== null && left < 0 ? ' amount--neg' : '') + '">' + e(planText) +
+      (untilText ? e(T(' · до {date}', { date: untilText })) : '') + '</span></div></div>' + starsCard(st.tariffs, st.buying) + promoCard(st.promo);
+    if (section === 'about') content = '<div class="section"><div class="section__head"><span class="section__title">' + e(T('О приложении')) + '</span></div>' +
       '<div class="card small muted">' + e(T('Данные видят только участники семьи. Telegram-бот принимает записи сообщением: «кофе 350», «+15000 подработка».')) + '</div></div>' +
+      legalCard(st.deleting) +
       (Api.isDemo()
         ? '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Демо-режим')) + '</span></div>' +
           '<div class="card"><p class="small muted">' + e(T('Приложение открыто вне Telegram, данные вымышленные и хранятся в памяти страницы.')) + '</p>' +
           '<button type="button" class="btn btn--ghost mt-8" data-action="demo-reset">' + e(T('Сбросить демо-данные')) + '</button></div></div>'
         : '') +
-      '<div class="actions"><button type="button" class="btn btn--full" data-action="refresh">' + e(T('Обновить')) + '</button></div>'
-    );
+      '<div class="actions"><button type="button" class="btn btn--full" data-action="refresh">' + e(T('Обновить')) + '</button></div>';
+    return '<div class="profile-page profile-detail"><div class="profile-detail__heading"><button type="button" class="profile-back" data-action="profile-home" aria-label="' + e(T('Назад в профиль')) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button><h1>' + e(T(current[1])) + '</h1></div>' + content + '</div>';
   }
 
   // --- Онбординг ---
@@ -1365,7 +1358,7 @@
     renderCategoryForm: renderCategoryForm,
     renderRecurringForm: renderRecurringForm,
     renderLimits: renderLimits,
-    renderAnalytics: renderAnalytics,
+
     renderTxList: renderTxList,
     txResults: txResults,
     renderForm: renderForm,

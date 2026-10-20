@@ -45,15 +45,13 @@
 
   var ICON = function (d) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + d + '</svg>'; };
   var TABS = [
-    { id: 'summary', icon: ICON('<path d="M5 20v-7M12 20V5M19 20v-10"/>'), label: 'Сводка' },
-    { id: 'tx', icon: ICON('<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>'), label: 'Траты' },
+    { id: 'summary', icon: ICON('<path d="m3 10 9-7 9 7v10H15v-7H9v7H3z"/>'), label: 'Главная' },
+    { id: 'tx', icon: ICON('<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 9h18M16 13h5v4h-5zM6 5V3h12"/>'), label: 'Финансы' },
     { id: 'add', icon: ICON('<path d="M12 5v14M5 12h14"/>'), label: 'Добавить', primary: true },
     { id: 'plans', icon: ICON('<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>'), label: 'Планы' },
-    { id: 'settings', icon: ICON('<path d="M3 7h11M18 7h3M3 17h3M10 17h11"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>'), label: 'Ещё' },
+    { id: 'settings', icon: ICON('<circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/>'), label: 'Профиль' },
   ];
   var plansTab = 'goals';
-  // Откуда открыли аналитику: из «Ещё» или из вкладки «Траты».
-  var analyticsBack = 'settings';
 
   // --- UI-помощники ---
 
@@ -140,8 +138,8 @@
   function syncBackButton() {
     if (route.name === 'add') return root.Tg.backButton(goHome);
     // Лимиты — подэкран настроек: «Назад» возвращает к ним.
-    if (route.name === 'limits') return root.Tg.backButton(openSettings);
-    if (route.name === 'analytics') return root.Tg.backButton(analyticsBack === 'tx' ? openTx : openSettings);
+    if (route.name === 'limits') return root.Tg.backButton(function () { openSettings('budget'); });
+    if (route.name === 'settings' && route.section) return root.Tg.backButton(function () { openSettings(); });
     root.Tg.backButton(null);
   }
 
@@ -155,14 +153,13 @@
       return;
     }
     // «Добавить» — не место, а действие: подсвечиваем вкладку, с которой пришли.
-    // Аналитика — подэкран «Ещё» или «Трат»: подсвечиваем вкладку, откуда пришли.
     var active = route.name === 'add' ? 'summary'
-      : route.name === 'analytics' ? (analyticsBack === 'tx' ? 'tx' : 'settings')
+      : route.name === 'limits' ? 'settings'
       : route.name;
     // Меню создаём один раз: перерисовка на каждом переходе вызывала мигание иконок.
     if (el.tabs.children.length !== TABS.length) {
       el.tabs.innerHTML = TABS.map(function (t) {
-        return '<button type="button" class="tab' + (t.primary ? ' tab--primary' : '') + '" data-tab="' + t.id + '">' +
+        return '<button type="button" class="tab' + (t.primary ? ' tab--primary' : '') + '" data-tab="' + t.id + '" aria-label="' + Fmt.escapeHtml(T(t.label)) + '">' +
           '<span class="tab__icon">' + t.icon + '</span><span>' + T(t.label) + '</span></button>';
       }).join('');
     }
@@ -180,12 +177,15 @@
   var enterTimer = null;
   var fadeTimer = null;
   var renderToken = 0;
+  function screenKey() {
+    return route.name + (route.name === 'settings' ? ':' + (route.section || 'home') : route.name === 'plans' ? ':' + plansTab : '');
+  }
   function render(html) {
     // Смена экрана: старое содержимое мягко гаснет, потом появляется новое.
     // Мгновенная подмена DOM и анимация только нового и давала «рывок».
     var token = ++renderToken;
     clearTimeout(fadeTimer);
-    var switching = route.name !== lastScreen && lastScreen !== null && el.screen.firstChild;
+    var switching = screenKey() !== lastScreen && lastScreen !== null && el.screen.firstChild;
     if (switching) {
       el.screen.classList.add('screen--fading');
       // Панель вкладок и «назад» переключаем сразу — отклик не ждёт анимации.
@@ -203,8 +203,8 @@
     el.screen.innerHTML = html;
     el.screen.scrollTop = 0;
     // Каскад появления — только при смене экрана, не при каждом обновлении данных.
-    if (route.name !== lastScreen) {
-      lastScreen = route.name;
+    if (screenKey() !== lastScreen) {
+      lastScreen = screenKey();
       el.screen.classList.remove('screen--in');
       void el.screen.offsetWidth;
       el.screen.classList.add('screen--in');
@@ -334,8 +334,7 @@
     st[key] = { data: value, at: Date.now() };
   }
 
-  // Сводка месяца без побочного эффекта на lastSummary: нужна аналитике,
-  // которая грузит несколько месяцев параллельно.
+  // Получение и кэширование сводки месяца.
   function fetchSummary(month) {
     var hit = cached('summaryCache:' + month);
     if (hit && fresh()) return Promise.resolve(hit);
@@ -437,6 +436,7 @@
     if (categoryId !== undefined) {
       st.txFilter = { category_id: categoryId || null, member_id: null, q: '' };
     }
+    if (st.txFilter) st.txFilter.member_id = null;
     if (!st.txFilter || typeof st.txFilter !== 'object') {
       st.txFilter = { category_id: null, member_id: null, q: '' };
     }
@@ -495,43 +495,16 @@
     };
   }
 
-  function openSettings() {
-    route = { name: 'settings' };
-    loadPlans().then(function () {
-      if (route.name === 'settings') render(Views.renderSettings());
-    });
-    loadTariffs();
-    // Категории нужны для счётчика лимитов в настройках и экрана лимитов.
-    loadCategories().then(function () {
-      if (route.name === 'settings') render(Views.renderSettings());
-    }).catch(function () {});
-    render(Views.renderSettings());
-  }
-
-  // Аналитика: месяцы текущего года, итоги и динамика по категориям.
-  function openAnalytics(back) {
-    if (back) analyticsBack = back;
-    route = { name: 'analytics' };
-    render(Views.skeletonList());
-    var seq = ++reqSeq;
-    var current = Fmt.currentMonth();
-    var year = current.slice(0, 4);
-    var lastMonth = Number(current.slice(5, 7));
-    var months = [];
-    for (var i = 1; i <= lastMonth; i++) {
-      months.push(year + '-' + String(i).padStart(2, '0'));
+  function openSettings(section) {
+    var allowed = ['family', 'budget', 'appearance', 'notifications', 'subscription', 'about'];
+    route = { name: 'settings', section: allowed.indexOf(section) !== -1 ? section : null };
+    render(Views.renderSettings(route.section));
+    if (route.section === 'subscription') loadTariffs();
+    if (route.section === 'budget') {
+      loadCategories().then(function () {
+        if (route.name === 'settings' && route.section === 'budget') render(Views.renderSettings(route.section));
+      }).catch(function () {});
     }
-    Promise.all(months.map(function (month) {
-      return fetchSummary(month).then(function (s) {
-        return { month: month, summary: s };
-      });
-    })).then(function (data) {
-      if (seq !== reqSeq || route.name !== 'analytics') return;
-      render(Views.renderAnalytics(data, current));
-    }).catch(function (err) {
-      if (seq !== reqSeq || route.name !== 'analytics') return;
-      fail(err);
-    });
   }
 
   function loadTariffs() {
@@ -540,7 +513,7 @@
     }).catch(function () {
       st.tariffs = st.tariffs || [];
     }).then(function () {
-      if (route.name === 'settings') render(Views.renderSettings());
+      if (route.name === 'settings' && route.section === 'subscription') render(Views.renderSettings(route.section));
     });
   }
 
@@ -549,12 +522,12 @@
   function buyTariff(code) {
     if (st.buying) return;
     st.buying = true;
-    render(Views.renderSettings());
+    render(Views.renderSettings(route.section));
     Api.call('create_invoice', { plan: code }).then(function (res) {
       var tg = root.Tg.sdk();
       if (!tg || !tg.openInvoice) {
         st.buying = false;
-        render(Views.renderSettings());
+        render(Views.renderSettings(route.section));
         toast(T('Оплата доступна только в Telegram'));
         return;
       }
@@ -566,17 +539,17 @@
             loadMember().then(function () {
               if (st.member && st.member.households) clearCache();
               toast(T('Спасибо! Доступ продлён'));
-              if (route.name === 'settings') render(Views.renderSettings());
+              if (route.name === 'settings') render(Views.renderSettings(route.section));
             });
           }, 1500);
         } else {
           toast(status === 'cancelled' ? T('Оплата отменена') : T('Оплата не прошла'));
-          if (route.name === 'settings') render(Views.renderSettings());
+          if (route.name === 'settings') render(Views.renderSettings(route.section));
         }
       });
     }).catch(function (err) {
       st.buying = false;
-      if (route.name === 'settings') render(Views.renderSettings());
+      if (route.name === 'settings') render(Views.renderSettings(route.section));
       if (err.code === 'telegram_error') return toast(T('Не удалось создать счёт'));
       toast(err.message || T('Не удалось создать счёт'));
     });
@@ -615,9 +588,11 @@
     var v = formEl.elements;
     var amt = Fmt.parseAmount(v.amount.value);
     var day = parseInt(v.day.value, 10);
+    var reminderDays = v.reminder_days.value.trim() === '' ? NaN : Number(v.reminder_days.value);
     if (!v.name.value.trim()) return badInput(T('Введите название'), v.name);
     if (!(amt > 0)) return badInput(T('Укажите сумму'), v.amount);
     if (!(day >= 1 && day <= 31)) return badInput(T('День от 1 до 31'), v.day);
+    if (!Number.isInteger(reminderDays) || reminderDays < 0 || reminderDays > 30) return badInput(T('Укажите целое число от 0 до 30'), v.reminder_days);
     var catId = v.category_id && v.category_id.value ? v.category_id.value : null;
     // Оптимистично: платёж появляется в списке сразу.
     var plans = st.plans || { goals: [], debts: [], wishes: [], recurring: [] };
@@ -628,6 +603,7 @@
       name: v.name.value,
       amount: amt,
       day_of_month: day,
+      reminder_days: reminderDays,
       category_id: catId,
       active: true,
       categories: cat ? { name: cat.name, icon: cat.icon } : null,
@@ -640,13 +616,17 @@
     root.Tg.haptic('success');
     closeSheet();
     toast(T('Платёж сохранён'));
-    openPlans();
+    plansTab = 'recurring';
+    route = { name: 'plans' };
+    render(Views.renderPlans(st.plans, plansTab));
 
-    var op = Queue.push('save_recurring', { id: id, name: v.name.value, amount: amt, day_of_month: day, category_id: catId });
+    var op = Queue.push('save_recurring', { id: id, name: v.name.value, amount: amt, day_of_month: day, reminder_days: reminderDays, category_id: catId });
     root.addEventListener('queue-sent', function onSent(ev) {
       if (ev.detail.id !== op.id) return;
       root.removeEventListener('queue-sent', onSent);
       st.plans = null;
+      if (route.name === 'plans') openPlans();
+      else if (route.name === 'summary') openSummary();
     });
     root.addEventListener('queue-failed', function onFailed(ev) {
       if (ev.detail.op.id !== op.id) return;
@@ -751,7 +731,7 @@
     dialog(T('Удалить аккаунт вместе со всей семьёй и записями? Это необратимо.'), T('Удалить')).then(function (ok) {
       if (!ok) return;
       st.deleting = true;
-      if (route.name === 'settings') render(Views.renderSettings());
+      if (route.name === 'settings') render(Views.renderSettings(route.section));
       Api.call('delete_my_account').then(function () {
         root.Tg.haptic('success');
         State.reset();
@@ -765,7 +745,7 @@
         render(Views.renderOnboarding(onboarding));
       }).catch(function (err) {
         st.deleting = false;
-        if (route.name === 'settings') render(Views.renderSettings());
+        if (route.name === 'settings') render(Views.renderSettings(route.section));
         root.Tg.haptic('error');
         toast(err.message || T('Не удалось удалить аккаунт'));
       });
@@ -1083,7 +1063,7 @@
       clearCache();
       return loadMember().then(function () {
         toast(T('Доступ до {date}', { date: Fmt.dayLabel(res.plan_until) }));
-        if (route.name === 'settings') render(Views.renderSettings());
+        if (route.name === 'settings') render(Views.renderSettings(route.section));
       });
     }).catch(function (err) {
       root.Tg.haptic('error');
@@ -1327,7 +1307,7 @@
     if (!root.Covers || !Covers.set(id)) return;
     root.Tg.haptic('light');
     var scroll = el.screen.scrollTop;
-    render(Views.renderSettings());
+    render(Views.renderSettings(route.section));
     el.screen.scrollTop = scroll;
     toast(T('Обложка обновлена'));
   }
@@ -1510,6 +1490,38 @@
 
   // --- События ---
 
+  el.screen.addEventListener('toggle', function (ev) {
+    var picker = ev.target;
+    if (!picker.matches('.category-picker') || !picker.open) return;
+    var rect = picker.getBoundingClientRect();
+    picker.classList.toggle('category-picker--up', root.innerHeight - rect.bottom < 370 && rect.top > 300);
+  }, true);
+
+  document.addEventListener('click', function (ev) {
+    var choice = ev.target.closest('[data-tx-choice]');
+    if (choice && route.name === 'tx') {
+      st.txFilter.category_id = choice.getAttribute('data-tx-choice') || null;
+      var picker = choice.closest('.category-picker');
+      picker.querySelector('.category-picker__current').innerHTML = choice.innerHTML;
+      picker.querySelectorAll('[data-tx-choice]').forEach(function (option) {
+        option.setAttribute('aria-pressed', String(option === choice));
+      });
+      picker.open = false;
+      picker.querySelector('summary').focus({ preventScroll: true });
+      root.Tg.haptic('light');
+      refreshTxResults();
+    }
+    el.screen.querySelectorAll('.category-picker[open]').forEach(function (picker) {
+      if (!picker.contains(ev.target)) picker.open = false;
+    });
+  });
+  el.screen.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Escape') return;
+    var picker = ev.target.closest('.category-picker');
+    if (picker) { picker.open = false; picker.querySelector('summary').focus(); }
+  });
+
+
   // Перерисовка сводки из кэша без запроса — нужна для раскрытия/сворачивания.
   // render() сбрасывает прокрутку вверх, поэтому запоминаем позицию и
   // держим раскрытую строку на том же месте экрана.
@@ -1589,6 +1601,32 @@
 
   // Крестик на баннере платежа: скрываем до конца дня и убираем узел без
   // перерисовки экрана, чтобы не сбить прокрутку.
+  var duePayments = {};
+  function payDue(button) {
+    var id = button.getAttribute('data-id');
+    if (!id || duePayments[id]) return;
+    duePayments[id] = true;
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    Api.call('pay_recurring', { id: id }).then(function () {
+      clearCache();
+      st.lastSummary = null;
+      root.Tg.haptic('success');
+      toast(T('Оплата записана'));
+      // Load the new transaction before rebuilding the reminder and balance.
+      return loadTx(Fmt.currentMonth()).catch(function () {}).then(function () {
+        if (route.name === 'summary') openSummary();
+      });
+    }).catch(function (err) {
+      root.Tg.haptic('error');
+      toast(err.message || T('Не удалось записать'));
+    }).finally(function () {
+      delete duePayments[id];
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+    });
+  }
+
   function dismissDueBanner() {
     State.dismissDue();
     var due = el.screen.querySelector('.due');
@@ -1641,17 +1679,20 @@
         clearCache();
         st.categories = null;
         toast(T('Обновлено'));
-        openTab(route.name === 'settings' ? 'summary' : route.name);
+        if (route.name === 'settings') openSettings(route.section);
+        else openTab(route.name);
         break;
       case 'retry':
-        if (route.name === 'analytics') openAnalytics(analyticsBack);
-        else goHome();
+            goHome();
         break;
       case 'start': goHome(); break;
-      case 'go-plans': openPlans(); break;
+      case 'go-plans': openPlans(actionBtn.getAttribute('data-plans-tab') || undefined); break;
       case 'go-recurring': openPlans('recurring'); break;
       case 'dismiss-due': dismissDueBanner(); break;
-      case 'go-settings': openSettings(); break;
+      case 'pay-due': payDue(actionBtn); break;
+      case 'go-settings': openSettings('subscription'); break;
+      case 'open-profile-section': openSettings(actionBtn.getAttribute('data-section')); break;
+      case 'profile-home': openSettings(); break;
       case 'buy': buyTariff(actionBtn.getAttribute('data-buy')); break;
       case 'delete-account': deleteAccount(); break;
       case 'clear-balance':
@@ -1661,7 +1702,7 @@
           }
           root.Tg.haptic('success');
           toast(T('Баланс сброшен'));
-          if (route.name === 'settings') render(Views.renderSettings());
+          if (route.name === 'settings') render(Views.renderSettings(route.section));
         }).catch(function (err) {
           root.Tg.haptic('error');
           toast(err.message || T('Не удалось сбросить баланс'));
@@ -1672,9 +1713,6 @@
       case 'add-cat': openCategoryForm(null, actionBtn.getAttribute('data-kind')); break;
       case 'go-limits': openLimits(); break;
       case 'pick-cover': setCover(actionBtn.getAttribute('data-cover')); break;
-      case 'go-analytics':
-        openAnalytics(route.name === 'tx' ? 'tx' : 'settings');
-        break;
       case 'cat-kind':
         catKind = actionBtn.getAttribute('data-kind');
         el.sheetBody.querySelectorAll('[data-action="cat-kind"]').forEach(function (b) {
@@ -1682,7 +1720,13 @@
         });
         break;
       case 'delete-cat': deleteCategory(actionBtn.getAttribute('data-id')); break;
-      case 'plans-tab': plansTab = actionBtn.getAttribute('data-plans'); openPlans(); break;
+      case 'plans-tab':
+        var nextPlansTab = actionBtn.getAttribute('data-plans');
+        if (nextPlansTab === plansTab) break;
+        plansTab = nextPlansTab;
+        if (st.plans) { ++reqSeq; render(Views.renderPlans(st.plans, plansTab)); }
+        else openPlans();
+        break;
       case 'plan-add': openPlanForm(actionBtn.getAttribute('data-kind') || plansTab); break;
       case 'onb-mode':
         onboarding.mode = actionBtn.getAttribute('data-mode');
@@ -1768,6 +1812,7 @@
         return loadCategories().then(function () {
           openPlanForm('recurring', {
             id: rec.id, name: rec.name, amount: rec.amount, day: rec.day_of_month,
+            reminder_days: rec.reminder_days,
             category_id: rec.category_id, categories: rec.categories,
           });
         });
@@ -1843,7 +1888,7 @@
       // Вкладки создаются один раз — пересобираем их на новом языке.
       el.tabs.innerHTML = '';
       var scroll = el.screen.scrollTop;
-      render(Views.renderSettings());
+      render(Views.renderSettings(route.section));
       el.screen.scrollTop = scroll;
       document.documentElement.lang = I18n.locale();
       document.title = T('Бюджет пары');
@@ -1854,18 +1899,12 @@
       if (!Fmt.setCurrency(t.value)) return;
       root.Tg.haptic('light');
       var scroll = el.screen.scrollTop;
-      render(Views.renderSettings());
+      render(Views.renderSettings(route.section));
       el.screen.scrollTop = scroll;
       toast(T('Валюта: {name}', { name: T(Fmt.currencyName()) }));
       return;
     }
     if (!st.txFilter) return;
-    if (t.matches('[data-tx-member]')) {
-      st.txFilter.member_id = t.value || null;
-      root.Tg.haptic('light');
-      refreshTxResults();
-      return;
-    }
     if (t.matches('[data-tx-category]')) {
       st.txFilter.category_id = t.value || null;
       root.Tg.haptic('light');
@@ -1955,12 +1994,15 @@
       tx.classList.remove('tx--open');
       var r = tx.querySelector('[data-tx-row]');
       if (r) r.style.transform = '';
+      var del = tx.querySelector('[data-tx-delete]');
+      if (del) del.tabIndex = -1;
     });
   }
 
   el.screen.addEventListener('touchstart', function (ev) {
     var row = ev.target.closest('[data-tx-row]');
     if (!row || ev.touches.length !== 1) return;
+    if (row.closest('.finance-operation')) return;
     swipe = { row: row, x: ev.touches[0].clientX, y: ev.touches[0].clientY, dx: 0, active: false };
   }, { passive: true });
 
@@ -1988,6 +2030,68 @@
     swipe = null;
   }, { passive: true });
 
+  // Pointer gestures support touch, pen and mouse with the same animation.
+  var financeSwipe = null;
+  var swipeClickUntil = 0;
+  el.screen.addEventListener('pointerdown', function (ev) {
+    var row = ev.target.closest('.finance-operation [data-tx-row]');
+    if (!row || !ev.isPrimary || ev.button !== 0) return;
+    financeSwipe = { row: row, tx: row.closest('.tx'), id: ev.pointerId,
+      x: ev.clientX, y: ev.clientY, base: row.closest('.tx').classList.contains('tx--open') ? -88 : 0,
+      dx: 0, active: false };
+  });
+  el.screen.addEventListener('pointermove', function (ev) {
+    var gesture = financeSwipe;
+    if (!gesture || gesture.id !== ev.pointerId) return;
+    var dx = ev.clientX - gesture.x, dy = ev.clientY - gesture.y;
+    if (!gesture.active) {
+      if (Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)) { financeSwipe = null; return; }
+      if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy) * 1.3) return;
+      gesture.active = true;
+      closeSwipes(gesture.tx);
+      gesture.row.setPointerCapture(ev.pointerId);
+      gesture.row.classList.add('tx__row--dragging');
+      gesture.tx.classList.add('tx--dragging');
+    }
+    ev.preventDefault();
+    gesture.dx = dx;
+    var position = Math.max(-88, Math.min(0, gesture.base + dx));
+    gesture.row.style.transform = 'translateX(' + position + 'px)';
+  });
+  function finishFinanceSwipe(ev) {
+    var gesture = financeSwipe;
+    if (!gesture || gesture.id !== ev.pointerId) return;
+    financeSwipe = null;
+    if (!gesture.active) return;
+    var open = ev.type !== 'pointercancel' && gesture.base + gesture.dx < -36;
+    gesture.row.classList.remove('tx__row--dragging');
+    gesture.tx.classList.remove('tx--dragging');
+    gesture.tx.classList.toggle('tx--open', open);
+    gesture.row.style.transform = open ? 'translateX(-88px)' : '';
+    gesture.tx.querySelector('[data-tx-delete]').tabIndex = open ? 0 : -1;
+    swipeClickUntil = Date.now() + 350;
+    if (gesture.row.hasPointerCapture(ev.pointerId)) gesture.row.releasePointerCapture(ev.pointerId);
+    if (open) root.Tg.haptic('light');
+  }
+  el.screen.addEventListener('pointerup', finishFinanceSwipe);
+  el.screen.addEventListener('pointercancel', finishFinanceSwipe);
+  el.screen.addEventListener('click', function (ev) {
+    if (Date.now() < swipeClickUntil && ev.target.closest('.finance-operation')) {
+      ev.preventDefault(); ev.stopImmediatePropagation();
+    }
+  }, true);
+  el.screen.addEventListener('keydown', function (ev) {
+    var row = ev.target.closest('.finance-operation [data-tx-row]');
+    if (!row) return;
+    var tx = row.closest('.tx');
+    if (ev.key === 'ArrowLeft') {
+      ev.preventDefault(); openTxRow(tx);
+      var del = tx.querySelector('[data-tx-delete]');
+      del.tabIndex = 0; del.focus();
+    }
+    if (ev.key === 'ArrowRight' || ev.key === 'Escape') closeSwipes();
+  });
+
   // Долгое нажатие на строке — путь удаления для мыши (на таче — свайп).
   // Слушаем document: перерисовка экрана не теряет состояние удержания.
   var hold = null;
@@ -1996,6 +2100,7 @@
     if (ev.pointerType === 'touch') return;
     var tx = ev.target.closest && ev.target.closest('.tx');
     if (!tx) return;
+    if (tx.classList.contains('finance-operation')) return;
     clearTimeout(hold);
     holdStart = { x: ev.clientX, y: ev.clientY };
     hold = setTimeout(function () {

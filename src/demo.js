@@ -150,7 +150,7 @@
     // API отвечает `{}`, пока пользователь не в семье.
     me: function () {
       return state.member
-        ? { member: Object.assign({}, state.member.me, {
+        ? { member: Object.assign({}, state.member, {
             households: state.member.households,
             notifications: state.member.notifications || { payments: true, limits: true, digest: false, daily: false, daily_time: '22:00', timezone: timezone() },
           }), promo: state.promo || [] }
@@ -292,9 +292,12 @@
       });
     },
     save_recurring: function (p) {
+      var reminderDays = p.reminder_days == null ? 1 : Number(p.reminder_days);
+      if (!Number.isInteger(reminderDays) || reminderDays < 0 || reminderDays > 30) throw { code: 'bad_reminder_days' };
       var cat = state.categories.find(function (c) { return c.id === p.category_id; });
       var row = {
         name: p.name, amount: Number(p.amount), day_of_month: Number(p.day_of_month), active: true,
+        reminder_days: reminderDays,
         category_id: cat ? cat.id : null,
         categories: cat ? { name: cat.name, icon: cat.icon } : null,
       };
