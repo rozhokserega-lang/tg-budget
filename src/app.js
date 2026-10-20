@@ -178,17 +178,38 @@
 
   var lastScreen = null;
   var enterTimer = null;
+  var fadeTimer = null;
+  var renderToken = 0;
   function render(html) {
+    // Смена экрана: старое содержимое мягко гаснет, потом появляется новое.
+    // Мгновенная подмена DOM и анимация только нового и давала «рывок».
+    var token = ++renderToken;
+    clearTimeout(fadeTimer);
+    var switching = route.name !== lastScreen && lastScreen !== null && el.screen.firstChild;
+    if (switching) {
+      el.screen.classList.add('screen--fading');
+      // Панель вкладок и «назад» переключаем сразу — отклик не ждёт анимации.
+      applyRouteUi();
+      fadeTimer = setTimeout(function () {
+        el.screen.classList.remove('screen--fading');
+        if (token === renderToken) renderContent(html);
+      }, 110);
+      return;
+    }
+    renderContent(html);
+  }
+
+  function renderContent(html) {
     el.screen.innerHTML = html;
     el.screen.scrollTop = 0;
-    // Анимация появления — только при смене экрана, не при каждом обновлении данных.
+    // Каскад появления — только при смене экрана, не при каждом обновлении данных.
     if (route.name !== lastScreen) {
       lastScreen = route.name;
       el.screen.classList.remove('screen--in');
       void el.screen.offsetWidth;
       el.screen.classList.add('screen--in');
       clearTimeout(enterTimer);
-      enterTimer = setTimeout(function () { el.screen.classList.remove('screen--in'); }, 700);
+      enterTimer = setTimeout(function () { el.screen.classList.remove('screen--in'); }, 900);
     }
     applyRouteUi();
   }
@@ -1095,19 +1116,14 @@
     return el.sheetBody.querySelector('.quick-actions');
   }
 
-  function qaSetPage(page, animate) {
+  function qaSetPage(page) {
     var rootEl = qaRoot();
     if (!rootEl) return;
     var next = Math.max(0, Math.min(QUICK_PAGES - 1, page));
     var track = rootEl.querySelector('.quick-actions__track');
     if (!track) return;
-    if (!animate) track.classList.add('quick-actions__track--dragging');
+    track.classList.remove('quick-actions__track--edge');
     track.style.transform = 'translateX(' + (-100 * next) + '%)';
-    if (!animate) {
-      // Без перехода сразу возвращаем анимацию для следующего жеста.
-      void track.offsetWidth;
-      track.classList.remove('quick-actions__track--dragging');
-    }
     var changed = next !== quickActionsPage;
     quickActionsPage = next;
     rootEl.setAttribute('data-page', next);
@@ -1125,7 +1141,7 @@
   function qaReset() {
     qaSwipe = null;
     var track = el.sheetBody.querySelector('.quick-actions__track');
-    if (track) track.classList.remove('quick-actions__track--dragging');
+    if (track) track.classList.remove('quick-actions__track--dragging', 'quick-actions__track--edge');
   }
 
   function qaPageWidth() {
@@ -1137,7 +1153,7 @@
   el.sheet.addEventListener('touchstart', function (ev) {
     if (!qaRoot() || ev.touches.length !== 1) return;
     var t = ev.touches[0];
-    qaSwipe = { x: t.clientX, y: t.clientY, dx: 0, axis: '' };
+    qaSwipe = { x: t.clientX, y: t.clientY, dx: 0, axis: '', lastX: t.clientX, lastT: performance.now() };
   }, { passive: true });
 
   el.sheet.addEventListener('touchmove', function (ev) {
@@ -1152,26 +1168,46 @@
     }
     if (qaSwipe.axis !== 'x') return;
     ev.preventDefault();
-    var width = qaPageWidth() || 300;
     var atEdge = (quickActionsPage === 0 && dx > 0) || (quickActionsPage === QUICK_PAGES - 1 && dx < 0);
-    // На крайних страницах тянем с сопротивлением, чтобы граница чувствовалась.
+    // На крайних страницах тянем с сопротивлением и гасим яркость, чтобы граница чувствовалась.
     qaSwipe.dx = atEdge ? dx * 0.28 : dx;
     var track = el.sheetBody.querySelector('.quick-actions__track');
     if (!track) return;
-    track.classList.add('quick-actions__track--dragging');
+    track.classList.toggle('quick-actions__track--edge', atEdge);
+    // Скорость пальца к отпусканию: по ней решаем, перелистнуть ли на коротком рывке.
+    var now = performance.now();
+    if (now - qaSwipe.lastT > 0) {
+      qaFast = Math.abs(t.clientX - qaSwipe.lastX) / (now - qaSwipe.lastT) > 0.5;
+      qaSwipe.lastX = t.clientX;
+      qaSwipe.lastT = now;
+    }
+    if (!qaSwipe.axisLocked) {
+      qaSwipe.axisLocked = true;
+      // Модификатор — без transition: иначе лента «догоняет» палец с задержкой.
+      track.classList.add('quick-actions__track--dragging');
+    }
     track.style.transform = 'translateX(calc(' + (-100 * quickActionsPage) + '% + ' + qaSwipe.dx.toFixed(1) + 'px))';
   }, { passive: false });
+
+  // Страница считается «вытянутой», если прошли четверть или быстро рванули пальцем.
+  var qaFlip = function (dx) {
+    var width = qaPageWidth() || 300;
+    return Math.abs(dx) > width / 4 || (qaFast && Math.abs(dx) > 24);
+  };
+  var qaFast = false;
 
   function qaEnd() {
     if (!qaSwipe) return;
     var dx = qaSwipe.dx;
-    var width = qaPageWidth() || 300;
+    var flip = qaFlip(dx);
+    qaFast = false;
     qaSwipe = null;
     var track = el.sheetBody.querySelector('.quick-actions__track');
     if (track) track.classList.remove('quick-actions__track--dragging');
-    // Короткий свайп или размашистый — страница то же переключается, если прошли треть.
-    if (dx < -width / 4) qaSetPage(quickActionsPage + 1);
-    else if (dx > width / 4) qaSetPage(quickActionsPage - 1);
+    // Возвращаем короткую пружину: сразу после отпускания анимация чуть энергичнее.
+    if (track) track.style.transitionDuration = flip ? '.34s' : '.3s';
+    if (flip && dx < 0) qaSetPage(quickActionsPage + 1);
+    else if (flip && dx > 0) qaSetPage(quickActionsPage - 1);
     else qaSetPage(quickActionsPage);
   }
   el.sheet.addEventListener('touchend', qaEnd, { passive: true });

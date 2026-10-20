@@ -287,7 +287,21 @@ body { background: var(--c-bg); }
   border-radius: 24px;
   background: rgba(25,25,32,.97);
   box-shadow: 0 18px 56px rgba(0,0,0,.45);
+  transition: background .24s ease, border-color .24s ease, box-shadow .24s ease;
 }
+/* Панель быстрых действий поднимается из-за нижней панели, а не выскакивает. */
+.sheet--quick-actions .sheet__panel { animation: qa-rise .4s cubic-bezier(.3,.86,.24,1) both; }
+@keyframes qa-rise {
+  from { opacity: 0; transform: translateY(26px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+.tabs {
+  transition: background .24s ease, border-color .24s ease, box-shadow .24s ease, backdrop-filter .24s ease, opacity .24s ease;
+}
+/* Плавный переход иконки «+» ↔ «−» в круге. */
+.tab--primary .tab__icon svg path { transition: d .26s cubic-bezier(.3,.86,.24,1); }
+.tab--primary .tab__icon { transition: background .26s ease, color .2s ease, box-shadow .26s ease, transform .26s cubic-bezier(.3,.86,.24,1); }
+.tab--primary:active .tab__icon { transform: scale(.92); }
 .tabs--quick-actions {
   z-index: 80;
   border-color: transparent;
@@ -298,6 +312,8 @@ body { background: var(--c-bg); }
   opacity: .22;
   filter: blur(1.5px);
   pointer-events: none;
+  /* Вкладки уходят плавно, а возвращаются чуть быстрее — так отклик короче. */
+  transition: opacity .26s ease, filter .26s ease, color .2s ease;
 }
 .tabs--quick-actions .tab--primary { pointer-events: auto; }
 .quick-actions__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
@@ -315,8 +331,16 @@ body { background: var(--c-bg); }
 .quick-actions__close svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 /* Лента страниц: свайп двигает трек; touch-action: pan-y оставляет вертикальную прокрутку sheet. */
 .quick-actions__view { overflow: hidden; touch-action: pan-y; }
-.quick-actions__track { display: flex; transition: transform .26s cubic-bezier(.22,.8,.3,1); will-change: transform; }
+/* Доводка после отпускания: мягкий старт, почти незаметный финальный изгиб — без «щелчка». */
+.quick-actions__track {
+  display: flex;
+  transition: transform .36s cubic-bezier(.3,.86,.24,1), opacity .2s ease;
+  will-change: transform;
+}
+/* Пока палец на экране — лента идёт за ним вплотную, без инерции. */
 .quick-actions__track--dragging { transition: none; }
+/* Крайняя страница при перетягивании слегка бледнеет — видно, что дальше ничего нет. */
+.quick-actions__track--edge { opacity: .82; }
 .quick-actions__page { width: 100%; flex: 0 0 100%; }
 .quick-actions__grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px 5px; }
 .quick-action {
@@ -375,3 +399,26 @@ body { background: var(--c-bg); }
   .cat__icon { width: 28px; height: 28px; }
   .cat__name { font-size: 11px; }
 }
+
+/* --- Плавная смена экранов и вкладок --- */
+
+/* Старый экран гаснет на 110 мс, затем появляется новый (см. render() в app.js). */
+.screen--fading { opacity: 0; transition: opacity .11s ease; }
+/* Появление нового экрана длиннее угасания — нет заметной «пустой» паузы. */
+.screen { transition: opacity .2s cubic-bezier(.22,.86,.3,1); }
+
+/* Каскад появления: мягче и чуть дольше прошлого, подпрыгивающие элементы не мешают читать. */
+.screen--in > * { animation: rise-smooth .4s cubic-bezier(.22,.86,.3,1) backwards; }
+.screen--in > :nth-child(2) { animation-delay: 35ms; }
+.screen--in > :nth-child(3) { animation-delay: 70ms; }
+.screen--in > :nth-child(4) { animation-delay: 105ms; }
+.screen--in > :nth-child(5) { animation-delay: 140ms; }
+.screen--in > :nth-child(n + 6) { animation-delay: 170ms; }
+@keyframes rise-smooth {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Активная вкладка: цвет и вес меняются не рывком, а поверх плавного краска. */
+.tab { transition: color .22s ease, opacity .24s ease, filter .24s ease; }
+.tab--active { transition: color .2s ease; }
