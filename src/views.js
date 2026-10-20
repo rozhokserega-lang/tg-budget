@@ -366,18 +366,24 @@
       ],
     ];
     page = Math.max(0, Math.min(actionPages.length - 1, Number(page) || 0));
-    var actions = actionPages[page];
-    return '<div class="quick-actions">' +
+    // Все страницы лежат в одной ленте и сдвигаются по X: так работает свайп.
+    return '<div class="quick-actions" data-page="' + page + '">' +
       '<div class="quick-actions__head">' +
       '<div class="sheet__title">' + e(T('Быстрые действия')) + '</div>' +
       '<button type="button" class="quick-actions__close" data-sheet-close aria-label="' + e(T('Закрыть')) + '">' +
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>' +
       '</div>' +
-      '<div class="quick-actions__grid">' + actions.map(function (a) {
-        return '<button type="button" class="quick-action" data-action="quick-action" data-quick="' + e(a.id) + '">' +
-          '<span class="quick-action__icon quick-action__icon--' + e(a.tone) + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + a.icon + '</svg></span>' +
-          '<span class="quick-action__label">' + e(T(a.label)) + '</span></button>';
-      }).join('') + '</div>' +
+      '<div class="quick-actions__view">' +
+      '<div class="quick-actions__track" style="transform:translateX(' + (-100 * page) + '%)">' +
+      actionPages.map(function (actions, index) {
+        return '<div class="quick-actions__page"' + (index === page ? '' : ' inert') + '>' +
+          '<div class="quick-actions__grid">' + actions.map(function (a) {
+            return '<button type="button" class="quick-action" data-action="quick-action" data-quick="' + e(a.id) + '">' +
+              '<span class="quick-action__icon quick-action__icon--' + e(a.tone) + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + a.icon + '</svg></span>' +
+              '<span class="quick-action__label">' + e(T(a.label)) + '</span></button>';
+          }).join('') + '</div></div>';
+      }).join('') +
+      '</div></div>' +
       '<div class="quick-actions__pagination" role="tablist" aria-label="' + e(T('Страницы быстрых действий')) + '">' +
       actionPages.map(function (_, index) {
         var active = index === page;

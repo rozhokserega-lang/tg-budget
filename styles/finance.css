@@ -313,6 +313,11 @@ body { background: var(--c-bg); }
   color: #aaa6b4;
 }
 .quick-actions__close svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+/* Лента страниц: свайп двигает трек; touch-action: pan-y оставляет вертикальную прокрутку sheet. */
+.quick-actions__view { overflow: hidden; touch-action: pan-y; }
+.quick-actions__track { display: flex; transition: transform .26s cubic-bezier(.22,.8,.3,1); will-change: transform; }
+.quick-actions__track--dragging { transition: none; }
+.quick-actions__page { width: 100%; flex: 0 0 100%; }
 .quick-actions__grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px 5px; }
 .quick-action {
   display: flex;
@@ -347,9 +352,9 @@ body { background: var(--c-bg); }
 .quick-action__icon--pink { color: #ff86b4; background: rgba(245,102,161,.16); }
 .quick-action__label { max-width: 100%; font-size: 11px; line-height: 1.2; }
 .quick-actions__pagination { display: flex; justify-content: center; gap: 4px; margin-top: 2px; }
-.quick-actions__dot { display: grid; width: 36px; height: 32px; place-items: center; }
-.quick-actions__dot span { width: 6px; height: 6px; border-radius: 50%; background: #5c5965; transition: width .18s ease, background .18s ease; }
-.quick-actions__dot--active span { width: 18px; border-radius: 999px; background: #c09eff; }
+.quick-actions__dot { display: grid; width: 32px; height: 32px; place-items: center; }
+.quick-actions__dot span { width: 22px; height: 6px; border-radius: 999px; background: #3a3843; transition: background .18s ease; }
+.quick-actions__dot--active span { background: #c09eff; }
 
 .tx__row, .plan, .settings-row, .switch-row { background: #1b1b23; border: 1px solid rgba(255,255,255,.045); }
 .tx__row { min-height: 66px; }

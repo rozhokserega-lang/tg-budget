@@ -37,6 +37,9 @@
     if (savedCategoryView === 'grid' || savedCategoryView === 'list') categoryView = savedCategoryView;
   } catch (e) {}
   var quickActionsPage = 0;
+  var QUICK_PAGES = 2;
+  // Палец на странице быстрых действий: { x, y, dx, axis } или null.
+  var qaSwipe = null;
   // Категория, из которой открыли форму: после сохранения вернёмся к ней.
   var pendingFromCategory = null;
 
@@ -93,6 +96,9 @@
   function closeSheet() {
     clearTimeout(sheetTimer);
     setQuickActionLayer(false);
+    qaSwipe = null;
+    qaMouse = null;
+    qaMouseDragging = false;
     if (el.sheet.hidden) {
       el.sheetBody.innerHTML = '';
     } else {
@@ -1079,9 +1085,155 @@
   }
 
   function openQuickActions(page) {
-    quickActionsPage = Math.max(0, Math.min(1, Number(page) || 0));
+    quickActionsPage = Math.max(0, Math.min(QUICK_PAGES - 1, Number(page) || 0));
     openSheet(Views.renderQuickActions(quickActionsPage));
   }
+
+  // --- Листание страниц быстрых действий (свайп влево/вправо) ---
+
+  function qaRoot() {
+    return el.sheetBody.querySelector('.quick-actions');
+  }
+
+  function qaSetPage(page, animate) {
+    var rootEl = qaRoot();
+    if (!rootEl) return;
+    var next = Math.max(0, Math.min(QUICK_PAGES - 1, page));
+    var track = rootEl.querySelector('.quick-actions__track');
+    if (!track) return;
+    if (!animate) track.classList.add('quick-actions__track--dragging');
+    track.style.transform = 'translateX(' + (-100 * next) + '%)';
+    if (!animate) {
+      // Без перехода сразу возвращаем анимацию для следующего жеста.
+      void track.offsetWidth;
+      track.classList.remove('quick-actions__track--dragging');
+    }
+    var changed = next !== quickActionsPage;
+    quickActionsPage = next;
+    rootEl.setAttribute('data-page', next);
+    Array.prototype.forEach.call(rootEl.querySelectorAll('.quick-actions__page'), function (p, i) {
+      if (i === next) p.removeAttribute('inert');
+      else p.setAttribute('inert', '');
+    });
+    Array.prototype.forEach.call(rootEl.querySelectorAll('.quick-actions__dot'), function (dot, i) {
+      dot.classList.toggle('quick-actions__dot--active', i === next);
+      dot.setAttribute('aria-selected', i === next ? 'true' : 'false');
+    });
+    if (changed) root.Tg.haptic('light');
+  }
+
+  function qaReset() {
+    qaSwipe = null;
+    var track = el.sheetBody.querySelector('.quick-actions__track');
+    if (track) track.classList.remove('quick-actions__track--dragging');
+  }
+
+  function qaPageWidth() {
+    var view = el.sheetBody.querySelector('.quick-actions__view');
+    return view ? view.getBoundingClientRect().width : 0;
+  }
+
+  // Свайп страницы: первый сдвиг по горизонтали запирает жест, вертикаль отдаём прокрутке.
+  el.sheet.addEventListener('touchstart', function (ev) {
+    if (!qaRoot() || ev.touches.length !== 1) return;
+    var t = ev.touches[0];
+    qaSwipe = { x: t.clientX, y: t.clientY, dx: 0, axis: '' };
+  }, { passive: true });
+
+  el.sheet.addEventListener('touchmove', function (ev) {
+    if (!qaSwipe || ev.touches.length !== 1) return;
+    var t = ev.touches[0];
+    var dx = t.clientX - qaSwipe.x;
+    var dy = t.clientY - qaSwipe.y;
+    if (!qaSwipe.axis) {
+      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.2) qaSwipe.axis = 'x';
+      else if (Math.abs(dy) > 8) qaSwipe.axis = 'y';
+      else return;
+    }
+    if (qaSwipe.axis !== 'x') return;
+    ev.preventDefault();
+    var width = qaPageWidth() || 300;
+    var atEdge = (quickActionsPage === 0 && dx > 0) || (quickActionsPage === QUICK_PAGES - 1 && dx < 0);
+    // На крайних страницах тянем с сопротивлением, чтобы граница чувствовалась.
+    qaSwipe.dx = atEdge ? dx * 0.28 : dx;
+    var track = el.sheetBody.querySelector('.quick-actions__track');
+    if (!track) return;
+    track.classList.add('quick-actions__track--dragging');
+    track.style.transform = 'translateX(calc(' + (-100 * quickActionsPage) + '% + ' + qaSwipe.dx.toFixed(1) + 'px))';
+  }, { passive: false });
+
+  function qaEnd() {
+    if (!qaSwipe) return;
+    var dx = qaSwipe.dx;
+    var width = qaPageWidth() || 300;
+    qaSwipe = null;
+    var track = el.sheetBody.querySelector('.quick-actions__track');
+    if (track) track.classList.remove('quick-actions__track--dragging');
+    // Короткий свайп или размашистый — страница то же переключается, если прошли треть.
+    if (dx < -width / 4) qaSetPage(quickActionsPage + 1);
+    else if (dx > width / 4) qaSetPage(quickActionsPage - 1);
+    else qaSetPage(quickActionsPage);
+  }
+  el.sheet.addEventListener('touchend', qaEnd, { passive: true });
+  el.sheet.addEventListener('touchcancel', function () {
+    if (!qaSwipe) return;
+    qaSwipe.dx = 0;
+    qaEnd();
+  }, { passive: true });
+
+  // Тем же жестом с мышью (десктоп и браузер): тянем, отпускаем — страница переключается.
+  var qaMouse = null;
+  var qaMouseDragging = false;
+  el.sheet.addEventListener('pointerdown', function (ev) {
+    if (ev.pointerType === 'touch' || !qaRoot()) return;
+    qaMouse = { x: ev.clientX, y: ev.clientY, dx: 0, id: ev.pointerId };
+    qaMouseDragging = false;
+  });
+  function qaMouseMove(ev) {
+    if (!qaMouse || ev.pointerType === 'touch') return;
+    var dx = ev.clientX - qaMouse.x;
+    var dy = ev.clientY - qaMouse.y;
+    if (!qaMouseDragging) {
+      if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+      qaMouseDragging = true;
+      // Захватываем палец/мышь, чтобы события шли до sheet даже вне него.
+      try { el.sheet.setPointerCapture(qaMouse.id); } catch (e) {}
+      var track = el.sheetBody.querySelector('.quick-actions__track');
+      if (track) track.classList.add('quick-actions__track--dragging');
+    }
+    qaMouse.dx = dx;
+    var trackEl = el.sheetBody.querySelector('.quick-actions__track');
+    if (trackEl) trackEl.style.transform = 'translateX(calc(' + (-100 * quickActionsPage) + '% + ' + dx.toFixed(1) + 'px))';
+  }
+  function qaMouseEnd() {
+    if (!qaMouse) return;
+    var dx = qaMouse.dx;
+    var dragged = qaMouseDragging;
+    qaMouse = null;
+    qaMouseDragging = false;
+    var track = el.sheetBody.querySelector('.quick-actions__track');
+    if (track) track.classList.remove('quick-actions__track--dragging');
+    if (!dragged) return;
+    var width = qaPageWidth() || 300;
+    if (dx < -width / 4) qaSetPage(quickActionsPage + 1);
+    else if (dx > width / 4) qaSetPage(quickActionsPage - 1);
+    else qaSetPage(quickActionsPage);
+    // Гасим клик, который браузер дошлёт после перетаскивания: иначе он
+    // нажмёт кнопку с несовпадающими страницами и закроет меню.
+    el.sheet.addEventListener('click', function (c) { c.stopPropagation(); c.preventDefault(); }, { capture: true, once: true });
+  }
+  // pointermove слушаем на document: если указатель ушёл за панель, жест не рвётся.
+  document.addEventListener('pointermove', qaMouseMove);
+  document.addEventListener('pointerup', qaMouseEnd);
+  document.addEventListener('pointercancel', qaMouseEnd);
+
+  // Клавиатура: стрелки листают, Esc закрывает — как в Telegram Desktop.
+  document.addEventListener('keydown', function (ev) {
+    if (!qaRoot()) return;
+    if (ev.key === 'ArrowLeft') { qaSetPage(quickActionsPage - 1); ev.preventDefault(); }
+    else if (ev.key === 'ArrowRight') { qaSetPage(quickActionsPage + 1); ev.preventDefault(); }
+    else if (ev.key === 'Escape') { closeSheet(); ev.preventDefault(); }
+  });
 
   function runQuickAction(action) {
     switch (action) {
@@ -1401,8 +1553,9 @@
         renderSummaryFromCache();
         break;
       case 'quick-actions-page':
-        quickActionsPage = Math.max(0, Math.min(1, Number(actionBtn.getAttribute('data-page')) || 0));
-        openQuickActions(quickActionsPage);
+        // Точки переключают без перерисовки листа, чтобы лента анимировалась.
+        qaReset();
+        qaSetPage(Number(actionBtn.getAttribute('data-page')) || 0);
         break;
       case 'quick-action': runQuickAction(actionBtn.getAttribute('data-quick')); break;
       case 'tx-clear-filter': clearTxFilter(); break;
