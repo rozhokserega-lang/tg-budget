@@ -1789,19 +1789,6 @@
       case 'profile-home': openSettings(); break;
       case 'buy': buyTariff(actionBtn.getAttribute('data-buy')); break;
       case 'delete-account': deleteAccount(); break;
-      case 'clear-balance':
-        Api.call('clear_card_balance').then(function () {
-          if (st.member && st.member.households) {
-            st.member.households = Object.assign({}, st.member.households, { card_balance: null, card_balance_at: null });
-          }
-          root.Tg.haptic('success');
-          toast(T('Баланс сброшен'));
-          if (route.name === 'settings') render(Views.renderSettings(route.section));
-        }).catch(function (err) {
-          root.Tg.haptic('error');
-          toast(err.message || T('Не удалось сбросить баланс'));
-        });
-        break;
       case 'edit-cat': openCategoryForm(actionBtn.getAttribute('data-id')); break;
       case 'open-cat': openLimits(actionBtn.getAttribute('data-id')); break;
       case 'add-cat': openCategoryForm(null, actionBtn.getAttribute('data-kind')); break;

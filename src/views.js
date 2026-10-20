@@ -1148,33 +1148,6 @@
       '</div></div></div>';
   }
 
-  // Баланс карты из банковских SMS: показывается, если бот его получил.
-  function cardBalanceCard(h) {
-    if (h.card_balance == null) return '';
-    var when = '';
-    if (h.card_balance_at) {
-      var raw = String(h.card_balance_at);
-      // Дата без времени уже локальная; timestamp переводим в локальный день.
-      if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-        when = Fmt.dayLabel(raw);
-      } else {
-        var at = new Date(h.card_balance_at);
-        if (!isNaN(at.getTime())) when = Fmt.dayLabel(Fmt.isoDate(at));
-      }
-    }
-    // «Сегодня»/«Вчера» в середине фразы пишем со строчной; остальные даты не трогаем.
-    if (when === T('Сегодня') || when === T('Вчера')) {
-      when = when.charAt(0).toLowerCase() + when.slice(1);
-    }
-    return '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Карта')) + '</span></div>' +
-      '<div class="card">' +
-      '<div class="settings-row"><span class="settings-row__label">' + e(T('Баланс из SMS')) + '</span>' +
-      '<span class="settings-row__value">' + e(money(h.card_balance)) + '</span></div>' +
-      (when ? '<p class="small muted mt-8">' + e(T('Обновлён {date} · приходит из сообщений банка', { date: when })) + '</p>' : '') +
-      '<button type="button" class="btn btn--sm btn--ghost mt-8" data-action="clear-balance">' + e(T('Сбросить')) + '</button>' +
-      '</div></div>';
-  }
-
   function limitsCard() {
     var cats = ((State.get().categories) || []).filter(function (c) { return c.kind === 'expense' && !c.archived; });
     var total = cats.reduce(function (s, c) { return s + (Number(c.plan_monthly) || 0); }, 0);
@@ -1273,8 +1246,7 @@
           '<div class="invite"><span class="invite__code">' + e(h.invite_code || '—') + '</span>' +
           '<button type="button" class="btn btn--sm btn--primary" data-action="copy-invite">' + e(T('Копировать')) + '</button></div>' +
           '</div></div>');
-    if (section === 'budget') content = limitsCard() + (cardBalanceCard(h) ||
-      '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Карта')) + '</span></div><div class="card small muted">' + e(T('Баланс карты появится после получения банковского SMS через бота.')) + '</div></div>');
+    if (section === 'budget') content = limitsCard();
     if (section === 'appearance') content = coverCard() + languageCard() + currencyCard();
     if (section === 'notifications') content = notificationsCard(notif);
     if (section === 'subscription') content = '<div class="card subscription-access"><div class="settings-row"><span class="settings-row__label">' + e(T('Доступ')) + '</span><span class="settings-row__value' + (left !== null && left < 0 ? ' amount--neg' : '') + '">' + e(planText) +

@@ -94,8 +94,6 @@
       promoUsed: {},
       member: { id: 'm1', household_id: 'h1', name: 'Аня', telegram_id: 1,
         households: { id: 'h1', name: 'Наша семья', mode: new URLSearchParams(root.location.search).has('solo') ? 'solo' : 'pair', split_mode: 'proportional', invite_code: 'demo1234',
-          card_balance: new URLSearchParams(root.location.search).has('card') ? 3999.3 : null,
-          card_balance_at: new URLSearchParams(root.location.search).has('card') ? new Date().toISOString() : null,
           plan_until: new Date(Date.now() + (new URLSearchParams(root.location.search).has('expired') ? -86400000 : 12 * 86400000)).toISOString() } },
       members: members,
       categories: categories,
@@ -323,10 +321,6 @@
         is_shared: false, note: r.name, occurred_on: Fmt.todayIso(), created_at: new Date().toISOString() };
       state.tx.push(tx);
       return { ok: true, transaction: tx };
-    },
-    clear_card_balance: function () {
-      state.member.households = Object.assign({}, state.member.households, { card_balance: null, card_balance_at: null });
-      return { card_balance: null, card_balance_at: null };
     },
     save_notifications: function (p) {
       var n = p.notifications || {};
