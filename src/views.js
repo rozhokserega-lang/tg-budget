@@ -867,9 +867,11 @@
       '</div></div>';
   }
 
-  // Уведомления в Telegram: платежи и лимиты включены, сводка — по желанию.
+  // Уведомления в Telegram: платежи, лимиты, недельная сводка и ежедневный отчёт.
   function notificationsCard(notif) {
     notif = notif || {};
+    var dailyOn = notif.daily === true;
+    var dailyTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(notif.daily_time || '') ? notif.daily_time : '22:00';
     function toggle(key, title, hint) {
       return '<label class="switch-row"><span class="switch-row__text">' +
         '<span class="switch-row__title">' + e(title) + '</span>' +
@@ -882,25 +884,11 @@
       toggle('payments', T('Напоминания о платежах'), T('За день до даты')) +
       toggle('limits', T('Лимиты категорий'), T('При 80 % и 100 % плана')) +
       toggle('digest', T('Итоги недели'), T('Воскресенье, вечером')) +
-      '</div></div>';
-  }
-
-  // Ежедневный отчёт: время по часовому поясу телефона, настройка на участника.
-  function dailyReportCard(notif) {
-    notif = notif || {};
-    var on = notif.daily === true;
-    var time = /^([01]\d|2[0-3]):[0-5]\d$/.test(notif.daily_time || '') ? notif.daily_time : '22:00';
-    return '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Ежедневный отчёт')) + '</span></div>' +
-      '<div class="card card--stack">' +
-      '<label class="switch-row"><span class="switch-row__text">' +
-      '<span class="switch-row__title">' + e(T('Присылать каждый день')) + '</span>' +
-      '<span class="switch-row__hint">' + e(T('Траты за день и топ категорий')) + '</span></span>' +
-      '<span class="switch"><input type="checkbox" data-notif="daily"' + (on ? ' checked' : '') + '>' +
-      '<span class="switch__track"></span></span></label>' +
-      '<div class="daily-time" data-notif-time-wrap' + (on ? '' : ' hidden') + '>' +
+      toggle('daily', T('Присылать каждый день'), T('Траты за день и топ категорий')) +
+      '<div class="daily-time" data-notif-time-wrap' + (dailyOn ? '' : ' hidden') + '>' +
       '<label class="daily-time__row">' +
       '<span class="daily-time__label">' + e(T('Время отчёта')) + '</span>' +
-      '<input type="time" class="input daily-time__input" data-notif-time value="' + e(time) + '" step="300" aria-label="' + e(T('Время ежедневного отчёта')) + '">' +
+      '<input type="time" class="input daily-time__input" data-notif-time value="' + e(dailyTime) + '" step="300" aria-label="' + e(T('Время ежедневного отчёта')) + '">' +
       '</label>' +
       '<p class="small muted daily-time__hint">' + e(T('По времени телефона')) + '</p>' +
       '</div></div></div>';
@@ -1170,7 +1158,6 @@
       languageCard() +
       coverCard() +
       notificationsCard(notif) +
-      dailyReportCard(notif) +
       limitsCard() +
       analyticsCard() +
       starsCard(st.tariffs, st.buying) +
