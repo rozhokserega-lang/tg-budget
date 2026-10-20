@@ -412,7 +412,7 @@
   function renderQuickActions(page) {
     var actionPages = [
       [
-        { id: 'expense', label: 'Расход', tone: 'green', icon: '<path d="M12 4v15m-6-6 6 6 6-6"/>' },
+        { id: 'expense', label: 'Расход', tone: 'red', icon: '<path d="M12 4v15m-6-6 6 6 6-6"/>' },
         { id: 'income', label: 'Доход', tone: 'mint', icon: '<path d="M12 20V5m-6 6 6-6 6 6"/>' },
         { id: 'recurring-new', label: 'Новый платёж', tone: 'amber', icon: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M12 14v4m-2-2h4"/>' },
         { id: 'goal-new', label: 'Новая цель', tone: 'violet', icon: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="m15 9 5-5"/>' },
@@ -433,8 +433,6 @@
     return '<div class="quick-actions" data-page="' + page + '">' +
       '<div class="quick-actions__head">' +
       '<div class="sheet__title">' + e(T('Быстрые действия')) + '</div>' +
-      '<button type="button" class="quick-actions__close" data-sheet-close aria-label="' + e(T('Закрыть')) + '">' +
-      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>' +
       '</div>' +
       '<div class="quick-actions__view">' +
       '<div class="quick-actions__track" style="transform:translateX(' + (-100 * page) + '%)">' +
@@ -488,8 +486,8 @@
       '<div class="hero__label">' + e(T('Остаток за месяц')) + '</div>' +
       '<div class="hero__balance' + (balance < 0 ? ' hero__balance--negative' : '') + '">' + e(money(balance)) + '</div>' +
       '<div class="hero__row">' +
-      '<div class="hero__item"><span class="hero__item-label">' + e(T('Доходы')) + '</span><span class="hero__item-value">' + e(money(s.income)) + '</span></div>' +
-      '<div class="hero__item"><span class="hero__item-label">' + e(T('Расходы')) + '</span><span class="hero__item-value">' + e(money(s.expense)) + '</span></div>' +
+      '<div class="hero__item"><span class="hero__item-label"><svg class="hero__direction hero__direction--income" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>' + e(T('Доходы')) + '</span><span class="hero__item-value">+' + e(money(s.income)) + '</span></div>' +
+      '<div class="hero__item"><span class="hero__item-label"><svg class="hero__direction hero__direction--expense" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>' + e(T('Расходы')) + '</span><span class="hero__item-value">−' + e(money(s.expense)) + '</span></div>' +
       '</div>' +
       '</div>' +
       '<div class="section categories-section"><div class="section__head categories-section__head"><span class="section__title">' + e(T('Категории')) + '</span>' +
@@ -736,20 +734,22 @@
     var list = (st.categories || []).filter(function (c) { return c.kind === kind; });
     var chips = list.length
       ? list.map(function (c) {
-          return '<button type="button" class="cat-chip' + (c.id === cid ? ' cat-chip--active' : '') + '" data-action="pick-cat" data-id="' + e(c.id) + '">' +
+          return '<button type="button" class="cat-chip' + (c.id === cid ? ' cat-chip--active' : '') + '" aria-pressed="' + (c.id === cid) + '" data-action="pick-cat" data-id="' + e(c.id) + '">' +
             '<span class="cat-chip__icon">' + categoryIcon(c) + '</span><span>' + e(c.name) + '</span></button>';
         }).join('')
       : '<div class="muted small">' + e(T('Нет категорий — обновите приложение')) + '</div>';
     return (
-      '<form data-form="add" novalidate>' +
-      '<div class="segments" role="tablist">' +
-      '<button type="button" class="segment' + (kind === 'expense' ? ' segment--active' : '') + '" data-action="pick-kind" data-kind="expense">' + e(T('Расход')) + '</button>' +
-      '<button type="button" class="segment' + (kind === 'income' ? ' segment--active' : '') + '" data-action="pick-kind" data-kind="income">' + e(T('Доход')) + '</button>' +
+      '<form class="entry-form entry-form--' + kind + '" data-form="add" novalidate>' +
+      '<div class="entry-heading"><button type="button" class="profile-back" data-action="start" aria-label="' + e(T('Назад')) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button><div><h1>' + e(T(kind === 'income' ? 'Новый доход' : 'Новый расход')) + '</h1><p>' + e(T('Добавьте запись в свой бюджет')) + '</p></div></div>' +
+      '<div class="segments entry-kind" role="group" aria-label="' + e(T('Тип записи')) + '">' +
+      '<button type="button" class="segment' + (kind === 'expense' ? ' segment--active' : '') + '" aria-pressed="' + (kind === 'expense') + '" data-action="pick-kind" data-kind="expense"><span aria-hidden="true">↘</span>' + e(T('Расход')) + '</button>' +
+      '<button type="button" class="segment' + (kind === 'income' ? ' segment--active' : '') + '" aria-pressed="' + (kind === 'income') + '" data-action="pick-kind" data-kind="income"><span aria-hidden="true">↗</span>' + e(T('Доход')) + '</button>' +
       '</div>' +
-      '<label class="field"><span class="field__label">' + e(T('Сумма')) + '</span>' +
-      '<input class="input input--amount" name="amount" inputmode="decimal" autocomplete="off" placeholder="' + e(Fmt.money(0)) + '" value="' + e(amount) + '" required></label>' +
-      '<span class="field__label">' + e(T('Категория')) + '</span>' +
+      '<label class="field entry-amount"><span class="field__label">' + e(T(kind === 'income' ? 'Сумма дохода' : 'Сумма расхода')) + '</span>' +
+      '<span class="entry-amount__line"><span class="entry-amount__sign" aria-hidden="true">' + (kind === 'income' ? '+' : '−') + '</span><input class="input input--amount" name="amount" inputmode="decimal" autocomplete="off" placeholder="0" value="' + e(amount) + '" required><span class="entry-amount__currency">' + e(Fmt.currencySymbol()) + '</span></span></label>' +
+      '<div class="entry-section-heading"><h2>' + e(T('Категория')) + '</h2><span>' + e(T('Выберите одну')) + '</span></div>' +
       '<div class="cat-grid">' + chips + '</div>' +
+      '<div class="entry-section-heading"><h2>' + e(T('Детали')) + '</h2></div><div class="entry-details">' +
       '<label class="field"><span class="field__label">' + e(T('Заметка')) + '</span>' +
       '<input class="input" name="note" maxlength="200" autocomplete="off" placeholder="' + e(T('Например: пятерочка')) + '" value="' + e(note) + '"></label>' +
       (kind === 'expense'
@@ -759,7 +759,7 @@
         : '') +
       '<label class="field mt-16"><span class="field__label">' + e(T('Дата')) + '</span>' +
       '<input class="input" type="date" name="occurred_on" max="' + Fmt.todayIso() + '" value="' + e(date) + '"></label>' +
-      '<div class="actions"><button type="submit" class="btn btn--primary btn--full">' + e(T('Добавить')) + '</button></div>' +
+      '</div><div class="actions"><button type="submit" class="btn btn--primary btn--full">' + e(T(kind === 'income' ? 'Добавить доход' : 'Добавить расход')) + '</button></div>' +
       '</form>'
     );
   }

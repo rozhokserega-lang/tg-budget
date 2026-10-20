@@ -84,6 +84,9 @@
   }
 
   function openSheet(html) {
+    clearTimeout(sheetTimer);
+    resetSheetDrag();
+    el.sheet.classList.remove('sheet--closing');
     el.sheetBody.innerHTML = html;
     setQuickActionLayer(!!el.sheetBody.querySelector('.quick-actions'));
     el.sheet.hidden = false;
@@ -93,23 +96,109 @@
   var sheetTimer = null;
   function closeSheet() {
     clearTimeout(sheetTimer);
-    setQuickActionLayer(false);
     qaSwipe = null;
     qaMouse = null;
     qaMouseDragging = false;
     if (el.sheet.hidden) {
+      setQuickActionLayer(false);
       el.sheetBody.innerHTML = '';
     } else {
       // Плавное закрытие: панель уезжает вниз, фон гаснет (см. polish.css).
       el.sheet.classList.add('sheet--closing');
       sheetTimer = setTimeout(function () {
         el.sheet.hidden = true;
+        setQuickActionLayer(false);
         el.sheet.classList.remove('sheet--closing');
         el.sheetBody.innerHTML = '';
+        resetSheetDrag();
       }, 170);
     }
     syncBackButton();
   }
+
+  var sheetDrag = null;
+  var sheetSnapTimer = null;
+  var sheetClickUntil = 0;
+  function resetSheetDrag() {
+    clearTimeout(sheetSnapTimer);
+    sheetDrag = null;
+    var panel = el.sheet.querySelector('.sheet__panel');
+    panel.style.removeProperty('transform');
+    panel.style.removeProperty('transition');
+    panel.style.removeProperty('animation');
+    panel.style.removeProperty('--sheet-drag');
+    el.sheet.classList.remove('sheet--dragging');
+  }
+  function beginSheetDrag(target, x, y, id) {
+    var panel = target.closest('.sheet__panel');
+    if (!panel || el.sheet.hidden || el.sheet.classList.contains('sheet--closing')) return;
+    if (target.closest('input,select,textarea,a,[contenteditable]') || panel.scrollTop > 0) return;
+    resetSheetDrag();
+    sheetDrag = { panel: panel, x: x, y: y, id: id, distance: 0, active: false, at: performance.now() };
+  }
+  function moveSheetDrag(x, y, ev) {
+    if (!sheetDrag) return;
+    var dx = x - sheetDrag.x, dy = y - sheetDrag.y;
+    if (!sheetDrag.active) {
+      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) { sheetDrag = null; return; }
+      if (dy < -8 || sheetDrag.panel.scrollTop > 0) { sheetDrag = null; return; }
+      if (dy < 8 || dy < Math.abs(dx) * 1.2) return;
+      sheetDrag.active = true;
+      qaSwipe = null;
+      qaMouse = null;
+      qaMouseDragging = false;
+      sheetDrag.panel.style.animation = 'none';
+      sheetDrag.panel.style.transition = 'none';
+      el.sheet.classList.add('sheet--dragging');
+      if (sheetDrag.id != null) el.sheet.setPointerCapture(sheetDrag.id);
+    }
+    if (ev.cancelable) ev.preventDefault();
+    sheetDrag.distance = Math.max(0, dy);
+    sheetDrag.panel.style.setProperty('--sheet-drag', sheetDrag.distance + 'px');
+    sheetDrag.panel.style.transform = 'translateY(' + sheetDrag.distance + 'px)';
+  }
+  function endSheetDrag(cancelled) {
+    if (!sheetDrag) return;
+    var drag = sheetDrag;
+    sheetDrag = null;
+    if (!drag.active) return;
+    if (drag.id != null && el.sheet.hasPointerCapture(drag.id)) el.sheet.releasePointerCapture(drag.id);
+    el.sheet.classList.remove('sheet--dragging');
+    sheetClickUntil = Date.now() + 350;
+    var fast = drag.distance / Math.max(1, performance.now() - drag.at) > .55;
+    if (!cancelled && (drag.distance > Math.min(110, drag.panel.offsetHeight * .24) || (drag.distance > 35 && fast))) {
+      drag.panel.style.removeProperty('animation');
+      closeSheet();
+    } else {
+      drag.panel.style.transition = 'transform 220ms cubic-bezier(.22,1,.36,1)';
+      drag.panel.style.transform = 'translateY(0)';
+      sheetSnapTimer = setTimeout(resetSheetDrag, 220);
+    }
+  }
+  el.sheet.addEventListener('touchstart', function (ev) {
+    if (ev.touches.length === 1) beginSheetDrag(ev.target, ev.touches[0].clientX, ev.touches[0].clientY, null);
+  }, { passive: true });
+  el.sheet.addEventListener('touchmove', function (ev) {
+    if (ev.touches.length === 1) moveSheetDrag(ev.touches[0].clientX, ev.touches[0].clientY, ev);
+    else endSheetDrag(true);
+  }, { passive: false });
+  el.sheet.addEventListener('touchend', function () { endSheetDrag(false); });
+  el.sheet.addEventListener('touchcancel', function () { endSheetDrag(true); });
+  el.sheet.addEventListener('pointerdown', function (ev) {
+    if (ev.pointerType !== 'touch' && ev.button === 0) beginSheetDrag(ev.target, ev.clientX, ev.clientY, ev.pointerId);
+  });
+  document.addEventListener('pointermove', function (ev) {
+    if (ev.pointerType !== 'touch' && sheetDrag && sheetDrag.id === ev.pointerId) moveSheetDrag(ev.clientX, ev.clientY, ev);
+  });
+  document.addEventListener('pointerup', function (ev) {
+    if (ev.pointerType !== 'touch' && sheetDrag && sheetDrag.id === ev.pointerId) endSheetDrag(false);
+  });
+  document.addEventListener('pointercancel', function (ev) {
+    if (ev.pointerType !== 'touch' && sheetDrag && sheetDrag.id === ev.pointerId) endSheetDrag(true);
+  });
+  el.sheet.addEventListener('click', function (ev) {
+    if (Date.now() < sheetClickUntil) { ev.preventDefault(); ev.stopImmediatePropagation(); }
+  }, true);
 
   function setQuickActionLayer(active) {
     active = !!active;
@@ -463,20 +552,24 @@
     route = { name: 'add' };
     // Открытие из раздела: категория уже выбрана, поля формы начинаем с чистого листа.
     var preset = params && params.category_id;
+    var kind = params && (params.kind === 'income' || params.kind === 'expense') ? params.kind : (saved.kind || 'expense');
     form = {
-      category_id: preset || saved.category_id,
-      kind: preset ? (params.kind || 'expense') : (saved.kind || 'expense'),
+      category_id: preset || (kind === saved.kind ? saved.category_id : null),
+      kind: kind,
       amount: preset ? '' : saved.amount,
       note: preset ? '' : saved.note,
       date: preset ? Fmt.todayIso() : saved.date,
       is_shared: preset ? true : saved.is_shared,
     };
+    var seq = ++reqSeq;
     render(Views.skeletonList());
     loadCategories().then(function () {
+      if (seq !== reqSeq || route.name !== 'add') return;
       pendingFromCategory = preset || null;
       render(Views.renderForm(form));
       if (State.isExpired()) banner(T('Пробный период закончился — добавлять записи нельзя.'));
     }).catch(function (err) {
+      if (seq !== reqSeq || route.name !== 'add') return;
       fail(err);
     });
   }
@@ -1079,7 +1172,7 @@
     else if (tab === 'tx') openTx(null);
     else if (tab === 'plans') openPlans();
     else if (tab === 'add') {
-      if (el.sheet.classList.contains('sheet--quick-actions')) closeSheet();
+      if (el.sheet.classList.contains('sheet--quick-actions') && !el.sheet.classList.contains('sheet--closing')) closeSheet();
       else openQuickActions(0);
     }
     else if (tab === 'settings') openSettings();
@@ -1439,8 +1532,9 @@
     form.category_id = id;
     form.amount = formValues().amount;
     root.Tg.haptic('light');
-    el.screen.querySelectorAll('.cat-chip').forEach(function (c) { c.classList.remove('cat-chip--active'); });
+    el.screen.querySelectorAll('.cat-chip').forEach(function (c) { c.classList.remove('cat-chip--active'); c.setAttribute('aria-pressed', 'false'); });
     chip.classList.add('cat-chip--active');
+    chip.setAttribute('aria-pressed', 'true');
   }
 
   function pickKind(kind) {
