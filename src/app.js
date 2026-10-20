@@ -30,6 +30,13 @@
   var pendingAdds = {};
   // Раскрытая категория на сводке: { id, rows } или null.
   var expandedCat = null;
+  // Сетка/список категорий — выбор запоминается на устройстве.
+  var categoryView = 'grid';
+  try {
+    var savedCategoryView = root.localStorage.getItem('budget.categoryView');
+    if (savedCategoryView === 'grid' || savedCategoryView === 'list') categoryView = savedCategoryView;
+  } catch (e) {}
+  var quickActionsPage = 0;
   // Категория, из которой открыли форму: после сохранения вернёмся к ней.
   var pendingFromCategory = null;
 
@@ -37,8 +44,8 @@
   var TABS = [
     { id: 'summary', icon: ICON('<path d="M5 20v-7M12 20V5M19 20v-10"/>'), label: 'Сводка' },
     { id: 'tx', icon: ICON('<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>'), label: 'Траты' },
-    { id: 'plans', icon: ICON('<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>'), label: 'Планы' },
     { id: 'add', icon: ICON('<path d="M12 5v14M5 12h14"/>'), label: 'Добавить', primary: true },
+    { id: 'plans', icon: ICON('<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>'), label: 'Планы' },
     { id: 'settings', icon: ICON('<path d="M3 7h11M18 7h3M3 17h3M10 17h11"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>'), label: 'Ещё' },
   ];
   var plansTab = 'goals';
@@ -77,6 +84,7 @@
 
   function openSheet(html) {
     el.sheetBody.innerHTML = html;
+    setQuickActionLayer(!!el.sheetBody.querySelector('.quick-actions'));
     el.sheet.hidden = false;
     root.Tg.backButton(closeSheet);
   }
@@ -84,6 +92,7 @@
   var sheetTimer = null;
   function closeSheet() {
     clearTimeout(sheetTimer);
+    setQuickActionLayer(false);
     if (el.sheet.hidden) {
       el.sheetBody.innerHTML = '';
     } else {
@@ -96,6 +105,25 @@
       }, 170);
     }
     syncBackButton();
+  }
+
+  function setQuickActionLayer(active) {
+    active = !!active;
+    el.sheet.classList.toggle('sheet--quick-actions', active);
+    el.tabs.classList.toggle('tabs--quick-actions', active);
+    var addButton = el.tabs.querySelector('[data-tab="add"]');
+    if (!addButton) return;
+    var icon = addButton.querySelector('.tab__icon');
+    var label = addButton.querySelector('span:last-child');
+    if (icon) {
+      icon.innerHTML = active
+        ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>'
+        : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+    }
+    if (label) label.textContent = T(active ? 'Закрыть' : 'Добавить');
+    addButton.setAttribute('aria-label', T(active ? 'Закрыть меню быстрых действий' : 'Добавить'));
+    addButton.setAttribute('aria-expanded', active ? 'true' : 'false');
+    addButton.classList.toggle('tab--primary-open', active);
   }
 
   function hideLoader() {
@@ -327,7 +355,7 @@
     var month = st.month;
     loadSummary(month).then(function (s) {
       if (seq !== reqSeq) return;
-      render(Views.renderSummary(s, null, expandedCat));
+      render(Views.renderSummary(s, null, expandedCat, cached('txCache:' + month), categoryView));
       prefetchMonths(month);
       // Записи месяца нужны для подсчёта раскрытия: держим их в кэше заранее.
       loadTx(month).then(function () {
@@ -341,7 +369,7 @@
       // Планы подтягиваем вторым шагом, чтобы не задерживать сводку.
       loadPlans().then(function (plans) {
         if (seq === reqSeq && route.name === 'summary') {
-          render(Views.renderSummary(s, plans, expandedCat));
+          render(Views.renderSummary(s, plans, expandedCat, cached('txCache:' + month), categoryView));
           // banner() вставляет узел в DOM — повторный render() его стёр бы.
           if (State.isExpired()) banner(T('Пробный период закончился — новые записи недоступны.'));
         }
@@ -352,7 +380,7 @@
       // чтобы только что добавленная запись не исчезла.
       var cachedS = cached('summaryCache:' + month) || st.lastSummary;
       if (cachedS) {
-        render(Views.renderSummary(cachedS));
+        render(Views.renderSummary(cachedS, st.plans, null, cached('txCache:' + month), categoryView));
         banner(T('Нет связи с сервером — показываем сохранённое'));
         return;
       }
@@ -1043,8 +1071,67 @@
     if (tab === 'summary') openSummary();
     else if (tab === 'tx') openTx(null);
     else if (tab === 'plans') openPlans();
-    else if (tab === 'add') openAdd();
+    else if (tab === 'add') {
+      if (el.sheet.classList.contains('sheet--quick-actions')) closeSheet();
+      else openQuickActions(0);
+    }
     else if (tab === 'settings') openSettings();
+  }
+
+  function openQuickActions(page) {
+    quickActionsPage = Math.max(0, Math.min(1, Number(page) || 0));
+    openSheet(Views.renderQuickActions(quickActionsPage));
+  }
+
+  function runQuickAction(action) {
+    switch (action) {
+      case 'expense':
+        closeSheet();
+        openAdd({ kind: 'expense' });
+        break;
+      case 'income':
+        closeSheet();
+        openAdd({ kind: 'income' });
+        break;
+      case 'recurring-new':
+        loadCategories().then(function () {
+          if (el.sheet.classList.contains('sheet--quick-actions')) openPlanForm('recurring');
+        }).catch(fail);
+        break;
+      case 'goal-new':
+        openPlanForm('goals');
+        break;
+      case 'debt-new':
+        openPlanForm('debts');
+        break;
+      case 'wish-new':
+        loadPlans().then(function () {
+          if (el.sheet.classList.contains('sheet--quick-actions')) openPlanForm('wishes');
+        });
+        break;
+      case 'transactions':
+        closeSheet();
+        openTx(null);
+        break;
+      case 'plans':
+        closeSheet();
+        openPlans();
+        break;
+      case 'recurring-list':
+        closeSheet();
+        openPlans('recurring');
+        break;
+      case 'expense-category':
+        openCategoryForm(null, 'expense');
+        break;
+      case 'income-category':
+        openCategoryForm(null, 'income');
+        break;
+      case 'settings':
+        closeSheet();
+        openSettings();
+        break;
+    }
   }
 
   // Обложка главной карточки: хранится на устройстве, как валюта и язык.
@@ -1252,7 +1339,7 @@
     // чтобы заголовок категории оказался виден вместе с раскрытым списком.
     var hiddenAbove = btn ? Math.max(0, -btn.getBoundingClientRect().top + 8) : 0;
 
-    render(Views.renderSummary(s, st.plans, expandedCat));
+    render(Views.renderSummary(s, st.plans, expandedCat, cached('txCache:' + st.month), categoryView));
     if (State.isExpired()) banner(T('Пробный период закончился — новые записи недоступны.'));
     el.screen.scrollTop = Math.max(0, scroll - hiddenAbove);
   }
@@ -1307,6 +1394,17 @@
       case 'month-prev': changeMonth(-1); break;
       case 'month-next': changeMonth(1); break;
       case 'go-tx': openTx(null); break;
+      case 'toggle-category-view':
+        categoryView = actionBtn.getAttribute('data-view') === 'list' ? 'list' : 'grid';
+        try { root.localStorage.setItem('budget.categoryView', categoryView); } catch (e) {}
+        root.Tg.haptic('light');
+        renderSummaryFromCache();
+        break;
+      case 'quick-actions-page':
+        quickActionsPage = Math.max(0, Math.min(1, Number(actionBtn.getAttribute('data-page')) || 0));
+        openQuickActions(quickActionsPage);
+        break;
+      case 'quick-action': runQuickAction(actionBtn.getAttribute('data-quick')); break;
       case 'tx-clear-filter': clearTxFilter(); break;
       case 'tx-search-clear': clearTxSearch(); break;
 

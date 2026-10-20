@@ -287,11 +287,116 @@
       '</div>';
   }
 
+  function balanceTrendSvg(transactions, month) {
+    if (!Array.isArray(transactions)) return '';
+    var ym = String(month || Fmt.currentMonth()).slice(0, 7);
+    var parts = ym.split('-');
+    var year = Number(parts[0]);
+    var monthNumber = Number(parts[1]);
+    if (!year || monthNumber < 1 || monthNumber > 12) return '';
+
+    var monthDays = new Date(year, monthNumber, 0).getDate();
+    var daysToPlot = ym === Fmt.currentMonth()
+      ? Math.min(monthDays, Math.max(1, Number(Fmt.todayIso().slice(8, 10)) || monthDays))
+      : monthDays;
+    var dailyNet = [];
+    for (var i = 0; i < daysToPlot; i++) dailyNet.push(0);
+
+    transactions.forEach(function (t) {
+      var date = String(t.occurred_on || '').slice(0, 10);
+      if (date.slice(0, 7) !== ym) return;
+      var day = Number(date.slice(8, 10));
+      if (!day || day > daysToPlot) return;
+      var amount = Number(t.amount);
+      if (!isFinite(amount)) return;
+      var kind = t.categories && t.categories.kind;
+      if (kind === 'income') dailyNet[day - 1] += Math.abs(amount);
+      else if (kind === 'expense') dailyNet[day - 1] -= Math.abs(amount);
+    });
+
+    var running = 0;
+    var values = [0];
+    dailyNet.forEach(function (net) {
+      running += net;
+      values.push(running);
+    });
+
+    var low = values[0];
+    var high = values[0];
+    values.forEach(function (value) {
+      low = Math.min(low, value);
+      high = Math.max(high, value);
+    });
+    var spread = high - low;
+    var points = values.map(function (value, index) {
+      var x = index / (values.length - 1) * 360;
+      var y = spread > 0 ? 72 - (value - low) / spread * 52 : 46;
+      return { x: x.toFixed(2), y: y.toFixed(2) };
+    });
+    var line = points.map(function (point, index) {
+      return (index ? 'L' : 'M') + point.x + ' ' + point.y;
+    }).join(' ');
+    var fill = 'M' + points[0].x + ' 90 ' +
+      points.map(function (point) { return 'L' + point.x + ' ' + point.y; }).join(' ') +
+      ' L' + points[points.length - 1].x + ' 90 Z';
+
+    return '<svg class="hero__graph" viewBox="0 0 360 90" preserveAspectRatio="none" aria-hidden="true">' +
+      '<path class="hero__graph-fill" d="' + fill + '"/>' +
+      '<path class="hero__graph-line" d="' + line + '"/>' +
+      '</svg>';
+  }
+
+  function renderQuickActions(page) {
+    var actionPages = [
+      [
+        { id: 'expense', label: 'Расход', tone: 'green', icon: '<path d="M12 4v15m-6-6 6 6 6-6"/>' },
+        { id: 'income', label: 'Доход', tone: 'mint', icon: '<path d="M12 20V5m-6 6 6-6 6 6"/>' },
+        { id: 'recurring-new', label: 'Новый платёж', tone: 'amber', icon: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M12 14v4m-2-2h4"/>' },
+        { id: 'goal-new', label: 'Новая цель', tone: 'violet', icon: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="m15 9 5-5"/>' },
+        { id: 'debt-new', label: 'Новый долг', tone: 'blue', icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/>' },
+        { id: 'wish-new', label: 'Новое желание', tone: 'pink', icon: '<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>' },
+      ],
+      [
+        { id: 'transactions', label: 'Все траты', tone: 'blue', icon: '<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>' },
+        { id: 'plans', label: 'Планы', tone: 'violet', icon: '<path d="m3 17 6-6 4 4 8-8M15 7h6v6"/>' },
+        { id: 'recurring-list', label: 'Платежи', tone: 'amber', icon: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9a7 7 0 0 1 11.6-2L20 12M4 12l2.8 5a7 7 0 0 0 11.6-2"/>' },
+        { id: 'expense-category', label: 'Категория расхода', tone: 'green', icon: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' },
+        { id: 'income-category', label: 'Категория дохода', tone: 'mint', icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v10m-5-5h10"/>' },
+        { id: 'settings', label: 'Ещё', tone: 'pink', icon: '<path d="M4 7h10m4 0h2M4 17h2m4 0h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>' },
+      ],
+    ];
+    page = Math.max(0, Math.min(actionPages.length - 1, Number(page) || 0));
+    var actions = actionPages[page];
+    return '<div class="quick-actions">' +
+      '<div class="quick-actions__head">' +
+      '<div class="sheet__title">' + e(T('Быстрые действия')) + '</div>' +
+      '<button type="button" class="quick-actions__close" data-sheet-close aria-label="' + e(T('Закрыть')) + '">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>' +
+      '</div>' +
+      '<div class="quick-actions__grid">' + actions.map(function (a) {
+        return '<button type="button" class="quick-action" data-action="quick-action" data-quick="' + e(a.id) + '">' +
+          '<span class="quick-action__icon quick-action__icon--' + e(a.tone) + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + a.icon + '</svg></span>' +
+          '<span class="quick-action__label">' + e(T(a.label)) + '</span></button>';
+      }).join('') + '</div>' +
+      '<div class="quick-actions__pagination" role="tablist" aria-label="' + e(T('Страницы быстрых действий')) + '">' +
+      actionPages.map(function (_, index) {
+        var active = index === page;
+        return '<button type="button" class="quick-actions__dot' + (active ? ' quick-actions__dot--active' : '') +
+          '" data-action="quick-actions-page" data-page="' + index + '" role="tab" aria-selected="' + active +
+          '" aria-label="' + e(T('Страница {n}', { n: index + 1 })) + '"><span></span></button>';
+      }).join('') + '</div></div>';
+  }
+
   // expandedCat: { id, rows } — раскрытая категория и её записи за месяц.
-  function renderSummary(s, plans, expandedCat) {
+  function renderSummary(s, plans, expandedCat, transactions, categoryView) {
     var st = State.get();
     s = s || { income: 0, expense: 0, balance: 0, categories: [], members: [] };
     plans = plans || st.plans;
+    var viewMode = categoryView === 'list' ? 'list' : 'grid';
+    var viewLabel = viewMode === 'grid' ? T('Показать списком') : T('Показать сеткой');
+    var viewIcon = viewMode === 'grid'
+      ? '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>'
+      : '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>';
     var balance = Number(s.balance) || 0;
     var solo = State.isSolo();
     var partners = !solo && s.members && s.members.length
@@ -309,6 +414,7 @@
       monthNav(st.month) +
       '<div class="hero' + (cover ? ' hero--cover' + (cover.tone === 'light' ? ' hero--cover--light' : '') : '') + '"' +
       (cover ? ' style="background-image:url(\'' + e(cover.file) + '\')"' : '') + '>' +
+      balanceTrendSvg(transactions, st.month) +
       '<button type="button" class="hero__link" data-action="go-tx">' + e(T('Все траты →')) + '</button>' +
       '<div class="hero__label">' + e(T('Остаток за месяц')) + '</div>' +
       '<div class="hero__balance' + (balance < 0 ? ' hero__balance--negative' : '') + '">' + e(money(balance)) + '</div>' +
@@ -317,10 +423,14 @@
       '<div class="hero__item"><span class="hero__item-label">' + e(T('Расходы')) + '</span><span class="hero__item-value">' + e(money(s.expense)) + '</span></div>' +
       '</div>' +
       '</div>' +
+      '<div class="section categories-section"><div class="section__head categories-section__head"><span class="section__title">' + e(T('Категории')) + '</span>' +
+      '<button type="button" class="categories-view-toggle" data-action="toggle-category-view" data-view="' + (viewMode === 'grid' ? 'list' : 'grid') +
+      '" aria-label="' + e(viewLabel) + '" aria-pressed="' + (viewMode === 'list') + '" title="' + e(viewLabel) + '">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true">' + viewIcon + '</svg></button></div>' +
+      '<div class="card categories--' + viewMode + '">' + cats + '</div></div>' +
       forecastCard(s, plans) +
       plansTeaser(plans) +
-      (partners ? '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Между партнёрами')) + '</span></div>' + partners + '</div>' : '') +
-      '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Категории')) + '</span></div><div class="card">' + cats + '</div></div>'
+      (partners ? '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Между партнёрами')) + '</span></div>' + partners + '</div>' : '')
     );
   }
 
@@ -1243,6 +1353,7 @@
     skeletonList: skeletonList,
     categoryTxList: categoryTxList,
     renderSummary: renderSummary,
+    renderQuickActions: renderQuickActions,
     renderPlans: renderPlans,
     renderPlanForm: renderPlanForm,
     renderCategoryForm: renderCategoryForm,
