@@ -38,6 +38,8 @@
     bad_reminder_days: 'Укажите целое число от 0 до 30 для напоминания.',
     bad_goal: 'Выбранной цели нет в вашей семье.',
     not_found: 'Запись уже удалена или не найдена.',
+    bad_date: 'Укажите корректную календарную дату.',
+    update_unsupported: 'Редактирование расходов на сервере пока не подключено. Изменения не сохранены.',
   };
 
   function isDemo() {
@@ -76,8 +78,18 @@
     );
   }
 
+  // The real server update contract is not confirmed. Keep this adapter isolated
+  // until the backend explicitly supports the proposed update_tx payload.
+  function updateTx(payload) {
+    if (!isDemo()) return Promise.reject(new ApiError('update_unsupported'));
+    return call('update_tx', payload).catch(function (err) {
+      throw new ApiError(err.code || 'network', err.status, err.data);
+    });
+  }
+
   root.Api = {
     call: call,
+    updateTx: updateTx,
     ApiError: ApiError,
     isDemo: isDemo,
     url: apiUrl,
