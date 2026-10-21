@@ -28,6 +28,12 @@
   var dialogResolve = null;
   var catKind = 'expense';
   var pendingAdds = {};
+  var editingTx = null;
+  var editSaving = false;
+  var editGeneration = 0;
+  st.homeCategorySort = 'default';
+  st.homeShowEmpty = false;
+  try { if (root.localStorage.getItem('budget.homeCategorySort') === 'amount') st.homeCategorySort = 'amount'; } catch (e) {}
   // Раскрытая категория на сводке: { id, rows } или null.
   var expandedCat = null;
   // Сетка/список категорий — выбор запоминается на устройстве.
@@ -95,6 +101,7 @@
 
   var sheetTimer = null;
   function closeSheet() {
+    if (editingTx) return;
     clearTimeout(sheetTimer);
     qaSwipe = null;
     qaMouse = null;
@@ -130,6 +137,7 @@
     el.sheet.classList.remove('sheet--dragging');
   }
   function beginSheetDrag(target, x, y, id) {
+    if (editingTx) return;
     var panel = target.closest('.sheet__panel');
     if (!panel || el.sheet.hidden || el.sheet.classList.contains('sheet--closing')) return;
     if (target.closest('input,select,textarea,a,[contenteditable]') || panel.scrollTop > 0) return;
@@ -225,6 +233,7 @@
 
   // Системная «Назад» ведёт из формы добавления на сводку, из остальных мест — недоступна.
   function syncBackButton() {
+    if (editingTx) return root.Tg.backButton(function () {});
     if (route.name === 'add') return root.Tg.backButton(goHome);
     // Лимиты — подэкран настроек: «Назад» возвращает к ним.
     if (route.name === 'limits') return root.Tg.backButton(function () { openSettings('budget'); });
@@ -314,7 +323,7 @@
   function errorView(err) {
     var code = err && (err.code || err.message);
     if (code === 'no_household') {
-      st.member = null;
+      adoptMember(null);
       return false;
     }
     var opts = {
@@ -324,6 +333,7 @@
       retry: true,
     };
     if (code === 'unauthorized') {
+      adoptMember(null);
       opts = {
         icon: '🔒',
         title: T('Нужен доступ из бота'),
@@ -359,147 +369,186 @@
 
   // --- Данные ---
 
+  var resourceCache = BudgetCache.create();
+  var dataEpoch = 0;
+  var memberRequest = 0;
+  var lifecycleRequest = null;
+
+  function memberScope(member) {
+    return member ? String(member.id) + ':' + String(member.household_id || (member.households || {}).id || '') : 'anonymous';
+  }
+
+  function adoptMember(member) {
+    if (memberScope(st.member) !== memberScope(member)) {
+      memberRequest++;
+      clearCache();
+      st.categories = null;
+      st.plans = null;
+      st.txFilter = { category_id: null, member_id: null, q: '' };
+      pendingAdds = {};
+      deletingTx = {};
+      expandedCat = null;
+      editingTx = null;
+      editSaving = false;
+      editGeneration++;
+      el.screen.inert = false;
+      el.tabs.inert = false;
+      closeSheet();
+      reqSeq++;
+    }
+    resourceCache.setScope(memberScope(member));
+    st.member = member;
+  }
+
   function loadMember() {
+    var request = ++memberRequest;
     return Api.call('me').then(function (res) {
-      if (!res || !res.member) {
-        // Пустой ответ `{}` (me) значит, что пользователь ещё не в семье, а не ошибку сети.
-        st.member = null;
-        return null;
-      }
-      st.member = res.member;
-      st.promo = Array.isArray(res.promo) ? res.promo : [];
+      if (request !== memberRequest) throw obsoleteResponse();
+      adoptMember(res && res.member || null);
+      st.promo = res && Array.isArray(res.promo) ? res.promo : [];
       return st.member;
+    }).catch(function (err) { handleAccessFailure(err); throw err; });
+  }
+
+  function handleAccessFailure(err) {
+    if (err.code === 'unauthorized' || err.code === 'no_household') {
+      adoptMember(null);
+      fail(err);
+    }
+  }
+
+  function mutate(action, payload) {
+    var scope = memberScope(st.member);
+    return Api.call(action, payload).then(function (result) {
+      if (scope !== memberScope(st.member)) throw obsoleteResponse();
+      clearCache();
+      return result;
     });
   }
 
   // Планы подтягиваем лениво и мягко: сводка не должна падать из-за них.
+  function obsoleteResponse() {
+    var err = new Error('Obsolete response');
+    err.code = 'stale_response';
+    return err;
+  }
+
+  function loadResource(key, loader, force, commit) {
+    var epoch = dataEpoch;
+    return resourceCache.fetch(key, loader, { force: !!force }).then(function (data) {
+      if (epoch !== dataEpoch || resourceCache.read(key, true) !== data) throw obsoleteResponse();
+      if (commit) commit(data);
+      return data;
+    }).catch(function (err) { handleAccessFailure(err); throw err; });
+  }
+
   function loadPlans(force) {
-    if (!force && st.plans) return Promise.resolve(st.plans);
-    return Promise.all([
-      Api.call('list_plans'),
-      Api.call('list_recurring').catch(function () { return []; }),
-    ]).then(function (res) {
-      var p = res[0];
-      var rec = Array.isArray(res[1]) ? res[1] : [];
-      st.plans = {
-        goals: Array.isArray(p.goals) ? p.goals : [],
-        debts: Array.isArray(p.debts) ? p.debts : [],
-        wishes: Array.isArray(p.wishes) ? p.wishes : [],
-        recurring: rec,
-      };
-      return st.plans;
-    }).catch(function () {
-      return st.plans || { goals: [], debts: [], wishes: [], recurring: [] };
-    });
+    return loadResource('plans', function () {
+      return Promise.all([Api.call('list_plans'), Api.call('list_recurring')]).then(function (res) {
+        var p = res[0] || {};
+        return { goals: p.goals || [], debts: p.debts || [], wishes: p.wishes || [], recurring: res[1] || [] };
+      });
+    }, force, function (plans) { st.plans = plans; });
   }
 
-  function loadCategories() {
-    if (st.categories) return Promise.resolve(st.categories);
-    return Api.call('categories').then(function (list) {
+  function loadCategories(force) {
+    if (!force && st.categories) return Promise.resolve(st.categories);
+    return loadResource('categories', function () { return Api.call('categories'); }, force, function (list) {
       st.categories = Array.isArray(list) ? list : [];
-      return st.categories;
-    });
+    }).then(function () { return st.categories; });
   }
-
-  // Нет очереди — можно отдать кэш; иначе запрашиваем свежее (сервер уже учёл запись).
-  function fresh() {
-    return !(root.Queue && Queue.size());
-  }
-
-  // Кэш сводок на 5 минут: повторный листинг месяцев не ходит на сервер.
-  var CACHE_TTL = 5 * 60 * 1000;
 
   function clearCache() {
+    dataEpoch++;
+    resourceCache.invalidate();
     Object.keys(st).forEach(function (k) {
       if (k.indexOf('summaryCache:') === 0 || k.indexOf('txCache:') === 0) delete st[k];
     });
+    st.lastSummary = null;
   }
 
+  // Stale data remains renderable; TTL only governs ordinary network reads.
   function cached(key, value) {
-    if (value === undefined) {
-      var hit = st[key];
-      return hit && Date.now() - hit.at < CACHE_TTL ? hit.data : null;
-    }
+    if (value === undefined) return st[key] ? st[key].data : null;
+    resourceCache.write(key, value);
     st[key] = { data: value, at: Date.now() };
   }
 
-  // Получение и кэширование сводки месяца.
-  function fetchSummary(month) {
-    var hit = cached('summaryCache:' + month);
-    if (hit && fresh()) return Promise.resolve(hit);
-    return Api.call('summary', { month: month }).then(function (s) {
-      cached('summaryCache:' + month, s);
+  function fetchSummary(month, force) {
+    var key = 'summaryCache:' + month;
+    if (root.Queue && Queue.size() && cached(key)) return Promise.resolve(cached(key));
+    return loadResource(key, function () { return Api.call('summary', { month: month }); }, force, function (s) {
+      st[key] = { data: s, at: Date.now() };
+    });
+  }
+
+  function loadSummary(month, force) {
+    return fetchSummary(month, force).then(function (s) {
+      if (month === st.month && cached('summaryCache:' + month) === s) st.lastSummary = s;
       return s;
     });
   }
 
-  function loadSummary(month) {
-    return fetchSummary(month).then(function (s) {
-      st.lastSummary = s;
-      return s;
-    });
-  }
-
-  // Тихо подгружаем соседние месяцы, чтобы листание было мгновенным.
-  function prefetchMonths(month) {
-    ['-1', '1'].forEach(function (step) {
-      var next = Fmt.shiftMonth(month, Number(step));
-      if (next > Fmt.currentMonth()) return;
-      if (cached('summaryCache:' + next) || cached('txCache:' + next)) return;
-      Api.call('summary', { month: next }).then(function (s) { cached('summaryCache:' + next, s); }).catch(function () {});
-      Api.call('list_tx', { month: next }).then(function (list) { cached('txCache:' + next, list || []); }).catch(function () {});
-    });
-  }
-
-  function loadTx(month) {
-    var hit = cached('txCache:' + month);
-    if (hit && fresh()) return Promise.resolve(hit);
-    return Api.call('list_tx', { month: month }).then(function (list) {
-      var data = Array.isArray(list) ? list : [];
-      cached('txCache:' + month, data);
-      return data;
-    });
+  function loadTx(month, force) {
+    var key = 'txCache:' + month;
+    return loadResource(key, function () {
+      return Api.call('list_tx', { month: month }).then(function (list) {
+        var data = (Array.isArray(list) ? list : []).filter(function (t) { return !deletingTx[t.id]; });
+        Object.keys(pendingAdds).forEach(function (id) {
+          var tx = pendingAdds[id];
+          if (Fmt.sameMonth(tx.occurred_on, month) && !data.some(function (row) { return row.id === tx.id || row.id === tx._serverId; })) data.unshift(tx);
+        });
+        return data;
+      });
+    }, force, function (data) { st[key] = { data: data, at: Date.now() }; });
   }
 
   // --- Экраны ---
 
-  function openSummary() {
+  function openSummary(force) {
     route = { name: 'summary' };
-    render(Views.skeletonSummary());
     var seq = ++reqSeq;
     var month = st.month;
-    loadSummary(month).then(function (s) {
-      if (seq !== reqSeq) return;
-      render(Views.renderSummary(s, null, expandedCat, cached('txCache:' + month), categoryView));
-      prefetchMonths(month);
-      // Записи месяца нужны для подсчёта раскрытия: держим их в кэше заранее.
-      loadTx(month).then(function () {
-        if (seq === reqSeq && route.name === 'summary' && !expandedCat) {
-          renderSummaryFromCache();
-        }
-      }).catch(function () {});
-      // Категория была раскрыта (например, только что добавили запись) — догружаем её строки.
-      if (expandedCat && !expandedCat.rows) fillExpandedCat(s, expandedCat.id);
+    var previous = cached('summaryCache:' + month);
+    var lastPaint = null;
+    function current() { return seq === reqSeq && route.name === 'summary' && month === st.month; }
+    function paint() {
+      if (!current()) return;
+      var summary = cached('summaryCache:' + month);
+      if (!summary) return;
+      var snapshot = [summary, st.plans, expandedCat, cached('txCache:' + month)];
+      if (lastPaint && snapshot.every(function (value, index) { return value === lastPaint[index]; })) return;
+      lastPaint = snapshot;
+      st.lastSummary = summary;
+      render(Views.renderSummary(summary, st.plans, expandedCat, cached('txCache:' + month), categoryView));
       if (State.isExpired()) banner(T('Пробный период закончился — новые записи недоступны.'));
-      // Планы подтягиваем вторым шагом, чтобы не задерживать сводку.
-      loadPlans().then(function (plans) {
-        if (seq === reqSeq && route.name === 'summary') {
-          render(Views.renderSummary(s, plans, expandedCat, cached('txCache:' + month), categoryView));
-          // banner() вставляет узел в DOM — повторный render() его стёр бы.
-          if (State.isExpired()) banner(T('Пробный период закончился — новые записи недоступны.'));
-        }
+    }
+    if (previous) paint(); else render(Views.skeletonSummary());
+    // Parallel critical data; no speculative neighbouring-month requests.
+    var txRequest = loadTx(month, force);
+    var summaryRequest = loadSummary(month, force);
+    summaryRequest.then(function () {
+      if (!current()) return;
+      paint();
+      return txRequest.then(function (rows) {
+        if (!current()) return;
+        if (expandedCat) expandedCat = { id: expandedCat.id, rows: rows.filter(function (t) { return t.category_id === expandedCat.id; }) };
+        paint();
       });
     }).catch(function (err) {
-      if (seq !== reqSeq) return;
-      // Сеть недоступна: показываем кэш (если он есть) и плашку «нет связи»,
-      // чтобы только что добавленная запись не исчезла.
-      var cachedS = cached('summaryCache:' + month) || st.lastSummary;
-      if (cachedS) {
-        render(Views.renderSummary(cachedS, st.plans, null, cached('txCache:' + month), categoryView));
-        banner(T('Нет связи с сервером — показываем сохранённое'));
-        return;
-      }
-      fail(err);
+      if (!current() || err.code === 'stale_response') return;
+      if (cached('summaryCache:' + month)) { paint(); toast(T('Не удалось обновить — показываем сохранённое')); }
+      else fail(err);
+    });
+    // Attach immediately to avoid an unhandled rejection when summary is slower.
+    txRequest.catch(function (err) {
+      if (current() && err.code !== 'stale_response') toast(T('Не удалось обновить операции'));
+    });
+    Promise.allSettled([summaryRequest, txRequest]).then(function () {
+      if (!current()) return;
+      loadPlans(force).then(paint).catch(function (err) {
+        if (current() && err.code !== 'stale_response') toast(T('Не удалось обновить планы'));
+      });
     });
   }
 
@@ -520,25 +569,22 @@
 
   // categoryId — показать только записи этой категории (переход со сводки).
   // Любой явный переход сбрасывает поиск и фильтры участника.
-  function openTx(categoryId) {
+  function openTx(categoryId, force) {
     route = { name: 'tx' };
-    if (categoryId !== undefined) {
-      st.txFilter = { category_id: categoryId || null, member_id: null, q: '' };
-    }
-    if (st.txFilter) st.txFilter.member_id = null;
-    if (!st.txFilter || typeof st.txFilter !== 'object') {
-      st.txFilter = { category_id: null, member_id: null, q: '' };
-    }
-    render(Views.skeletonList());
+    if (categoryId !== undefined) st.txFilter = { category_id: categoryId || null, member_id: null, q: '' };
+    if (!st.txFilter) st.txFilter = { category_id: null, member_id: null, q: '' };
     var seq = ++reqSeq;
     var month = st.month;
-    loadTx(month).then(function (all) {
-      if (seq !== reqSeq) return;
-      render(Views.renderTxList(all || [], st.txFilter));
+    var previous = cached('txCache:' + month);
+    if (previous) render(Views.renderTxList(previous, st.txFilter)); else render(Views.skeletonList());
+    loadTx(month, force).then(function (all) {
+      if (seq !== reqSeq || route.name !== 'tx' || month !== st.month) return;
+      render(Views.renderTxList(all, st.txFilter));
       if (State.isExpired()) banner(T('Пробный период закончился — новые записи недоступны.'));
     }).catch(function (err) {
-      if (seq !== reqSeq) return;
-      fail(err);
+      if (seq !== reqSeq || err.code === 'stale_response') return;
+      if (cached('txCache:' + month)) toast(T('Не удалось обновить — показываем сохранённое'));
+      else fail(err);
     });
   }
 
@@ -653,15 +699,15 @@
   function openPlans(tab) {
     if (tab) plansTab = tab;
     route = { name: 'plans' };
-    render(Views.skeletonList());
+    if (st.plans) render(Views.renderPlans(st.plans, plansTab)); else render(Views.skeletonList());
     var seq = ++reqSeq;
     loadPlans(true).then(function (plans) {
       if (seq !== reqSeq) return;
       render(Views.renderPlans(plans, plansTab));
       if (State.isExpired()) banner(T('Пробный период закончился — изменения недоступны.'));
     }).catch(function (err) {
-      if (seq !== reqSeq) return;
-      fail(err);
+      if (seq !== reqSeq || err.code === 'stale_response') return;
+      if (st.plans) toast(T('Не удалось обновить — показываем сохранённое')); else fail(err);
     });
   }
 
@@ -677,6 +723,7 @@
   }
 
   function submitRecurring(formEl) {
+    var scope = memberScope(st.member);
     var id = formEl.getAttribute('data-id') || undefined;
     var v = formEl.elements;
     var amt = Fmt.parseAmount(v.amount.value);
@@ -717,6 +764,8 @@
     root.addEventListener('queue-sent', function onSent(ev) {
       if (ev.detail.id !== op.id) return;
       root.removeEventListener('queue-sent', onSent);
+      if (scope !== memberScope(st.member)) return;
+      clearCache();
       st.plans = null;
       if (route.name === 'plans') openPlans();
       else if (route.name === 'summary') openSummary();
@@ -724,6 +773,8 @@
     root.addEventListener('queue-failed', function onFailed(ev) {
       if (ev.detail.op.id !== op.id) return;
       root.removeEventListener('queue-failed', onFailed);
+      if (scope !== memberScope(st.member)) return;
+      clearCache();
       st.plans = null;
       root.Tg.haptic('error');
       toast(ev.detail.error && ev.detail.error.message || T('Не сохранилось'));
@@ -766,7 +817,7 @@
     if (!payload.name.trim()) return badInput(T('Введите название'), v.name);
 
     btn.disabled = true;
-    Api.call(action, payload).then(function () {
+    mutate(action, payload).then(function () {
       root.Tg.haptic('success');
       closeSheet();
       toast(T('Сохранено'));
@@ -789,7 +840,7 @@
   function planAction(action, id, amount, label) {
     if (State.isExpired()) return fail(new Api.ApiError('subscription_expired', 402));
     if (!(amount > 0) || isNaN(amount)) return toast(T('Введите сумму'));
-    Api.call(action, { id: id, amount: amount }).then(function () {
+    mutate(action, { id: id, amount: amount }).then(function () {
       root.Tg.haptic('success');
       toast(label);
       openPlans();
@@ -805,7 +856,7 @@
     var l = labels[kind];
     dialog(l[0], T('Удалить')).then(function (ok) {
       if (!ok) return;
-      Api.call(l[1], { id: id }).then(function () {
+      mutate(l[1], { id: id }).then(function () {
         root.Tg.haptic('success');
         toast(T('Удалено'));
         openPlans();
@@ -827,8 +878,8 @@
       if (route.name === 'settings') render(Views.renderSettings(route.section));
       Api.call('delete_my_account').then(function () {
         root.Tg.haptic('success');
+        adoptMember(null);
         State.reset();
-        st.member = null;
         st.plans = null;
         st.promo = [];
         st.tariffs = null;
@@ -970,6 +1021,7 @@
   }
 
   function submitCategory(formEl) {
+    var scope = memberScope(st.member);
     var id = formEl.getAttribute('data-id') || undefined;
     var v = formEl.elements;
     var raw = String(v.plan.value || '').trim();
@@ -1007,11 +1059,16 @@
     root.addEventListener('queue-sent', function onSent(ev) {
       if (ev.detail.id !== op.id) return;
       root.removeEventListener('queue-sent', onSent);
+      if (scope !== memberScope(st.member)) return;
+      clearCache();
       st.categories = null;   // подтянем реальные id с сервера
+      if (route.name === 'limits') openLimits();
+      else if (route.name === 'summary') openSummary();
     });
     root.addEventListener('queue-failed', function onFailed(ev) {
       if (ev.detail.op.id !== op.id) return;
       root.removeEventListener('queue-failed', onFailed);
+      if (scope !== memberScope(st.member)) return;
       var code = ev.detail.error && ev.detail.error.code;
       st.categories = null;      // перечитаем с сервера — локальная правка откатилась
       clearCache();
@@ -1019,13 +1076,14 @@
       if (code === 'category_exists') toast(T('Такая категория уже есть'));
       else toast(ev.detail.error && ev.detail.error.message || T('Не сохранилось'));
       if (route.name === 'limits') openLimits();
+      else if (route.name === 'summary') openSummary();
     });
   }
 
   function removeRecurring(id) {
     dialog(T('Удалить напоминание о платеже?'), T('Удалить')).then(function (ok) {
       if (!ok) return;
-      Api.call('delete_recurring', { id: id }).then(function () {
+      mutate('delete_recurring', { id: id }).then(function () {
         root.Tg.haptic('success');
         st.plans = null;
         toast(T('Удалено'));
@@ -1038,7 +1096,7 @@
     var msg = T('Удалить категорию? Траты этой категории останутся в истории, а категория скроется из списка.');
     dialog(msg, T('Удалить')).then(function (ok) {
       if (!ok) return;
-      Api.call('archive_category', { id: id }).then(function (res) {
+      mutate('archive_category', { id: id }).then(function (res) {
         root.Tg.haptic('success');
         st.categories = null;
         clearCache();
@@ -1167,6 +1225,7 @@
   }
 
   function openTab(tab) {
+    if (editingTx) return;
     if (!st.member) return;
     if (tab === 'summary') openSummary();
     else if (tab === 'tx') openTx(null);
@@ -1407,7 +1466,78 @@
 
   // --- Действия ---
 
+  function openEditTx(id) {
+    if (editingTx || State.isExpired()) return;
+    var tx = ((st['txCache:' + st.month] || {}).data || []).find(function (t) { return t.id === id; });
+    if (!tx || tx._local || !tx.categories || tx.categories.kind !== 'expense') return;
+    closeSwipes();
+    var seq = reqSeq;
+    loadCategories().then(function () {
+      if (seq !== reqSeq || editingTx) return;
+      editingTx = Object.assign({}, tx);
+      openSheet(Views.renderEditForm(tx));
+      el.screen.inert = true;
+      el.tabs.inert = true;
+      var input = el.sheetBody.querySelector('[name="amount"]');
+      if (input) input.focus();
+      syncBackButton();
+    }).catch(function (err) { toast(err.message || T('Не удалось загрузить категории')); });
+  }
+
+  function cancelEditTx() {
+    if (editSaving) return;
+    editingTx = null;
+    el.screen.inert = false;
+    el.tabs.inert = false;
+    closeSheet();
+  }
+
+  function submitEditTx(f) {
+    if (!editingTx || editSaving) return;
+    var scope = memberScope(st.member);
+    var original = editingTx;
+    var amount = Fmt.parseAmount(f.elements.amount.value);
+    var date = f.elements.occurred_on.value;
+    if (!(amount > 0) || !Number.isFinite(amount) || amount > 1e9) return toast(T('Введите сумму цифрами'));
+    if (!date || Fmt.isoDate(Fmt.parseDate(date)) !== date) return toast(T('Укажите корректную дату'));
+    var category = State.categoryById(f.elements.category_id.value);
+    if (!category && f.elements.category_id.value === editingTx.category_id) {
+      category = Object.assign({ id: editingTx.category_id }, editingTx.categories);
+    }
+    if (!category || category.kind !== 'expense') return toast(T('Выберите категорию'));
+    var payload = { id: editingTx.id, amount: amount, category_id: category.id,
+      note: f.elements.note.value.trim() || null, occurred_on: date, is_shared: editingTx.is_shared };
+    editSaving = true;
+    var request = ++editGeneration;
+    f.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+    Api.updateTx(payload).then(function (tx) {
+      if (request !== editGeneration || scope !== memberScope(st.member) || editingTx !== original) return;
+      if (!tx || tx.id !== payload.id) throw new Error(T('Сервер не подтвердил изменение'));
+      clearCache();
+      st.lastSummary = null;
+      expandedCat = null;
+      editingTx = null;
+      el.screen.inert = false;
+      el.tabs.inert = false;
+      closeSheet();
+      toast(T('Сохранено'));
+      root.Tg.haptic('success');
+      if (route.name === 'tx') openTx(); else openSummary();
+    }).catch(function (err) {
+      if (request !== editGeneration || scope !== memberScope(st.member) || editingTx !== original) return;
+      var error = f.querySelector('.edit-tx-error');
+      if (error) { error.textContent = err.message || T('Не удалось сохранить'); error.hidden = false; }
+      toast(err.message || T('Не удалось сохранить'));
+      root.Tg.haptic('error');
+    }).finally(function () {
+      if (request !== editGeneration) return;
+      editSaving = false;
+      f.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+    });
+  }
+
   function submitAdd(formEl) {
+    var scope = memberScope(st.member);
     var values = formValues();
     var amount = Fmt.parseAmount(values.amount);
     var btn = formEl.querySelector('[type="submit"]');
@@ -1449,6 +1579,7 @@
     root.addEventListener('queue-sent', function onSent(ev) {
       if (ev.detail.id !== op.id) return;
       root.removeEventListener('queue-sent', onSent);
+      if (scope !== memberScope(st.member)) return;
       delete pendingAdds[op.id];
       var tx = ev.detail.result;
       if (tx && tx.id) local._serverId = tx.id;
@@ -1461,6 +1592,7 @@
     root.addEventListener('queue-failed', function onFailed(ev) {
       if (ev.detail.op.id !== op.id) return;
       root.removeEventListener('queue-failed', onFailed);
+      if (scope !== memberScope(st.member)) return;
       delete pendingAdds[op.id];
       root.Tg.haptic('error');
       var code = ev.detail.error && ev.detail.error.code;
@@ -1492,8 +1624,9 @@
   }
 
   function deleteTx(id) {
+    var scope = memberScope(st.member);
     dialog(T('Удалить эту запись?'), T('Удалить')).then(function (ok) {
-      if (!ok) return;
+      if (!ok || scope !== memberScope(st.member)) return;
       // Оптимистично: убираем из кэшей сразу, сервер догонит.
       var removed = null;
       Object.keys(st).forEach(function (k) {
@@ -1508,17 +1641,21 @@
       toast(T('Удалено'));
       closeSwipes();
       if (route.name === 'tx') openTx();
-      else openSummary();
+      else openSummary(true);
 
       var op = Queue.push('delete_tx', { id: id });
       root.addEventListener('queue-sent', function onSent(ev) {
         if (ev.detail.id !== op.id) return;
         root.removeEventListener('queue-sent', onSent);
+        if (scope !== memberScope(st.member)) return;
         delete deletingTx[id];
+        clearCache();
+        if (route.name === 'tx') openTx(); else if (route.name === 'summary') openSummary();
       });
       root.addEventListener('queue-failed', function onFailed(ev) {
         if (ev.detail.op.id !== op.id) return;
         root.removeEventListener('queue-failed', onFailed);
+        if (scope !== memberScope(st.member)) return;
         delete deletingTx[id];
         root.Tg.haptic('error');
         toast(T('Не удалилось: {error}', { error: (ev.detail.error && ev.detail.error.message) || T('ошибка') }));
@@ -1702,7 +1839,7 @@
     duePayments[id] = true;
     button.disabled = true;
     button.setAttribute('aria-busy', 'true');
-    Api.call('pay_recurring', { id: id }).then(function () {
+    mutate('pay_recurring', { id: id }).then(function () {
       clearCache();
       st.lastSummary = null;
       root.Tg.haptic('success');
@@ -1748,6 +1885,15 @@
     if (action === 'toggle-cat' && scrolled) return;
 
     switch (action) {
+      case 'edit-tx': openEditTx(actionBtn.getAttribute('data-id')); break;
+      case 'cancel-edit-tx': cancelEditTx(); break;
+      case 'home-category-sort':
+        st.homeCategorySort = actionBtn.getAttribute('data-sort') === 'amount' ? 'amount' : 'default';
+        st.homeShowEmpty = false;
+        try { root.localStorage.setItem('budget.homeCategorySort', st.homeCategorySort); } catch (e) {}
+        renderSummaryFromCache();
+        break;
+      case 'home-empty-toggle': st.homeShowEmpty = !st.homeShowEmpty; renderSummaryFromCache(); break;
       case 'month-prev': changeMonth(-1); break;
       case 'month-next': changeMonth(1); break;
       case 'go-tx': openTx(null); break;
@@ -1864,6 +2010,7 @@
     ev.preventDefault();
     var kind = f.getAttribute('data-form');
     if (kind === 'add') submitAdd(f);
+    else if (kind === 'edit-tx') submitEditTx(f);
     else if (kind === 'plan') submitPlan(f);
     else if (kind === 'category') submitCategory(f);
     else if (kind === 'promo') redeemPromo(f.elements.code.value);
@@ -1904,9 +2051,20 @@
         clearCache();
         toast(T('Оплата записана'));
         var payOp = Queue.push('pay_recurring', { id: recId });
+        var payScope = memberScope(st.member);
+        root.addEventListener('queue-sent', function onSent(e2) {
+          if (e2.detail.id !== payOp.id) return;
+          root.removeEventListener('queue-sent', onSent);
+          if (payScope !== memberScope(st.member)) return;
+          clearCache();
+          st.plans = null;
+          if (route.name === 'plans') openPlans(); else if (route.name === 'summary') openSummary(); else if (route.name === 'tx') openTx();
+        });
         root.addEventListener('queue-failed', function onFailed(e2) {
           if (e2.detail.op.id !== payOp.id) return;
           root.removeEventListener('queue-failed', onFailed);
+          if (payScope !== memberScope(st.member)) return;
+          clearCache();
           root.Tg.haptic('error');
           toast(e2.detail.error && e2.detail.error.message || T('Не удалось записать'));
         });
@@ -2052,7 +2210,7 @@
 
     var buy = ev.target.closest('[data-wish-buy]');
     if (buy) {
-      Api.call('buy_wish', { id: id }).then(function () {
+      mutate('buy_wish', { id: id }).then(function () {
         root.Tg.haptic('success');
         toast(T('Отмечено купленным'));
         openPlans();
@@ -2075,8 +2233,7 @@
       tx.classList.remove('tx--open');
       var r = tx.querySelector('[data-tx-row]');
       if (r) r.style.transform = '';
-      var del = tx.querySelector('[data-tx-delete]');
-      if (del) del.tabIndex = -1;
+      tx.querySelectorAll('[data-tx-delete],.tx__edit-inline').forEach(function (b) { b.tabIndex = -1; });
     });
   }
 
@@ -2118,7 +2275,7 @@
     var row = ev.target.closest('.finance-operation [data-tx-row]');
     if (!row || !ev.isPrimary || ev.button !== 0) return;
     financeSwipe = { row: row, tx: row.closest('.tx'), id: ev.pointerId,
-      x: ev.clientX, y: ev.clientY, base: row.closest('.tx').classList.contains('tx--open') ? -88 : 0,
+      x: ev.clientX, y: ev.clientY, base: row.closest('.tx').classList.contains('tx--open') ? -txActionWidth(row.closest('.tx')) : 0,
       dx: 0, active: false };
   });
   el.screen.addEventListener('pointermove', function (ev) {
@@ -2136,7 +2293,7 @@
     }
     ev.preventDefault();
     gesture.dx = dx;
-    var position = Math.max(-88, Math.min(0, gesture.base + dx));
+    var position = Math.max(-txActionWidth(gesture.tx), Math.min(0, gesture.base + dx));
     gesture.row.style.transform = 'translateX(' + position + 'px)';
   });
   function finishFinanceSwipe(ev) {
@@ -2148,8 +2305,8 @@
     gesture.row.classList.remove('tx__row--dragging');
     gesture.tx.classList.remove('tx--dragging');
     gesture.tx.classList.toggle('tx--open', open);
-    gesture.row.style.transform = open ? 'translateX(-88px)' : '';
-    gesture.tx.querySelector('[data-tx-delete]').tabIndex = open ? 0 : -1;
+    gesture.row.style.transform = open ? 'translateX(-' + txActionWidth(gesture.tx) + 'px)' : '';
+    gesture.tx.querySelectorAll('[data-tx-delete],.tx__edit-inline').forEach(function (b) { b.tabIndex = open ? 0 : -1; });
     swipeClickUntil = Date.now() + 350;
     if (gesture.row.hasPointerCapture(ev.pointerId)) gesture.row.releasePointerCapture(ev.pointerId);
     if (open) root.Tg.haptic('light');
@@ -2162,15 +2319,15 @@
     }
   }, true);
   el.screen.addEventListener('keydown', function (ev) {
-    var row = ev.target.closest('.finance-operation [data-tx-row]');
-    if (!row) return;
-    var tx = row.closest('.tx');
-    if (ev.key === 'ArrowLeft') {
+    var tx = ev.target.closest('.finance-operation');
+    if (!tx) return;
+    var row = tx.querySelector('[data-tx-row]');
+    if (ev.key === 'ArrowLeft' && ev.target === row) {
       ev.preventDefault(); openTxRow(tx);
       var del = tx.querySelector('[data-tx-delete]');
       del.tabIndex = 0; del.focus();
     }
-    if (ev.key === 'ArrowRight' || ev.key === 'Escape') closeSwipes();
+    if (ev.key === 'ArrowRight' || ev.key === 'Escape') { ev.preventDefault(); closeSwipes(); row.focus(); }
   });
 
   // Долгое нажатие на строке — путь удаления для мыши (на таче — свайп).
@@ -2200,11 +2357,13 @@
   });
 
   // Открывает строку программно (без залипания в hover-состоянии мыши).
+  function txActionWidth(tx) { return tx.querySelector('.tx__edit-inline') ? 176 : 88; }
   function openTxRow(tx) {
     closeSwipes(tx);
     tx.classList.add('tx--open');
     var r = tx.querySelector('[data-tx-row]');
-    if (r) r.style.transform = 'translateX(-88px)';
+    if (r) r.style.transform = 'translateX(-' + txActionWidth(tx) + 'px)';
+    tx.querySelectorAll('[data-tx-delete],.tx__edit-inline').forEach(function (b) { b.tabIndex = 0; });
   }
 
   // Короткий тап по открытой строке закрывает её (долгий уже отработал).
@@ -2280,8 +2439,10 @@
   // Догрузка строк раскрытой категории. Обновляем только список внутри
   // открытой карточки — шапка и остальная сводка не пересоздаются.
   function fillExpandedCat(s, id) {
-    loadTx(st.month).then(function (all) {
-      if (!expandedCat || expandedCat.id !== id) return;
+    var month = st.month, seq = reqSeq, scope = memberScope(st.member);
+    function current() { return month === st.month && seq === reqSeq && scope === memberScope(st.member) && expandedCat && expandedCat.id === id; }
+    loadTx(month).then(function (all) {
+      if (!current()) return;
       var rows = (all || []).filter(function (t) { return t.category_id === id; });
       expandedCat = { id: id, rows: rows };
       var wrap = categoryWrap(id);
@@ -2293,8 +2454,8 @@
       if (sameCount && (rows.length > 0 || rowsEl.querySelector('.cat-tx__empty'))) return;
       rowsEl.innerHTML = Views.categoryTxList(rows, true);
       rowsEl.setAttribute('data-count', String(rows.length));
-    }).catch(function () {
-      if (!expandedCat || expandedCat.id !== id) return;
+    }).catch(function (err) {
+      if (!current() || err.code === 'stale_response') return;
       expandedCat = { id: id, rows: [] };
       var wrap = categoryWrap(id);
       var rowsEl = wrap && wrap.querySelector('.cat-tx__rows');
@@ -2309,6 +2470,25 @@
   root.AppState = {
     isDeleting: function (id) { return !!deletingTx[id]; },
   };
+
+  function refreshOnReturn() {
+    if (!st.member || lifecycleRequest) return lifecycleRequest;
+    var seq = reqSeq;
+    lifecycleRequest = loadMember().then(function (me) {
+      if (!me) { reqSeq++; return render(Views.renderOnboarding(onboarding)); }
+      if (editingTx || route.name === 'add') return;
+      if (seq !== reqSeq && route.name !== 'summary' && route.name !== 'tx') return;
+      if (route.name === 'summary') openSummary(true);
+      else if (route.name === 'tx') openTx(undefined, true);
+      else if (route.name === 'plans') openPlans();
+      // Categories may have changed on another device; refresh after critical loads start.
+      loadCategories(true).catch(function (err) { if (err.code !== 'stale_response') toast(T('Не удалось обновить категории')); });
+    }).catch(function (err) { if (err.code !== 'stale_response') toast(T('Не удалось обновить — показываем сохранённое')); })
+      .finally(function () { lifecycleRequest = null; });
+    return lifecycleRequest;
+  }
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') refreshOnReturn(); });
+  root.addEventListener('pageshow', function (ev) { if (ev.persisted) refreshOnReturn(); });
 
   // --- Старт ---
 
@@ -2325,7 +2505,7 @@
     }).then(function (me) {
       hideLoader();
       if (!me) render(Views.renderOnboarding(onboarding));
-      else openSummary();
+      else openSummary(true);
     }).catch(function (err) {
       hideLoader();
       fail(err);

@@ -184,6 +184,30 @@
       state.tx.push(tx);
       return tx;
     },
+    update_tx: function (p) {
+      var tx = state.tx.find(function (t) { return t.id === p.id; });
+      if (!tx) throw new Error('not_found');
+      var originalCategory = state.categories.find(function (c) { return c.id === tx.category_id; });
+      var next = Object.assign({}, tx);
+      ['amount', 'category_id', 'note', 'occurred_on', 'is_shared'].forEach(function (key) {
+        if (Object.prototype.hasOwnProperty.call(p, key)) next[key] = p[key];
+      });
+      var category = state.categories.find(function (c) { return c.id === next.category_id; });
+      if (!originalCategory || originalCategory.kind !== 'expense' || !category || category.kind !== 'expense' || category.archived) throw new Error('bad_category');
+      next.amount = Number(next.amount);
+      if (!Number.isFinite(next.amount) || next.amount <= 0) throw new Error('bad_amount');
+      var date = String(next.occurred_on || '');
+      var parsed = new Date(date + 'T12:00:00Z');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) throw new Error('bad_date');
+      next.note = next.note == null || next.note === '' ? null : String(next.note);
+      next.is_shared = !!next.is_shared;
+      Object.assign(tx, next);
+      var member = state.members.find(function (m) { return m.id === tx.member_id; });
+      return Object.assign({}, tx, {
+        categories: { name: category.name, icon: category.icon, kind: category.kind },
+        members: member ? { name: member.name } : null,
+      });
+    },
     delete_tx: function (p) {
       state.tx = state.tx.filter(function (t) { return t.id !== p.id; });
       return { ok: true };
