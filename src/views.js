@@ -180,6 +180,7 @@
       '<span class="cat-tx__date">' + e(Fmt.dayLabel(t.occurred_on)) + '</span>' +
       '<span class="cat-tx__note">' + (meta.length ? meta.join(' · ') : '—') + '</span>' +
       '<span class="amount ' + (isIncome ? 'amount--pos' : '') + '">' + e(Fmt.signedMoney(t.amount, isIncome)) + '</span>' +
+      (!isIncome && !t._local ? '<button type="button" class="tx-edit" data-action="edit-tx" data-id="' + e(t.id) + '" aria-label="' + e(T('Редактировать расход')) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m15 4 5 5M4 20l4-1L20 7a2 2 0 0 0-4-4L4 15z"/></svg></button>' : '') +
       '</div>';
   }
 
@@ -420,7 +421,7 @@
         { id: 'wish-new', label: 'Новое желание', tone: 'pink', icon: '<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>' },
       ],
       [
-        { id: 'transactions', label: 'Все траты', tone: 'blue', icon: '<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>' },
+        { id: 'transactions', label: 'Финансы', tone: 'blue', icon: '<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>' },
         { id: 'plans', label: 'Планы', tone: 'violet', icon: '<path d="m3 17 6-6 4 4 8-8M15 7h6v6"/>' },
         { id: 'recurring-list', label: 'Платежи', tone: 'amber', icon: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9a7 7 0 0 1 11.6-2L20 12M4 12l2.8 5a7 7 0 0 0 11.6-2"/>' },
         { id: 'expense-category', label: 'Категория расхода', tone: 'green', icon: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' },
@@ -470,11 +471,29 @@
       ? '<div class="card">' + s.members.map(partnerRow).join('') +
         '<div class="small muted mt-8">' + e(T('Как делим: {mode}', { mode: T(State.splitModeLabel()) })) + '</div></div>'
       : '';
-    var cats = s.categories && s.categories.length
-      ? s.categories.map(function (c, index) {
+    var categorySort = st.homeCategorySort === 'amount' ? 'amount' : 'default';
+    var originalCategories = s.categories || [];
+    var zeroCategories = originalCategories.filter(function (c) { return !(Number(c.fact) || 0); });
+    var visibleCategories = categorySort === 'amount'
+      ? originalCategories.map(function (c, index) { return { category: c, index: index }; })
+          .filter(function (item) { return st.homeShowEmpty || (Number(item.category.fact) || 0) !== 0; })
+          .sort(function (a, b) {
+            var av = Number(a.category.fact) || 0, bv = Number(b.category.fact) || 0;
+            return (av === 0) - (bv === 0) || bv - av || a.index - b.index;
+          })
+          .map(function (item) { return item.category; })
+      : originalCategories;
+    var cats = visibleCategories.length
+      ? visibleCategories.map(function (c, index) {
           return categoryRow(c, expandedCat && expandedCat.id === c.id ? expandedCat : null, index);
         }).join('')
-      : '<div class="empty">' + e(T('Категорий пока нет')) + '</div>';
+      : '<div class="empty">' + e(T(originalCategories.length ? 'Расходов за этот месяц нет' : 'Категорий пока нет')) + '</div>';
+    var sortControls = '<div class="home-category-sort" role="group" aria-label="' + e(T('Порядок категорий')) + '">' +
+      ['default', 'amount'].map(function (mode) {
+        return '<button type="button" class="btn btn--sm" data-action="home-category-sort" data-sort="' + mode + '" aria-pressed="' + (categorySort === mode) + '">' + e(T(mode === 'amount' ? 'По сумме' : 'По умолчанию')) + '</button>';
+      }).join('') + '</div>';
+    var emptyControl = categorySort === 'amount' && zeroCategories.length
+      ? '<button type="button" class="btn btn--sm home-empty-toggle" data-action="home-empty-toggle">' + e(T(st.homeShowEmpty ? 'Скрыть пустые категории' : 'Показать пустые категории')) + ' (' + zeroCategories.length + ')</button>' : '';
     var cover = root.Covers ? Covers.current() : null;
     return (
       dueBanner(plans) +
@@ -482,7 +501,7 @@
       '<div class="hero' + (cover ? ' hero--cover' + (cover.tone === 'light' ? ' hero--cover--light' : '') : '') + '"' +
       (cover ? ' style="background-image:url(\'' + e(cover.file) + '\')"' : '') + '>' +
       balanceTrendSvg(transactions, st.month) +
-      '<button type="button" class="hero__link" data-action="go-tx">' + e(T('Все траты →')) + '</button>' +
+      '<button type="button" class="hero__link" data-action="go-tx">' + e(T('Финансы →')) + '</button>' +
       '<div class="hero__label">' + e(T('Остаток за месяц')) + '</div>' +
       '<div class="hero__balance' + (balance < 0 ? ' hero__balance--negative' : '') + '">' + e(money(balance)) + '</div>' +
       '<div class="hero__row">' +
@@ -494,7 +513,7 @@
       '<button type="button" class="categories-view-toggle" data-action="toggle-category-view" data-view="' + (viewMode === 'grid' ? 'list' : 'grid') +
       '" aria-label="' + e(viewLabel) + '" aria-pressed="' + (viewMode === 'list') + '" title="' + e(viewLabel) + '">' +
       '<svg viewBox="0 0 24 24" aria-hidden="true">' + viewIcon + '</svg></button></div>' +
-      '<div class="card categories--' + viewMode + '">' + cats + '</div></div>' +
+      sortControls + '<div class="card categories--' + viewMode + '">' + cats + '</div>' + emptyControl + '</div>' +
       forecastCard(s, plans) +
       plansTeaser(plans) +
       (partners ? '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Между партнёрами')) + '</span></div>' + partners + '</div>' : '')
@@ -533,7 +552,12 @@
   function groupByDay(list) {
     var groups = [];
     var current = null;
-    list.forEach(function (t) {
+    list.map(function (t, index) { return { tx: t, index: index }; }).sort(function (a, b) {
+      var day = String(b.tx.occurred_on || '').slice(0, 10).localeCompare(String(a.tx.occurred_on || '').slice(0, 10));
+      var created = String(b.tx.created_at || '').localeCompare(String(a.tx.created_at || ''));
+      return day || created || a.index - b.index;
+    }).forEach(function (item) {
+      var t = item.tx;
       var day = String(t.occurred_on || '').slice(0, 10);
       if (!current || current.day !== day) {
         current = { day: day, items: [] };
@@ -660,7 +684,7 @@
   function renderTxList(all, filter) {
     var st = State.get();
     var pending = (root.Queue && Queue.size()) ? '<div class="sync-note">' + e(T('Изменения отправятся, когда появится связь')) + '</div>' : '';
-    return '<div class="finance-page"><div class="finance-heading"><h1>' + e(T('Траты')) + '</h1></div>' +
+    return '<div class="finance-page"><div class="finance-heading"><h1>' + e(T('Финансы')) + '</h1></div>' +
       monthNav(st.month) + pending + financeOverview(all) +
       '<div class="finance-ledger">' + txControls(all, filter) +
       '<h2 class="finance-history-title">' + e(T('История')) + '</h2>' +
@@ -672,12 +696,13 @@
     var income = c.kind === 'income';
     return '<div class="tx finance-operation" data-tx-id="' + e(t.id) + '"><div class="tx__row" data-tx-row tabindex="0" aria-label="' + e((t.note || c.name || '') + ' · ' + Fmt.signedMoney(t.amount, income)) + '">' +
       '<span class="cat__icon">' + categoryIcon(c) + '</span><div class="tx__body">' +
-      '<div class="tx__head"><span class="finance-operation__name">' + e(t.note || c.name || T('Без категории')) +
+      '<div class="tx__head"><span class="finance-operation__name">' + e(c.name || T('Без категории')) +
       (t._local ? '<span class="badge">' + e(T('отправляется')) + '</span>' : '') + '</span>' +
       '<span class="amount ' + (income ? 'amount--pos' : 'amount--neg') + '">' + e(Fmt.signedMoney(t.amount, income)) + '</span></div>' +
-      '<div class="finance-operation__meta"><button type="button" data-cat-link="' + e(t.category_id) + '">' + e(c.name || T('Без категории')) + '</button>' +
+      '<div class="finance-operation__meta"><span class="finance-operation__note">' + e(t.note || '') + '</span>' +
       '<span>' + e(Fmt.dayLabel(t.occurred_on)) + '</span></div></div>' +
-      '</div><button type="button" class="tx__delete-inline" tabindex="-1" data-tx-delete="' + e(t.id) + '">' +
+      '</div>' + (!income && !t._local ? '<button type="button" class="tx__edit-inline" tabindex="-1" data-action="edit-tx" data-id="' + e(t.id) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m15 4 5 5M4 20l4-1L20 7a2 2 0 0 0-4-4L4 15z"/></svg>' + e(T('Редактировать')) + '</button>' : '') +
+      '<button type="button" class="tx__delete-inline" tabindex="-1" data-tx-delete="' + e(t.id) + '">' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7"/></svg>' + e(T('Удалить')) + '</button></div>';
   }
 
@@ -722,6 +747,22 @@
   }
 
   // --- Форма добавления ---
+
+  function renderEditForm(tx) {
+    var categories = (State.get().categories || []).filter(function (c) { return c.kind === 'expense'; });
+    if (!categories.some(function (c) { return c.id === tx.category_id; }) && tx.categories) {
+      categories = categories.concat([Object.assign({}, tx.categories, { id: tx.category_id })]);
+    }
+    return '<form class="edit-tx-form" data-form="edit-tx" novalidate><h2>' + e(T('Редактировать расход')) + '</h2>' +
+      '<label class="field"><span class="field__label">' + e(T('Сумма расхода')) + '</span><input class="input" name="amount" inputmode="decimal" autocomplete="off" value="' + e(tx.amount) + '" required></label>' +
+      '<label class="field"><span class="field__label">' + e(T('Категория')) + '</span><select class="input" name="category_id">' + categories.map(function (c) {
+        return '<option value="' + e(c.id) + '"' + (c.id === tx.category_id ? ' selected' : '') + '>' + e(c.name) + '</option>';
+      }).join('') + '</select></label>' +
+      '<label class="field"><span class="field__label">' + e(T('Заметка')) + '</span><input class="input" name="note" maxlength="200" value="' + e(tx.note || '') + '"></label>' +
+      '<label class="field"><span class="field__label">' + e(T('Дата')) + '</span><input class="input" type="date" name="occurred_on" value="' + e(String(tx.occurred_on || '').slice(0, 10)) + '" required></label>' +
+      '<p class="edit-tx-error" role="alert" hidden></p><div class="actions"><button type="submit" class="btn btn--primary">' + e(T('Сохранить')) + '</button>' +
+      '<button type="button" class="btn" data-action="cancel-edit-tx">' + e(T('Отмена')) + '</button></div></form>';
+  }
 
   function renderForm(opts) {
     var st = State.get();
@@ -1334,6 +1375,7 @@
     renderTxList: renderTxList,
     txResults: txResults,
     renderForm: renderForm,
+    renderEditForm: renderEditForm,
     renderSettings: renderSettings,
     starsCard: starsCard,
     legalCard: legalCard,

@@ -71,7 +71,7 @@
 
   // «2026-10-17» → Date без сдвига часового пояса
   function parseDate(s) {
-    var d = typeof s === 'string' && /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : new Date().toISOString().slice(0, 10);
+    var d = typeof s === 'string' && /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : todayIso();
     var p = d.split('-');
     return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
   }
