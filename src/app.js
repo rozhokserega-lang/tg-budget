@@ -44,7 +44,7 @@
     if (savedCategoryView === 'grid' || savedCategoryView === 'list') categoryView = savedCategoryView;
   } catch (e) {}
   var quickActionsPage = 0;
-  var QUICK_PAGES = 2;
+  var QUICK_PAGES = 3;
   // Палец на странице быстрых действий: { x, y, dx, axis } или null.
   var qaSwipe = null;
   // Категория, из которой открыли форму: после сохранения вернёмся к ней.
@@ -627,7 +627,7 @@
       amount: preset ? '' : saved.amount,
       note: preset ? '' : saved.note,
       date: preset ? Fmt.todayIso() : saved.date,
-      is_shared: preset ? true : saved.is_shared,
+      is_shared: State.isSolo() ? false : (preset ? true : saved.is_shared),
       receipt: null,
     };
     var seq = ++reqSeq;
@@ -653,7 +653,7 @@
       date: f.elements.occurred_on ? f.elements.occurred_on.value : Fmt.todayIso(),
       kind: form.kind,
       category_id: form.category_id,
-      is_shared: shared ? shared.checked : true,
+      is_shared: State.isSolo() ? false : (shared ? shared.checked : true),
       receipt: form.receipt || null,
     };
   }
@@ -1561,6 +1561,11 @@
         closeSheet();
         openAdd({ kind: 'income' });
         break;
+      case 'receipt-photo':
+        closeSheet();
+        openAdd({ kind: 'expense' });
+        pickReceiptPhoto({ fromQuick: true });
+        break;
       case 'recurring-new':
         loadCategories().then(function () {
           if (el.sheet.classList.contains('sheet--quick-actions')) openPlanForm('recurring');
@@ -1724,7 +1729,7 @@
     }, 120);
   }
 
-  function pickReceiptPhoto() {
+  function pickReceiptPhoto(opts) {
     if (route.name !== 'add' || !root.ReceiptPhoto || !root.document) return;
     var scope = receiptScope();
     var input = root.document.createElement('input');
@@ -1760,7 +1765,12 @@
           : T('Не удалось открыть фото. Попробуйте другое.'));
       });
     });
-    input.addEventListener('cancel', cleanup);
+    input.addEventListener('cancel', function () {
+      cleanup();
+      // Из быстрого меню отмена выбора фото возвращает на главную, а не оставляет
+      // пользователя в пустой форме. В самой форме отмена просто закрывает выбор.
+      if (opts && opts.fromQuick && receiptStillRelevant(scope)) openSummary();
+    });
     (root.document.body || root.document.documentElement).appendChild(input);
     input.click();
   }
@@ -2235,6 +2245,10 @@
         root.Tg.haptic('light');
         openTxKind(actionBtn.getAttribute('data-kind'));
         break;
+      case 'go-add-kind':
+        root.Tg.haptic('light');
+        openAdd({ kind: actionBtn.getAttribute('data-kind') });
+        break;
       case 'tx-kind':
         root.Tg.haptic('light');
         setTxKind(actionBtn.getAttribute('data-kind'));
@@ -2315,6 +2329,11 @@
       case 'pick-cat': pickCategory(actionBtn.getAttribute('data-id'), actionBtn); break;
       case 'pick-kind': pickKind(actionBtn.getAttribute('data-kind')); break;
       case 'scan-receipt': scanReceipt(); break;
+      case 'scan-receipt-home':
+        root.Tg.haptic('light');
+        openAdd({ kind: 'expense' });
+        scanReceipt();
+        break;
       case 'pick-receipt-photo': pickReceiptPhoto(); break;
       case 'clear-receipt': form = formValues(); form.receipt = null; render(Views.renderForm(form)); break;
       case 'copy-invite':

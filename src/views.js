@@ -42,6 +42,11 @@
   }
   var money = Fmt.money;
 
+  var QR_ICON_PATHS = '<path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/><path d="M8 8h3v3H8zm5 5h3v3h-3z"/>';
+  var PHOTO_ICON_PATHS = '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="m21 15-5-5L5 21"/>';
+  var QR_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">' + QR_ICON_PATHS + '</svg>';
+  var PHOTO_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">' + PHOTO_ICON_PATHS + '</svg>';
+
   function initLetter(name) {
     var s = String(name || '').trim();
     return s ? e(s[0].toUpperCase()) : '?';
@@ -415,10 +420,10 @@
       [
         { id: 'expense', label: 'Расход', tone: 'red', icon: '<path d="M12 4v15m-6-6 6 6 6-6"/>' },
         { id: 'income', label: 'Доход', tone: 'mint', icon: '<path d="M12 20V5m-6 6 6-6 6 6"/>' },
+        { id: 'receipt-photo', label: 'Фото чека', tone: 'mint', icon: PHOTO_ICON_PATHS },
         { id: 'recurring-new', label: 'Новый платёж', tone: 'amber', icon: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M12 14v4m-2-2h4"/>' },
         { id: 'goal-new', label: 'Новая цель', tone: 'violet', icon: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="m15 9 5-5"/>' },
         { id: 'debt-new', label: 'Новый долг', tone: 'blue', icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/>' },
-        { id: 'wish-new', label: 'Новое желание', tone: 'pink', icon: '<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>' },
       ],
       [
         { id: 'transactions', label: 'Финансы', tone: 'blue', icon: '<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>' },
@@ -426,6 +431,9 @@
         { id: 'recurring-list', label: 'Платежи', tone: 'amber', icon: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9a7 7 0 0 1 11.6-2L20 12M4 12l2.8 5a7 7 0 0 0 11.6-2"/>' },
         { id: 'expense-category', label: 'Категория расхода', tone: 'green', icon: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' },
         { id: 'income-category', label: 'Категория дохода', tone: 'mint', icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v10m-5-5h10"/>' },
+        { id: 'wish-new', label: 'Новое желание', tone: 'pink', icon: '<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>' },
+      ],
+      [
         { id: 'settings', label: 'Ещё', tone: 'pink', icon: '<path d="M4 7h10m4 0h2M4 17h2m4 0h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>' },
       ],
     ];
@@ -505,10 +513,11 @@
       '<div class="hero__label">' + e(T('Остаток за месяц')) + '</div>' +
       '<div class="hero__balance' + (balance < 0 ? ' hero__balance--negative' : '') + '">' + e(money(balance)) + '</div>' +
       '<div class="hero__row">' +
-      '<button type="button" class="hero__item" data-action="go-tx-kind" data-kind="income"><span class="hero__item-label"><svg class="hero__direction hero__direction--income" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>' + e(T('Доходы')) + '</span><span class="hero__item-value">+' + e(money(s.income)) + '</span></button>' +
-      '<button type="button" class="hero__item" data-action="go-tx-kind" data-kind="expense"><span class="hero__item-label"><svg class="hero__direction hero__direction--expense" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>' + e(T('Расходы')) + '</span><span class="hero__item-value">−' + e(money(s.expense)) + '</span></button>' +
+      '<button type="button" class="hero__item" data-action="go-add-kind" data-kind="income"><span class="hero__item-label"><svg class="hero__direction hero__direction--income" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>' + e(T('Доходы')) + '</span><span class="hero__item-value">+' + e(money(s.income)) + '</span></button>' +
+      '<button type="button" class="hero__item" data-action="go-add-kind" data-kind="expense"><span class="hero__item-label"><svg class="hero__direction hero__direction--expense" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>' + e(T('Расходы')) + '</span><span class="hero__item-value">−' + e(money(s.expense)) + '</span></button>' +
       '</div>' +
       '</div>' +
+      '<button type="button" class="scan-btn scan-btn--primary home-scan" data-action="scan-receipt-home">' + QR_ICON + '<span>' + e(T('Сканировать чек')) + '</span></button>' +
       '<div class="section categories-section"><div class="section__head categories-section__head"><span class="section__title">' + e(T('Категории')) + '</span>' +
       '<button type="button" class="categories-view-toggle" data-action="toggle-category-view" data-view="' + (viewMode === 'grid' ? 'list' : 'grid') +
       '" aria-label="' + e(viewLabel) + '" aria-pressed="' + (viewMode === 'list') + '" title="' + e(viewLabel) + '">' +
@@ -778,7 +787,8 @@
     var note = opts.note || '';
     var date = opts.date || Fmt.todayIso();
     var kind = opts.kind || 'expense';
-    var isShared = opts.is_shared !== false;
+    var solo = State.isSolo();
+    var isShared = !solo && opts.is_shared !== false;
     var cid = opts.category_id || '';
     var list = (st.categories || []).filter(function (c) { return c.kind === kind; });
     var chips = list.length
@@ -800,11 +810,9 @@
       var tg = root.Tg;
       var canScan = !!(tg && ((typeof tg.canScanQr === 'function' && tg.canScanQr()) ||
         (typeof tg.isInsideTelegram === 'function' && !tg.isInsideTelegram())));
-      var qrIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/><path d="M8 8h3v3H8zm5 5h3v3h-3z"/></svg>';
-      var photoIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>';
       scanBlock = '<div class="scan-row">' +
-        (canScan ? '<button type="button" class="scan-btn scan-btn--primary" data-action="scan-receipt">' + qrIcon + '<span>' + e(T('Сканировать чек')) + '</span></button>' : '') +
-        '<button type="button" class="scan-btn" data-action="pick-receipt-photo">' + photoIcon + '<span>' + e(T('Распознать QR с фото')) + '</span></button>' +
+        (canScan ? '<button type="button" class="scan-btn scan-btn--primary" data-action="scan-receipt">' + QR_ICON + '<span>' + e(T('Сканировать чек')) + '</span></button>' : '') +
+        '<button type="button" class="scan-btn" data-action="pick-receipt-photo">' + PHOTO_ICON + '<span>' + e(T('Распознать QR с фото')) + '</span></button>' +
         '</div>';
     }
     return (
@@ -821,7 +829,7 @@
       '<div class="entry-section-heading"><h2>' + e(T('Детали')) + '</h2></div><div class="entry-details">' +
       '<label class="field"><span class="field__label">' + e(T('Заметка')) + '</span>' +
       '<input class="input" name="note" maxlength="200" autocomplete="off" placeholder="' + e(T('Например: пятерочка')) + '" value="' + e(note) + '"></label>' +
-      (kind === 'expense'
+      (kind === 'expense' && !solo
         ? '<label class="switch-row"><span class="switch-row__text"><span class="switch-row__title">' + e(T('Общий расход')) + '</span>' +
           '<span class="switch-row__hint">' + e(T('Делим между партнёрами')) + '</span></span>' +
           '<span class="switch"><input type="checkbox" name="is_shared"' + (isShared ? ' checked' : '') + '><span class="switch__track"></span></span></label>'

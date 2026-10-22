@@ -56,11 +56,35 @@ test('all-zero month has empty state and reveal; month sums determine new order'
   assert.deepEqual(renderedCategoryIds(home(ctx, [{ id: 'equal-b', fact: 90 }, { id: 'max', fact: 5 }])), ['equal-b', 'max']);
   assert.doesNotMatch(home(ctx, [{ id: 'only', fact: 10 }]), /data-action="home-empty-toggle"/);
 });
-test('home income and expense cards are buttons that open the matching finance filter', () => {
+test('home income and expense cards open the matching add form', () => {
   const ctx = setup();
   const html = home(ctx);
-  assert.match(html, /<button type="button" class="hero__item" data-action="go-tx-kind" data-kind="income">/);
-  assert.match(html, /<button type="button" class="hero__item" data-action="go-tx-kind" data-kind="expense">/);
+  assert.match(html, /<button type="button" class="hero__item" data-action="go-add-kind" data-kind="income">/);
+  assert.match(html, /<button type="button" class="hero__item" data-action="go-add-kind" data-kind="expense">/);
+});
+test('home has a receipt scanner shortcut and quick actions include photo receipt', () => {
+  const ctx = setup();
+  const html = home(ctx);
+  assert.match(html, /data-action="scan-receipt-home"/);
+  assert.match(html, /Сканировать чек/);
+  const quick = ctx.Views.renderQuickActions(0);
+  assert.match(quick, /data-quick="receipt-photo"/);
+  assert.match(quick, /Фото чека/);
+  const pages = quick.split('<div class="quick-actions__page"').slice(1);
+  assert.deepEqual(pages.map(page => (page.match(/data-quick=/g) || []).length), [6, 6, 1]);
+  assert.match(quick, /data-page="2"/);
+  assert.match(quick, /data-quick="settings"/);
+});
+test('solo expense form hides the shared-expense toggle', () => {
+  const ctx = setup();
+  ctx.State.get().member = { households: { mode: 'solo' } };
+  const solo = ctx.Views.renderForm({ kind: 'expense', is_shared: true });
+  assert.doesNotMatch(solo, /name="is_shared"/);
+  assert.doesNotMatch(solo, /Общий расход/);
+  ctx.State.get().member = { households: { mode: 'pair' } };
+  const pair = ctx.Views.renderForm({ kind: 'expense', is_shared: true });
+  assert.match(pair, /name="is_shared"/);
+  assert.match(pair, /Общий расход/);
 });
 test('finance groups newest days and creation times first without mutating input', () => {
   const ctx = setup();

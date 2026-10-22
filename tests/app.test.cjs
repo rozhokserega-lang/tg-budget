@@ -90,7 +90,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     addHomeScreen: addHomeScreen, refreshHomeScreenStatus: refreshHomeScreenStatus,
     markHomeScreenAdded: markHomeScreenAdded,
     getHomeScreenStatus: function () { return st.homeScreenStatus; },
-    submitAdd: submitAdd, deleteTx: deleteTx, removeLocalTx: removeLocalTx,
+    submitAdd: submitAdd, deleteTx: deleteTx, removeLocalTx: removeLocalTx, formValues: formValues,
     mutate: mutate, loadPlans: loadPlans, submitCategory: submitCategory, submitRecurring: submitRecurring,
     fillExpandedCat: fillExpandedCat,
     setExpandedForTest: function (value) { expandedCat = value; },
@@ -662,4 +662,21 @@ test('android shortcut fallback is cancelled by homeScreenAdded', () => {
   assert.equal(env.app.getHomeScreenStatus(), 'added');
   assert.equal(env.nodes.get('#dialog').hidden, true);
   assert.doesNotMatch(env.nodes.get('#dialog-text').textContent, /Откройте чат с ботом/);
+});
+
+test('solo add form forces is_shared false even without the toggle', () => {
+  const env = setup();
+  const formNode = fakeNode();
+  formNode.elements = {
+    amount: { value: '12' },
+    note: { value: '' },
+    occurred_on: { value: '2026-10-01' },
+  };
+  const screen = env.nodes.get('#screen');
+  screen.querySelector = selector => selector === '[data-form="add"]' ? formNode : null;
+  env.st.member = { id: 'me', name: 'Me', households: { mode: 'solo' } };
+  assert.equal(env.app.formValues().is_shared, false);
+  env.st.member = { id: 'me', name: 'Me', households: { mode: 'pair' } };
+  formNode.elements.is_shared = { checked: true };
+  assert.equal(env.app.formValues().is_shared, true);
 });

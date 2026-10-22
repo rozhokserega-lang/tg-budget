@@ -885,6 +885,7 @@ button.finance-stat:focus-visible { outline: 2px solid var(--stat-color); outlin
 .tab--active { transition: color .2s ease; }
 
 /* --- Сканер чека --- */
+.home-scan { width: 100%; margin-top: var(--gap); }
 .scan-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
