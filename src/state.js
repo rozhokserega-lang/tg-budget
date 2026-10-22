@@ -12,6 +12,7 @@
     deleting: false,
     month: Fmt.currentMonth(),
     txFilter: { kind: null, category_id: null, member_id: null, q: '' },
+    txChart: 'expense',
     summaryCache: {},
     txCache: {},
   };

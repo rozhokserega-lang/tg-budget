@@ -521,12 +521,29 @@ test('home income and expense cards open finance with a kind filter and switchin
   await settled();
   env.app.setTxKind('expense');
   assert.equal(env.st.txFilter.kind, 'expense');
+  assert.equal(env.st.txChart, 'expense');
   assert.match(env.nodes.get('#screen').innerHTML, /finance-stat--expense finance-stat--active/);
   env.app.setTxKind('');
   assert.equal(env.st.txFilter.kind, null);
+  assert.equal(env.st.txChart, 'balance');
+  assert.match(env.nodes.get('#screen').innerHTML, /finance-stat--balance finance-stat--active/);
   env.app.openTab('tx');
   await settled();
   assert.equal(env.st.txFilter.kind, null);
+});
+
+test('category drill-down sets the category filter and the matching chart mode', async () => {
+  const env = setup(undefined, { stubReload: false, api: () => Promise.resolve([env.tx]) });
+  env.st.member = { id: 'me', household_id: 'first' };
+  env.st.categories = [{ id: 'food', name: 'Food', kind: 'expense' }, { id: 'salary', name: 'Salary', kind: 'income' }];
+  env.app.openTx('food');
+  assert.equal(env.st.txFilter.category_id, 'food');
+  assert.equal(env.st.txChart, 'expense');
+  await settled();
+  env.app.openTx('salary');
+  assert.equal(env.st.txFilter.category_id, 'salary');
+  assert.equal(env.st.txChart, 'income');
+  await settled();
 });
 
 test('confirmed mutation supersedes a pending plans read before reloading plans', async () => {

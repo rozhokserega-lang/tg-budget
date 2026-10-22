@@ -326,6 +326,7 @@
       enterTimer = setTimeout(function () { el.screen.classList.remove('screen--in'); }, 900);
     }
     applyRouteUi();
+    pendingScrollTxFilter();
   }
 
   // Предупреждение сверху экрана (подписка и т. п.).
@@ -401,6 +402,7 @@
       st.categories = null;
       st.plans = null;
       st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
+      st.txChart = 'expense';
       pendingAdds = {};
       deletingTx = {};
       expandedCat = null;
@@ -585,27 +587,55 @@
 
   // categoryId — показать только записи этой категории (переход со сводки).
   // Любой явный переход сбрасывает поиск и фильтры участника.
-  function openTx(categoryId, force) {
+  function openTx(categoryId, force, scrollToFilter) {
     route = { name: 'tx' };
     if (categoryId !== undefined) st.txFilter = { kind: null, category_id: categoryId || null, member_id: null, q: '' };
     if (!st.txFilter) st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
+    if (st.txChart !== 'income' && st.txChart !== 'expense' && st.txChart !== 'balance') st.txChart = 'expense';
+    if (categoryId) {
+      var category = (st.categories || []).filter(function (c) { return c.id === categoryId; })[0];
+      if (!category && st.lastSummary) {
+        category = (st.lastSummary.categories || []).filter(function (c) { return c.id === categoryId; })[0];
+      }
+      if (category && category.kind === 'income') st.txChart = 'income';
+      else if (category) st.txChart = 'expense';
+    }
     var seq = ++reqSeq;
     var month = st.month;
     var previous = cached('txCache:' + month);
-    if (previous) render(Views.renderTxList(previous, st.txFilter)); else render(Views.skeletonList());
+    if (scrollToFilter) txFilterScrollPending = true;
+    if (previous) render(Views.renderTxList(previous, st.txFilter, st.txChart)); else render(Views.skeletonList());
+    pendingScrollTxFilter();
     loadTx(month, force).then(function (all) {
       if (seq !== reqSeq || route.name !== 'tx' || month !== st.month) return;
-      render(Views.renderTxList(all, st.txFilter));
+      render(Views.renderTxList(all, st.txFilter, st.txChart));
+      pendingScrollTxFilter();
       if (State.isExpired()) banner(T('Пробный период закончился — новые записи недоступны.'));
     }).catch(function (err) {
+      txFilterScrollPending = false;
       if (seq !== reqSeq || err.code === 'stale_response') return;
       if (cached('txCache:' + month)) toast(T('Не удалось обновить — показываем сохранённое'));
       else fail(err);
     });
   }
 
+  // Прокрутка к фильтру категории после перехода «Посмотреть все» с главной.
+  // Экран финансов может отрисоваться отложенно (анимация смены экрана),
+  // поэтому флаг сбрасывается только когда фильтр уже оказался в DOM.
+  var txFilterScrollPending = false;
+  function pendingScrollTxFilter() {
+    if (!txFilterScrollPending) return;
+    var node = el.screen.querySelector('.tx-filter');
+    if (!node) return;
+    txFilterScrollPending = false;
+    if (typeof node.scrollIntoView === 'function') {
+      node.scrollIntoView({ behavior: 'auto', block: 'start' });
+    }
+  }
+
   // Переход с главной по карточке доходов или расходов.
   function openTxKind(kind) {
+    st.txChart = kind === 'income' ? 'income' : 'expense';
     st.txFilter = { kind: kind === 'income' ? 'income' : 'expense', category_id: null, member_id: null, q: '' };
     openTx();
   }
@@ -1105,12 +1135,15 @@
     return next;
   }
 
-  // Переключение типа операций по карточкам на экране финансов.
+  // Переключение графика и типа операций по карточкам на экране финансов.
+  // Режим графика хранится отдельно: «Остаток» не фильтрует историю.
   function setTxKind(kind) {
     if (!st.txFilter) st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
-    st.txFilter.kind = kind === 'income' || kind === 'expense' ? kind : null;
+    var mode = kind === 'income' || kind === 'expense' ? kind : 'balance';
+    st.txChart = mode;
+    st.txFilter.kind = mode === 'balance' ? null : mode;
     if (route.name !== 'tx') return;
-    render(Views.renderTxList(cached('txCache:' + st.month) || [], st.txFilter));
+    render(Views.renderTxList(cached('txCache:' + st.month) || [], st.txFilter, st.txChart));
   }
 
   // Сброс фильтров: кнопка «Сбросить» в списке.
@@ -2353,7 +2386,7 @@
       case 'toggle-cat': toggleCategory(actionBtn.getAttribute('data-id')); break;
       case 'add-in-cat': openAdd({ category_id: actionBtn.getAttribute('data-id'), kind: 'expense' }); break;
       case 'open-cat-tx':
-        openTx(actionBtn.getAttribute('data-id'));
+        openTx(actionBtn.getAttribute('data-id'), undefined, true);
         break;
       case 'go-add': openAdd(); break;
       case 'refresh':
@@ -2903,7 +2936,7 @@
       // иначе каскад строк запустится повторно.
       var sameCount = rowsEl.getAttribute('data-count') === String(rows.length);
       if (sameCount && (rows.length > 0 || rowsEl.querySelector('.cat-tx__empty'))) return;
-      rowsEl.innerHTML = Views.categoryTxList(rows, true);
+      rowsEl.innerHTML = Views.categoryTxList(rows, true, id);
       rowsEl.setAttribute('data-count', String(rows.length));
     }).catch(function (err) {
       if (!current() || err.code === 'stale_response') return;

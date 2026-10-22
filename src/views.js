@@ -156,7 +156,7 @@
         : '<div class="cat__meta"><span>' + e(T('без лимита')) + '</span></div>') +
       '</button>' +
       '<div class="cat-tx"><div class="cat-tx__inner">' +
-      '<div class="cat-tx__rows" data-count="' + rows.length + '">' + categoryTxList(rows, open) + '</div>' +
+      '<div class="cat-tx__rows" data-count="' + rows.length + '">' + categoryTxList(rows, open, c.id) + '</div>' +
       '<button type="button" class="btn btn--sm btn--primary cat-tx__add" data-action="add-in-cat" data-id="' + e(c.id) + '">' +
       e(T('+ Добавить в «{name}»', { name: c.name })) + '</button>' +
       '</div></div>' +
@@ -166,10 +166,20 @@
 
   // Записи категории для раскрытого списка. Используется и при полной
   // перерисовке, и при точечном обновлении уже открытой категории.
-  function categoryTxList(rows, open) {
+  function categoryTxList(rows, open, categoryId) {
     rows = rows || [];
-    return rows.length
-      ? rows.slice(0, 50).map(function (t) { return categoryTxRow(t); }).join('')
+    var sorted = rows.map(function (t, index) { return { t: t, index: index }; }).sort(function (a, b) {
+      var day = String(b.t.occurred_on || '').slice(0, 10).localeCompare(String(a.t.occurred_on || '').slice(0, 10));
+      var created = String(b.t.created_at || '').localeCompare(String(a.t.created_at || ''));
+      return day || created || a.index - b.index;
+    }).map(function (item) { return item.t; });
+    var visible = sorted.slice(0, 5);
+    var id = categoryId || (rows[0] && rows[0].category_id) || '';
+    var all = rows.length > 5 && id
+      ? '<button type="button" class="btn btn--sm cat-tx__all" data-action="open-cat-tx" data-id="' + e(id) + '">' + e(T('Посмотреть все')) + ' →</button>'
+      : '';
+    return visible.length
+      ? visible.map(function (t) { return categoryTxRow(t); }).join('') + all
       : (open ? '<div class="cat-tx__empty">' + e(T('Записей за этот месяц нет')) + '</div>' : '');
   }
 
@@ -696,11 +706,11 @@
       }).join('');
   }
 
-  function renderTxList(all, filter) {
+  function renderTxList(all, filter, chartMode) {
     var st = State.get();
     var pending = (root.Queue && Queue.size()) ? '<div class="sync-note">' + e(T('Изменения отправятся, когда появится связь')) + '</div>' : '';
     return '<div class="finance-page"><div class="finance-heading"><h1>' + e(T('Финансы')) + '</h1></div>' +
-      monthNav(st.month) + pending + financeOverview(all, filter) +
+      monthNav(st.month) + pending + financeOverview(all, filter, chartMode) +
       '<div class="finance-ledger">' + txControls(all, filter) +
       '<h2 class="finance-history-title">' + e(T('История')) + '</h2>' +
       '<div id="tx-results">' + txResults(all, filter) + '</div></div></div>';
@@ -721,14 +731,19 @@
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7"/></svg>' + e(T('Удалить')) + '</button></div>';
   }
 
-  function financeOverview(all, filter) {
-    var income = 0, expense = 0, groups = {};
-    var activeKind = (filter && filter.kind) || '';
+  function financeOverview(all, filter, chartMode) {
+    var income = 0, expense = 0, incomeGroups = {}, expenseGroups = {};
+    // Режим графика не зависит от фильтра списка: «Остаток» показывает все
+    // операции, а «Доходы»/«Расходы» дополнительно фильтруют историю.
+    var mode = chartMode === 'income' || chartMode === 'expense' || chartMode === 'balance'
+      ? chartMode
+      : ((filter && (filter.kind === 'income' || filter.kind === 'expense')) ? filter.kind : 'expense');
     reconcileList(all || []).forEach(function (tx) {
       if (root.AppState && root.AppState.isDeleting(tx.id)) return;
       var amount = Number(tx.amount) || 0;
-      if (tx.categories && tx.categories.kind === 'income') { income += amount; return; }
-      expense += amount;
+      var isIncome = tx.categories && tx.categories.kind === 'income';
+      var groups = isIncome ? incomeGroups : expenseGroups;
+      if (isIncome) income += amount; else expense += amount;
       var key = tx.category_id || 'other';
       if (!groups[key]) groups[key] = { name: (tx.categories && tx.categories.name) || T('Прочее'), amount: 0 };
       groups[key].amount += amount;
@@ -738,31 +753,66 @@
       ['expense', T('Расходы'), '−' + money(expense), '<path d="m6 6 12 12M6 18h12V6"/>'],
       ['balance', T('Остаток'), money(income - expense), '<rect x="3" y="6" width="18" height="15" rx="3"/><path d="M3 10h18M16 14h5v4h-5zM6 6V3h12"/>'],
     ].map(function (item) {
-      var filterable = item[0] === 'income' || item[0] === 'expense';
-      var active = filterable && activeKind === item[0];
-      var tag = filterable ? 'button' : 'div';
-      var attrs = filterable ? ' type="button" data-action="tx-kind" data-kind="' + item[0] + '" aria-pressed="' + active + '"' : '';
-      return '<' + tag + attrs + ' class="finance-stat finance-stat--' + item[0] + (active ? ' finance-stat--active' : '') + '"><span class="finance-stat__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + item[3] +
-        '</svg></span><span class="finance-stat__label">' + e(item[1]) + '</span><strong>' + e(item[2]) + '</strong></' + tag + '>';
+      var active = mode === item[0];
+      return '<button type="button" data-action="tx-kind" data-kind="' + item[0] + '" aria-pressed="' + active + '" class="finance-stat finance-stat--' + item[0] + (active ? ' finance-stat--active' : '') + '"><span class="finance-stat__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + item[3] +
+        '</svg></span><span class="finance-stat__label">' + e(item[1]) + '</span><strong>' + e(item[2]) + '</strong></button>';
     }).join('');
-    var cats = Object.keys(groups).map(function (key) { return groups[key]; }).sort(function (a, b) { return b.amount - a.amount; });
-    if (cats.length > 5) cats = cats.slice(0, 4).concat([{ name: T('Прочее'), amount: cats.slice(4).reduce(function (sum, c) { return sum + c.amount; }, 0) }]);
-    var colors = ['#54ef9c', '#ff637c', '#7989ff', '#eb62e4', '#b984ff'];
+
+    function topCategories(groups) {
+      var list = Object.keys(groups).map(function (key) { return groups[key]; }).sort(function (a, b) { return b.amount - a.amount; });
+      if (list.length > 5) list = list.slice(0, 4).concat([{ name: T('Прочее'), amount: list.slice(4).reduce(function (sum, c) { return sum + c.amount; }, 0) }]);
+      return list;
+    }
+
+    var cats;
+    if (mode === 'balance') {
+      cats = [];
+      if (income > 0) cats.push({ name: T('Доходы'), amount: income, color: '#54ef9c' });
+      if (expense > 0) cats.push({ name: T('Расходы'), amount: expense, color: '#ff637c' });
+    } else {
+      cats = topCategories(mode === 'income' ? incomeGroups : expenseGroups);
+    }
+
+    var total = mode === 'income' ? income : mode === 'balance' ? income + expense : expense;
+    // Расходный график сохраняет прежнюю палитру; доходный — зелёно-голубую,
+    // чтобы доходные сегменты не выглядели как расходные.
+    var colors = mode === 'income'
+      ? ['#54ef9c', '#7fe3c1', '#6cb8ff', '#b8f27c', '#b984ff']
+      : ['#54ef9c', '#ff637c', '#7989ff', '#eb62e4', '#b984ff'];
     var offset = 0, circumference = 2 * Math.PI * 70;
-    var segments = cats.map(function (c, i) {
-      var length = expense ? c.amount / expense * circumference : 0;
+    var segments = total > 0 ? cats.map(function (c, i) {
+      var length = c.amount / total * circumference;
       var gap = Math.min(8, length * .2);
-      var segment = '<circle cx="100" cy="100" r="70" stroke="' + colors[i] + '" stroke-dasharray="' + Math.max(0, length - gap) + ' ' + (circumference - Math.max(0, length - gap)) + '" stroke-dashoffset="' + (-offset) + '"/>';
+      var segment = '<circle cx="100" cy="100" r="70" stroke="' + (c.color || colors[i]) + '" stroke-dasharray="' + Math.max(0, length - gap) + ' ' + (circumference - Math.max(0, length - gap)) + '" stroke-dashoffset="' + (-offset) + '"/>';
       offset += length;
       return segment;
-    }).join('');
-    var legend = cats.map(function (c, i) {
-      return '<div class="finance-legend__item" style="--segment:' + colors[i] + '"><span>' + e(c.name) + '</span><small>' + Math.round(c.amount / expense * 100) + '%</small></div>';
-    });
+    }).join('') : '';
+    var legend = total > 0 ? cats.map(function (c, i) {
+      return '<div class="finance-legend__item" style="--segment:' + (c.color || colors[i]) + '"><span>' + e(c.name) + '</span><small>' + Math.round(c.amount / total * 100) + '%</small></div>';
+    }) : [];
+    var centerValue, centerLabel, ariaLabel;
+    if (total <= 0) {
+      centerValue = money(0);
+      centerLabel = mode === 'income' ? T('Доходов за этот месяц нет')
+        : mode === 'expense' ? T('Расходов за этот месяц нет')
+        : T('Пока нет данных');
+    } else if (mode === 'income') {
+      centerValue = '+' + money(income);
+      centerLabel = T('Доходы за месяц');
+    } else if (mode === 'balance') {
+      centerValue = money(income - expense);
+      centerLabel = T('Остаток');
+    } else {
+      centerValue = '−' + money(expense);
+      centerLabel = T('Траты за месяц');
+    }
+    ariaLabel = mode === 'income' ? T('Доходы по категориям')
+      : mode === 'balance' ? T('Доходы и расходы')
+      : T('Расходы по категориям');
     return '<div class="finance-stats">' + cards + '</div><div class="finance-breakdown">' +
       '<div class="finance-legend finance-legend--left">' + legend.filter(function (_, i) { return i % 2 === 1; }).join('') + '</div>' +
-      '<div class="finance-ring"><svg viewBox="0 0 200 200" role="img" aria-label="' + e(T('Расходы по категориям')) + '"><circle class="finance-ring__track" cx="100" cy="100" r="70"/><g transform="rotate(-90 100 100)">' + segments + '</g></svg>' +
-      '<div class="finance-ring__center"><strong>' + e('−' + money(expense)) + '</strong><span>' + e(T('Траты за месяц')) + '</span></div></div>' +
+      '<div class="finance-ring"><svg viewBox="0 0 200 200" role="img" aria-label="' + e(ariaLabel) + '"><circle class="finance-ring__track" cx="100" cy="100" r="70"/><g transform="rotate(-90 100 100)">' + segments + '</g></svg>' +
+      '<div class="finance-ring__center"><strong>' + e(centerValue) + '</strong><span>' + e(centerLabel) + '</span></div></div>' +
       '<div class="finance-legend finance-legend--right">' + legend.filter(function (_, i) { return i % 2 === 0; }).join('') + '</div></div>';
   }
 

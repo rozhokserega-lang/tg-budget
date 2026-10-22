@@ -137,18 +137,66 @@ test('finance filters by operation kind and highlights the matching overview car
   assert.doesNotMatch(expenses, /data-tx-id="income"/);
   assert.match(expenses, /Расходы · Найдено: 1/);
 });
-test('home edits and deletes confirmed expenses and does not sort or group their operations', () => {
+test('finance chart switches income, expense and balance independently of the list filter', () => {
+  const ctx = setup();
+  const rows = [
+    tx('salary', '2025-01-05', '', { category_id: 'salary', categories: { name: 'Salary', kind: 'income' }, amount: 100 }),
+    tx('gift', '2025-01-04', '', { category_id: 'gift', categories: { name: 'Gift', kind: 'income' }, amount: 50 }),
+    tx('food', '2025-01-03', '', { category_id: 'food', categories: { name: 'Food', kind: 'expense' }, amount: 20 }),
+    tx('taxi', '2025-01-02', '', { category_id: 'taxi', categories: { name: 'Taxi', kind: 'expense' }, amount: 10 }),
+  ];
+  const income = ctx.Views.renderTxList(rows, { kind: null }, 'income');
+  assert.match(income, /data-kind="income" aria-pressed="true"/);
+  assert.match(income, /Доходы за месяц/);
+  assert.match(income, /\+150/);
+  assert.match(income, /Salary/);
+  assert.match(income, /Gift/);
+  assert.match(income, /Salary<\/span><small>67%<\/small>/);
+  assert.match(income, /Gift<\/span><small>33%<\/small>/);
+
+  const balance = ctx.Views.renderTxList(rows, { kind: null }, 'balance');
+  assert.match(balance, /data-kind="balance" aria-pressed="true"/);
+  assert.match(balance, /data-tx-id="salary"/);
+  assert.match(balance, /data-tx-id="food"/);
+  assert.match(balance, /Доходы<\/span><small>83%<\/small>/);
+  assert.match(balance, /Расходы<\/span><small>17%<\/small>/);
+  assert.match(balance, /Остаток/);
+
+  const expense = ctx.Views.renderTxList(rows, { kind: null }, 'expense');
+  assert.match(expense, /data-kind="expense" aria-pressed="true"/);
+  assert.match(expense, /Траты за месяц/);
+  assert.match(expense, /Food/);
+  assert.match(expense, /Taxi/);
+  assert.match(expense, /Food<\/span><small>67%<\/small>/);
+
+  const empty = ctx.Views.renderTxList([], {}, 'balance');
+  assert.match(empty, /Пока нет данных/);
+  assert.doesNotMatch(empty, /NaN/);
+});
+test('home shows the latest confirmed expenses first and keeps edit/delete', () => {
   const ctx = setup();
   const rows = [tx('older', '2025-01-01', ''), tx('newer', '2025-01-03', '')];
-  const html = ctx.Views.categoryTxList(rows, true);
-  assert.ok(html.indexOf('data-id="older"') < html.indexOf('data-id="newer"'));
+  const html = ctx.Views.categoryTxList(rows, true, 'food');
+  assert.ok(html.indexOf('data-id="newer"') < html.indexOf('data-id="older"'));
   assert.doesNotMatch(html, /tx-group/);
   assert.match(html, /data-action="edit-tx" data-id="older"/);
   assert.match(html, /data-tx-delete="older"/);
-  const income = ctx.Views.categoryTxList([tx('i', '2025-01-01', '', { categories: { kind: 'income' } })], true);
+  const income = ctx.Views.categoryTxList([tx('i', '2025-01-01', '', { categories: { kind: 'income' } })], true, 'salary');
   assert.doesNotMatch(income, /edit-tx|data-tx-delete/);
-  const local = ctx.Views.categoryTxList([tx('local', '2025-01-01', '', { _local: true })], true);
+  const local = ctx.Views.categoryTxList([tx('local', '2025-01-01', '', { _local: true })], true, 'food');
   assert.doesNotMatch(local, /edit-tx|data-tx-delete/);
+});
+
+test('home category shows five latest expenses and view all only when there are more', () => {
+  const ctx = setup();
+  const rows = Array.from({ length: 7 }, (_, i) => tx('id' + i, '2025-01-0' + (i + 1), '2025-01-0' + (i + 1) + 'T10:00:00Z'));
+  const html = ctx.Views.categoryTxList(rows, true, 'food');
+  assert.equal((html.match(/class="cat-tx__row"/g) || []).length, 5);
+  assert.match(html, /data-action="open-cat-tx" data-id="food"/);
+  assert.match(html, /Посмотреть все/);
+  assert.ok(html.indexOf('note-id6') < html.indexOf('note-id5'));
+  assert.ok(html.indexOf('note-id5') < html.indexOf('note-id4'));
+  assert.doesNotMatch(ctx.Views.categoryTxList(rows.slice(0, 5), true, 'food'), /Посмотреть все/);
 });
 test('shared edit form preserves values, escapes user text and offers explicit save/cancel only', () => {
   const ctx = setup();
