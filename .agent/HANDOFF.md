@@ -22,3 +22,11 @@ D: styles/finance.css (плавная SVG mask 96×40, background до нижн�
 E: все 60 тестов проходят (node --test tests/*.test.cjs), syntax всех src/*.js и version script, diff --check пройдены. Build 25ed82430ba2, 16 versioned assets. Нет package.json/сборщика/линтера. Review исправил инвалидацию остальных мутаций, гонку раскрытия месяца, old edit finally, keyboard Escape на кнопках и сброс данных при auth failure. Browser дополнительно: add 123 → confirmed totals → delete → запись отсутствует; sorting/show empty; plans navigation; console errors []. Полный auth проверен mocked fetch, live API/реальные устройства не тестировались.
 
 Коммиты реализации: 4d9d0b2 (API/demo), 7146102 (UI/SWR/tests). Пользовательский план остаётся untracked и не включён. git push отклонён auto-review: sensitive egress private repository на remote без достаточно явного разрешения публикации. PR не создан; не пытаться обходить запрет. После разрешения: push origin feature/expenses-ux-performance, PR в main, attach_artifact, обновить эту точку.
+
+## Сканер чеков (2026-10-22)
+
+Ветка `receipt-scanner` от `01d5ea6`, коммит `633c2c5` (клиент/тесты, без merge/push). Добавлены `src/receipt.js` (разбор QR ФНС), `src/receipt-store.js` (локальные ключи в разрезе member:household), `src/receipt-photo.js` (BarcodeDetector → jsQR, ограниченные попытки), `src/vendor/jsqr.js` + Apache-2.0 license, RU/EN/ES строки, кнопки сканера/чип чека, CSS, demo duplicate/bad_receipt,queue terminal-коды и тесты.
+
+Проверено: 71/71 тестов, syntax всех изменённых JS, `git diff --check`; browser demo на 127.0.0.1:8123 — сумма/дата из QR, дубль, удаление очищает store, повторное добавление, фото-QR через jsQR. Build `c5fd38addff1`; 19 assets. Реальный Telegram/камера и задеплоенный API не проверялись.
+
+Серверные изменения (ignored каталог `supabase/`): `functions/api/receipt.ts`, `functions/api/index.ts` (`add_tx`: server-side `fn:i:fp`, `bad_receipt`, `duplicate_receipt`, вставка `receipt_key` только при наличии ключа), `migrations/20261022090000_receipt_key.sql` (колонка + partial unique index). Rollout: миграция → deploy api → проверка → `SEND_RECEIPT_KEY = true` в `src/app.js` → version-assets → тесты. Не включать ignored `supabase/` в git без решения пользователя.
