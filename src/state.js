@@ -39,9 +39,10 @@
     return !!(h && h.mode === 'solo');
   }
 
-  function splitModeLabel() {
-    var mode = state.member && state.member.households && state.member.households.split_mode;
-    var label = mode === 'equal' ? 'Поровну' : 'Пропорционально доходу';
+  function splitModeLabel(mode) {
+    var value = mode || (state.member && state.member.households &&
+      (state.member.households.month_split_mode || state.member.households.split_mode));
+    var label = value === 'none' ? 'Не делить' : value === 'equal' ? 'Поровну' : 'Пропорционально доходу';
     return root.I18n ? root.I18n.t(label) : label;
   }
 

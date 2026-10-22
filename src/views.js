@@ -467,9 +467,9 @@
       : '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>';
     var balance = Number(s.balance) || 0;
     var solo = State.isSolo();
-    var partners = !solo && s.members && s.members.length
+    var partners = !solo && s.split_mode !== 'none' && s.members && s.members.length
       ? '<div class="card">' + s.members.map(partnerRow).join('') +
-        '<div class="small muted mt-8">' + e(T('Как делим: {mode}', { mode: T(State.splitModeLabel()) })) + '</div></div>'
+        '<div class="small muted mt-8">' + e(T('Как делим: {mode}', { mode: T(State.splitModeLabel(s.split_mode)) })) + '</div></div>'
       : '';
     var categorySort = st.homeCategorySort === 'amount' ? 'amount' : 'default';
     var originalCategories = s.categories || [];
@@ -1319,19 +1319,32 @@
         }).join('') + '</div></div>';
     }
     var content = '';
-    if (section === 'family') content = '<div class="card family-details">' +
-      '<div class="settings-row"><span class="settings-row__label">' + e(T('Семья')) + '</span><span class="settings-row__value">' + e(h.name || '—') + '</span></div>' +
-      '<div class="settings-row"><span class="settings-row__label">' + e(T('Вы')) + '</span><span class="settings-row__value">' + e(m ? m.name : '—') + '</span></div>' +
-      '<div class="settings-row"><span class="settings-row__label">' + e(T('Деление общих трат')) + '</span><span class="settings-row__value">' + e(State.splitModeLabel()) + '</span></div>' +
-      '</div>' +
-      (State.isSolo()
-        ? '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Режим')) + '</span></div>' +
-          '<div class="card"><p class="small muted">' + e(T('Личный бюджет: партнёр не подключён, расчёт между участниками не показывается.')) + '</p></div></div>'
-        : '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Приглашение')) + '</span></div>' +
-          '<div class="card"><p class="small muted">' + e(T('Передайте код партнёру — в приложении он выберет «Подключиться» и введёт его.')) + '</p>' +
-          '<div class="invite"><span class="invite__code">' + e(h.invite_code || '—') + '</span>' +
-          '<button type="button" class="btn btn--sm btn--primary" data-action="copy-invite">' + e(T('Копировать')) + '</button></div>' +
-          '</div></div>');
+    if (section === 'family') {
+      var effectiveSplit = h.month_split_mode || h.split_mode || 'proportional';
+      var splitSegment = function (mode, label) {
+        var active = effectiveSplit === mode;
+        return '<button type="button" class="segment' + (active ? ' segment--active' : '') +
+          '" data-action="split-mode" data-mode="' + e(mode) + '" aria-pressed="' + active + '">' + e(T(label)) + '</button>';
+      };
+      var splitSection = State.isSolo() ? '' :
+        '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Деление общих трат')) + '</span></div>' +
+        '<div class="card"><div class="segments">' + splitSegment('proportional', 'По доходу') + splitSegment('equal', 'Поровну') + splitSegment('none', 'Не делить') + '</div>' +
+        '<p class="small muted">' + e(T('Действует с текущего месяца и на будущие. Прошлые месяцы не меняются.')) + '</p></div></div>';
+      content = '<div class="card family-details">' +
+        '<div class="settings-row"><span class="settings-row__label">' + e(T('Семья')) + '</span><span class="settings-row__value">' + e(h.name || '—') + '</span></div>' +
+        '<div class="settings-row"><span class="settings-row__label">' + e(T('Вы')) + '</span><span class="settings-row__value">' + e(m ? m.name : '—') + '</span></div>' +
+        '<div class="settings-row"><span class="settings-row__label">' + e(T('Деление общих трат')) + '</span><span class="settings-row__value">' + e(State.splitModeLabel(effectiveSplit)) + '</span></div>' +
+        '</div>' +
+        splitSection +
+        (State.isSolo()
+          ? '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Режим')) + '</span></div>' +
+            '<div class="card"><p class="small muted">' + e(T('Личный бюджет: партнёр не подключён, расчёт между участниками не показывается.')) + '</p></div></div>'
+          : '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Приглашение')) + '</span></div>' +
+            '<div class="card"><p class="small muted">' + e(T('Передайте код партнёру — в приложении он выберет «Подключиться» и введёт его.')) + '</p>' +
+            '<div class="invite"><span class="invite__code">' + e(h.invite_code || '—') + '</span>' +
+            '<button type="button" class="btn btn--sm btn--primary" data-action="copy-invite">' + e(T('Копировать')) + '</button></div>' +
+            '</div></div>');
+    }
     if (section === 'budget') content = limitsCard();
     if (section === 'appearance') content = coverCard() + languageCard() + currencyCard();
     if (section === 'notifications') content = notificationsCard(notif);

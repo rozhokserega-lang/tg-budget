@@ -178,3 +178,50 @@ test('profile shows the home screen shortcut only when Telegram reports support'
   assert.match(added, /Ярлык уже добавлен/);
   assert.match(added, /aria-disabled="true"/);
 });
+
+test('family settings switches the split from the current month and hides it in solo mode', () => {
+  const ctx = setup();
+  ctx.State.get().member = {
+    id: 'm1', name: 'Аня',
+    households: { id: 'h1', name: 'Наша семья', mode: 'pair', split_mode: 'proportional', month_split_mode: 'proportional', invite_code: 'demo1234' },
+  };
+
+  const proportional = ctx.Views.renderSettings('family');
+  assert.match(proportional, /data-action="split-mode" data-mode="proportional"/);
+  assert.match(proportional, /data-action="split-mode" data-mode="equal"/);
+  assert.match(proportional, /data-action="split-mode" data-mode="none"/);
+  assert.match(proportional, /class="segment segment--active" data-action="split-mode" data-mode="proportional"/);
+  assert.match(proportional, /Действует с текущего месяца и на будущие\. Прошлые месяцы не меняются\./);
+  assert.match(proportional, /Деление общих трат/);
+
+  ctx.State.get().member.households.month_split_mode = 'equal';
+  const equal = ctx.Views.renderSettings('family');
+  assert.match(equal, /class="segment segment--active" data-action="split-mode" data-mode="equal"/);
+
+  ctx.State.get().member.households.month_split_mode = 'none';
+  const none = ctx.Views.renderSettings('family');
+  assert.match(none, /class="segment segment--active" data-action="split-mode" data-mode="none"/);
+  assert.match(none, /settings-row__value">Не делить</);
+
+  ctx.State.get().member.households.mode = 'solo';
+  assert.doesNotMatch(ctx.Views.renderSettings('family'), /data-action="split-mode"/);
+});
+
+test('summary split label follows the month payload, not the household default', () => {
+  const ctx = setup();
+  const members = [{ id: 'm1', name: 'Аня', paid_shared: 100, share: 50, balance: 50 }];
+  const equal = ctx.Views.renderSummary({ income: 0, expense: 0, balance: 0, split_mode: 'equal', categories: [], members }, null, null, [], 'list');
+  assert.match(equal, /Как делим: Поровну/);
+  const proportional = ctx.Views.renderSummary({ income: 0, expense: 0, balance: 0, split_mode: 'proportional', categories: [], members }, null, null, [], 'list');
+  assert.match(proportional, /Как делим: Пропорционально доходу/);
+});
+
+test('none split hides the partner settlement entirely', () => {
+  const ctx = setup();
+  const members = [{ id: 'm1', name: 'Аня', paid_shared: 100, share: 0, balance: 0 }];
+  const html = ctx.Views.renderSummary({ income: 200, expense: 100, balance: 100, split_mode: 'none', categories: [], members }, null, null, [], 'list');
+  assert.doesNotMatch(html, /Между партнёрами/);
+  assert.doesNotMatch(html, /class="partner"/);
+  assert.doesNotMatch(html, /Как делим:/);
+  assert.match(html, /Остаток за месяц/);
+});

@@ -1325,6 +1325,33 @@
     });
   }
 
+  // --- Деление общих трат ---
+
+  // Переключатель в профиле меняет режим с текущего месяца и на будущие.
+  // Прошлые месяцы сохраняют прежний режим: более позднее изменение на них не влияет.
+  function setSplitMode(mode) {
+    if (!st.member || !st.member.households) return;
+    if (mode !== 'equal' && mode !== 'proportional' && mode !== 'none') return;
+    var month = Fmt.currentMonth();
+    var current = st.member.households.month_split_mode || st.member.households.split_mode || 'proportional';
+    if (current === mode) return;
+    st.member.households = Object.assign({}, st.member.households, { month_split_mode: mode });
+    if (route.name === 'settings') render(Views.renderSettings(route.section));
+    mutate('set_split_mode', { month: month, mode: mode }).then(function (res) {
+      if (res && res.split_mode) {
+        st.member.households = Object.assign({}, st.member.households, { month_split_mode: res.split_mode });
+      }
+      root.Tg.haptic('success');
+      toast(T('Способ деления сохранён'));
+      if (route.name === 'settings') render(Views.renderSettings(route.section));
+    }).catch(function (err) {
+      st.member.households = Object.assign({}, st.member.households, { month_split_mode: current });
+      root.Tg.haptic('error');
+      toast(err.message || T('Не удалось сохранить'));
+      if (route.name === 'settings') render(Views.renderSettings(route.section));
+    });
+  }
+
   // --- Промокод ---
 
   function redeemPromo(code) {
@@ -2256,6 +2283,7 @@
       case 'add-cat': openCategoryForm(null, actionBtn.getAttribute('data-kind')); break;
       case 'go-limits': openLimits(); break;
       case 'pick-cover': setCover(actionBtn.getAttribute('data-cover')); break;
+      case 'split-mode': setSplitMode(actionBtn.getAttribute('data-mode')); break;
       case 'cat-kind':
         catKind = actionBtn.getAttribute('data-kind');
         el.sheetBody.querySelectorAll('[data-action="cat-kind"]').forEach(function (b) {
