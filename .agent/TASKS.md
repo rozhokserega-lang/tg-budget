@@ -8,4 +8,5 @@
 - [x] E локально: review, 60/60 тестов, syntax/diff check, browser регрессии, версии ресурсов и коммиты.
 - [ ] E публикация: push/PR без merge — auto-review требует явное разрешение пользователя на публикацию в origin.
 - [x] Сканер чеков: клиент, локальная защита от дублей, фото-QR, серверный код, тесты; 71/71, browser smoke, коммит 633c2c5.
-- [ ] Rollout сканера: миграция receipt_key → deploy api → проверка add_tx → SEND_RECEIPT_KEY=true; реальные Telegram/устройства.
+- [x] Rollout сканера: миграция receipt_key применена, api v13 задеплоена с verify_jwt=false, SEND_RECEIPT_KEY=true, Build `bf5a153a7543`.
+- [ ] Проверка сканера в реальном Telegram: обычное добавление, чек, повторный дубль, камера/фото; затем push/merge по разрешению.

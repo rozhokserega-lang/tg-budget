@@ -1469,8 +1469,8 @@
   // --- Действия ---
 
   // --- Сканер чека: QR кассового чека подставляет сумму, дату и тип операции ---
-  // Включать после деплоя supabase/functions/api/receipt.ts и миграции receipt_key.
-  var SEND_RECEIPT_KEY = false;
+  // Сервер принимает ключ чека после миграции receipt_key и деплоя supabase/functions/api/receipt.ts.
+  var SEND_RECEIPT_KEY = true;
 
   function demoQr() {
     var day = Fmt.todayIso().replace(/-/g, '');
