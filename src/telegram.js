@@ -18,6 +18,7 @@
   };
   var tg = null;
   var backHandler = null;
+  var homeScreenAddedHandlers = [];
 
   function applyTheme() {
     if (!tg) return;
@@ -36,6 +37,10 @@
     if (!m) return false;
     var n = parseInt(m[1], 16);
     return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) < 128;
+  }
+
+  function currentSdk() {
+    return (root.Telegram && root.Telegram.WebApp) || tg;
   }
 
   function waitForSdk() {
@@ -61,6 +66,11 @@
       tg.onEvent('themeChanged', applyTheme);
       tg.onEvent('backButtonClicked', function () {
         if (backHandler) backHandler();
+      });
+      tg.onEvent('homeScreenAdded', function () {
+        homeScreenAddedHandlers.slice().forEach(function (fn) {
+          try { fn(); } catch (e) {}
+        });
       });
     } catch (e) {}
     document.documentElement.classList.add('tg-miniapp');
@@ -153,6 +163,47 @@
     }
   }
 
+  // Ярлык на главном экране: Bot API 8.0+, только мобильные клиенты.
+  // Вне Telegram и на десктопе методы есть, но checkHomeScreenStatus вернёт unsupported.
+  function canAddToHomeScreen() {
+    var s = currentSdk();
+    return !!(s && typeof s.addToHomeScreen === 'function' &&
+      typeof s.checkHomeScreenStatus === 'function' &&
+      (!s.isVersionAtLeast || s.isVersionAtLeast('8.0')));
+  }
+
+  function checkHomeScreenStatus(cb) {
+    if (!canAddToHomeScreen()) {
+      if (typeof cb === 'function') cb('unsupported');
+      return false;
+    }
+    try {
+      currentSdk().checkHomeScreenStatus(function (status) {
+        if (typeof cb === 'function') cb(status);
+      });
+      return true;
+    } catch (e) {
+      if (typeof cb === 'function') cb('unsupported');
+      return false;
+    }
+  }
+
+  function addToHomeScreen() {
+    if (!canAddToHomeScreen()) return false;
+    try {
+      currentSdk().addToHomeScreen();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Событие homeScreenAdded может не прийти на устройствах, где нельзя
+  // определить статус установки, поэтому UI перепроверяет статус при открытии.
+  function onHomeScreenAdded(handler) {
+    if (typeof handler === 'function') homeScreenAddedHandlers.push(handler);
+  }
+
   // Сканер QR: нативное окно Telegram (Bot API 6.4+). onResult(text) вернёт true — окно закроется.
   function canScanQr() {
     var s = (root.Telegram && root.Telegram.WebApp) || tg;
@@ -182,6 +233,10 @@
   }
 
   root.Tg = {
+    canAddToHomeScreen: canAddToHomeScreen,
+    checkHomeScreenStatus: checkHomeScreenStatus,
+    addToHomeScreen: addToHomeScreen,
+    onHomeScreenAdded: onHomeScreenAdded,
     canScanQr: canScanQr,
     scanQr: scanQr,
     init: init,

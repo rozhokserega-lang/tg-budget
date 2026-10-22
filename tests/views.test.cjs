@@ -149,3 +149,27 @@ test('add form shows photo QR scanning and a removable receipt chip', () => {
   assert.match(withReceipt, /data-action="clear-receipt"/);
   assert.doesNotMatch(withReceipt, /data-action="pick-receipt-photo"/);
 });
+
+test('profile shows the home screen shortcut only when Telegram reports support', () => {
+  const ctx = setup();
+  assert.doesNotMatch(ctx.Views.renderSettings(), /data-action="add-home-screen"/);
+
+  ctx.State.get().homeScreenStatus = 'unsupported';
+  assert.doesNotMatch(ctx.Views.renderSettings(), /data-action="add-home-screen"/);
+
+  ctx.State.get().homeScreenStatus = 'missed';
+  const missed = ctx.Views.renderSettings();
+  assert.match(missed, /data-action="add-home-screen"/);
+  assert.match(missed, /Добавить на главный экран/);
+  assert.match(missed, /Открывайте бюджет в один тап/);
+  assert.doesNotMatch(missed, /aria-disabled="true"/);
+
+  ctx.State.get().homeScreenStatus = 'unknown';
+  assert.match(ctx.Views.renderSettings(), /data-action="add-home-screen"/);
+
+  ctx.State.get().homeScreenStatus = 'added';
+  const added = ctx.Views.renderSettings();
+  assert.match(added, /Приложение на главном экране/);
+  assert.match(added, /Ярлык уже добавлен/);
+  assert.match(added, /aria-disabled="true"/);
+});

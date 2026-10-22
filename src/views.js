@@ -1270,6 +1270,19 @@
       '</div></div>';
   }
 
+  // Ярлык Telegram Mini App на главном экране. Строку показываем только когда
+  // клиент подтвердил поддержку; на десктопе checkHomeScreenStatus = unsupported.
+  function homeScreenRow(status) {
+    var added = status === 'added';
+    if (!added && status !== 'missed' && status !== 'unknown') return '';
+    return '<div class="profile-menu profile-menu--shortcut">' +
+      '<button type="button" class="profile-menu__item profile-menu__item--shortcut' + (added ? ' profile-menu__item--done' : '') + '" data-action="add-home-screen"' + (added ? ' aria-disabled="true"' : '') + '>' +
+      '<span class="profile-menu__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="3"/><path d="M12 7v6m-3-3h6M10 18h4"/></svg></span>' +
+      '<span class="profile-menu__text"><strong>' + e(T(added ? 'Приложение на главном экране' : 'Добавить на главный экран')) + '</strong>' +
+      '<small>' + e(T(added ? 'Ярлык уже добавлен' : 'Открывайте бюджет в один тап')) + '</small></span>' +
+      '<span class="profile-menu__arrow" aria-hidden="true">' + (added ? '✓' : '›') + '</span></button></div>';
+  }
+
   function renderSettings(section) {
     var st = State.get();
     var m = st.member;
@@ -1295,6 +1308,7 @@
       return '<div class="profile-page"><h1 class="profile-title">' + e(T('Профиль')) + '</h1>' +
         '<div class="profile-identity"><span class="profile-avatar">' + initLetter(m && m.name) + '</span><div><strong>' + e(m && m.name || T('Участник')) + '</strong>' +
         '<span>' + e(h.name || T('Наша семья')) + '</span></div></div>' +
+        homeScreenRow(st.homeScreenStatus) +
         '<div class="profile-menu">' + sections.map(function (item) {
           return '<button type="button" class="profile-menu__item" data-action="open-profile-section" data-section="' + item[0] + '">' +
             '<span class="profile-menu__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + item[3] + '</svg></span>' +

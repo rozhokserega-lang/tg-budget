@@ -33,6 +33,7 @@
   var editGeneration = 0;
   st.homeCategorySort = 'default';
   st.homeShowEmpty = false;
+  st.homeScreenStatus = null;
   try { if (root.localStorage.getItem('budget.homeCategorySort') === 'amount') st.homeCategorySort = 'amount'; } catch (e) {}
   // Раскрытая категория на сводке: { id, rows } или null.
   var expandedCat = null;
@@ -48,6 +49,7 @@
   var qaSwipe = null;
   // Категория, из которой открыли форму: после сохранения вернёмся к ней.
   var pendingFromCategory = null;
+  var homeScreenCheckSeq = 0;
 
   var ICON = function (d) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + d + '</svg>'; };
   var TABS = [
@@ -642,10 +644,46 @@
     };
   }
 
+  // Статус ярлыка на главном экране. На десктопе и в старых клиентах
+  // checkHomeScreenStatus вернёт unsupported — тогда строку в профиле не рисуем.
+  function refreshHomeScreenStatus() {
+    var check = root.Tg && root.Tg.checkHomeScreenStatus;
+    if (typeof check !== 'function') {
+      st.homeScreenStatus = 'unsupported';
+      return;
+    }
+    var seq = ++homeScreenCheckSeq;
+    check(function (status) {
+      if (seq !== homeScreenCheckSeq) return;
+      var next = status === 'added' || status === 'missed' || status === 'unknown' ? status : 'unsupported';
+      var changed = st.homeScreenStatus !== next;
+      st.homeScreenStatus = next;
+      if (changed && route.name === 'settings' && !route.section) render(Views.renderSettings());
+    });
+  }
+
+  function addHomeScreen() {
+    if (st.homeScreenStatus === 'added') {
+      root.Tg.haptic('light');
+      toast(T('Ярлык уже добавлен'));
+      return;
+    }
+    if (st.homeScreenStatus === 'unsupported' ||
+      (typeof root.Tg.canAddToHomeScreen === 'function' && !root.Tg.canAddToHomeScreen())) {
+      toast(T('Недоступно на этом устройстве'));
+      return;
+    }
+    root.Tg.haptic('light');
+    if (typeof root.Tg.addToHomeScreen !== 'function' || !root.Tg.addToHomeScreen()) {
+      toast(T('Не удалось добавить ярлык'));
+    }
+  }
+
   function openSettings(section) {
     var allowed = ['family', 'budget', 'appearance', 'notifications', 'subscription', 'about'];
     route = { name: 'settings', section: allowed.indexOf(section) !== -1 ? section : null };
     render(Views.renderSettings(route.section));
+    if (!route.section) refreshHomeScreenStatus();
     if (route.section === 'subscription') loadTariffs();
     if (route.section === 'budget') {
       loadCategories().then(function () {
@@ -2143,6 +2181,7 @@
       case 'go-settings': openSettings('subscription'); break;
       case 'open-profile-section': openSettings(actionBtn.getAttribute('data-section')); break;
       case 'profile-home': openSettings(); break;
+      case 'add-home-screen': addHomeScreen(); break;
       case 'buy': buyTariff(actionBtn.getAttribute('data-buy')); break;
       case 'delete-account': deleteAccount(); break;
       case 'edit-cat': openCategoryForm(actionBtn.getAttribute('data-id')); break;
@@ -2705,12 +2744,20 @@
 
   // --- Старт ---
 
+  function markHomeScreenAdded() {
+    st.homeScreenStatus = 'added';
+    if (route.name === 'settings' && !route.section) render(Views.renderSettings());
+    toast(T('Ярлык добавлен'));
+  }
+
   function boot() {
     document.documentElement.lang = I18n.locale();
     document.title = T('Бюджет пары');
     var loaderText = document.querySelector('.loader__text');
     if (loaderText) loaderText.textContent = T('Загружаем бюджет…');
+    if (typeof root.Tg.onHomeScreenAdded === 'function') root.Tg.onHomeScreenAdded(markHomeScreenAdded);
     root.Tg.init().then(function () {
+      refreshHomeScreenStatus();
       if (!root.Tg.isInsideTelegram()) {
         console.info(T('Mini App открыт вне Telegram — демо-режим.'));
       }

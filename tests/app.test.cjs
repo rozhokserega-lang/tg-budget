@@ -38,13 +38,21 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   const calls = [];
   const apiCalls = [];
   const queueOps = [];
+  const homeScreen = options.homeScreen || { supported: false, status: 'unsupported', added: false };
   const windowEvents = fakeNode();
   const context = { document, console, performance, setTimeout: fn => { timers.set(++timerId, fn); return timerId; }, clearTimeout: id => timers.delete(id), requestAnimationFrame: fn => fn() };
   if (options.clock) context.Date = class extends Date { static now() { return options.clock.now; } };
   context.window = {
     localStorage: { getItem: () => null, setItem() {} },
     addEventListener: windowEvents.addEventListener, removeEventListener: windowEvents.removeEventListener,
-    Tg: { backButton: fn => { context.backHandler = fn; }, haptic() {} },
+    Tg: {
+      backButton: fn => { context.backHandler = fn; },
+      haptic() {},
+      canAddToHomeScreen: () => homeScreen.supported,
+      checkHomeScreenStatus: cb => { cb(homeScreen.status); },
+      addToHomeScreen: () => { homeScreen.added = true; return homeScreen.supported; },
+      onHomeScreenAdded: fn => { context.homeScreenAddedHandler = fn; },
+    },
     I18n: { t: s => s, locale: () => 'ru', plural: (_, n) => String(n) },
     Api: {
       updateTx: payload => { calls.push(payload); return updateTx(payload); },
@@ -75,7 +83,10 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     refreshOnReturn: refreshOnReturn, clearCache: clearCache, cached: cached,
     applyLocalTx: applyLocalTx,
     loadMember: loadMember, deleteAccount: deleteAccount, closeDialog: closeDialog,
-    openPlans: openPlans, openTab: openTab, refreshTxResults: refreshTxResults,
+    openPlans: openPlans, openTab: openTab, openSettings: openSettings, refreshTxResults: refreshTxResults,
+    addHomeScreen: addHomeScreen, refreshHomeScreenStatus: refreshHomeScreenStatus,
+    markHomeScreenAdded: markHomeScreenAdded,
+    getHomeScreenStatus: function () { return st.homeScreenStatus; },
     submitAdd: submitAdd, deleteTx: deleteTx, removeLocalTx: removeLocalTx,
     mutate: mutate, loadPlans: loadPlans, submitCategory: submitCategory, submitRecurring: submitRecurring,
     fillExpandedCat: fillExpandedCat,
@@ -96,7 +107,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   st['txCache:2026-10'] = { data: [], at: Date.now() };
   st['summaryCache:2026-10'] = { data: { expense: 0 }, at: Date.now() };
   if (options.stubReload !== false) context.window.TestApp.preventRouteReloadForTest();
-  return { context, app: context.window.TestApp, st, tx, sheet, panel, nodes, calls, apiCalls, windowEvents, queueOps,
+  return { context, app: context.window.TestApp, st, tx, sheet, panel, nodes, calls, apiCalls, windowEvents, queueOps, homeScreen,
     flushTimers() { const pending = [...timers.values()]; timers.clear(); pending.forEach(fn => fn()); } };
 }
 function form(overrides = {}) {
@@ -591,3 +602,39 @@ for (const code of ['unauthorized', 'no_household']) {
     else assert.match(env.nodes.get('#screen').innerHTML, /Создать семью/);
   });
 }
+
+test('profile shows add-to-home-screen only for supported statuses and invokes native prompt', () => {
+  const env = setup(undefined, { homeScreen: { supported: true, status: 'missed', added: false } });
+  env.app.openSettings();
+  assert.equal(env.app.getHomeScreenStatus(), 'missed');
+  const html = env.nodes.get('#screen').innerHTML;
+  assert.match(html, /data-action="add-home-screen"/);
+  assert.match(html, /Добавить на главный экран/);
+  env.app.addHomeScreen();
+  assert.equal(env.homeScreen.added, true);
+});
+
+test('profile marks an installed shortcut and hides it when unsupported', () => {
+  const installed = setup(undefined, { homeScreen: { supported: true, status: 'added', added: false } });
+  installed.app.openSettings();
+  const html = installed.nodes.get('#screen').innerHTML;
+  assert.match(html, /Приложение на главном экране/);
+  assert.match(html, /aria-disabled="true"/);
+  installed.app.addHomeScreen();
+  assert.equal(installed.homeScreen.added, false);
+
+  const unsupported = setup();
+  unsupported.app.openSettings();
+  assert.doesNotMatch(unsupported.nodes.get('#screen').innerHTML, /data-action="add-home-screen"/);
+  unsupported.app.addHomeScreen();
+  assert.equal(unsupported.homeScreen.added, false);
+});
+
+test('homeScreenAdded marks the shortcut and refreshes the profile', () => {
+  const env = setup(undefined, { homeScreen: { supported: true, status: 'missed', added: false } });
+  env.app.openSettings();
+  env.app.markHomeScreenAdded();
+  assert.equal(env.app.getHomeScreenStatus(), 'added');
+  assert.match(env.nodes.get('#screen').innerHTML, /Ярлык уже добавлен/);
+  assert.match(env.nodes.get('#toast').textContent, /Ярлык добавлен/);
+});
