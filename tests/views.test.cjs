@@ -284,6 +284,19 @@ test('family settings switches the split from the current month and hides it in 
   assert.doesNotMatch(ctx.Views.renderSettings('family'), /data-action="split-mode"/);
 });
 
+test('family settings exposes editable member and household names', () => {
+  const ctx = setup();
+  ctx.State.get().member = {
+    id: 'm1', name: 'Аня',
+    households: { id: 'h1', name: 'Наша семья', mode: 'pair', split_mode: 'proportional', month_split_mode: 'proportional' },
+  };
+  const html = ctx.Views.renderSettings('family');
+  assert.match(html, /data-form="profile"/);
+  assert.match(html, /name="member_name"[^>]*value="Аня"/);
+  assert.match(html, /name="household_name"[^>]*value="Наша семья"/);
+  assert.match(html, /Имена/);
+});
+
 test('summary split label follows the month payload, not the household default', () => {
   const ctx = setup();
   const members = [{ id: 'm1', name: 'Аня', paid_shared: 100, share: 50, balance: 50 }];

@@ -92,6 +92,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     getHomeScreenStatus: function () { return st.homeScreenStatus; },
     submitAdd: submitAdd, deleteTx: deleteTx, removeLocalTx: removeLocalTx, formValues: formValues,
     mutate: mutate, loadPlans: loadPlans, submitCategory: submitCategory, submitRecurring: submitRecurring,
+    submitProfile: submitProfile,
     fillExpandedCat: fillExpandedCat,
     setExpandedForTest: function (value) { expandedCat = value; },
     getExpanded: function () { return expandedCat; },
@@ -710,6 +711,43 @@ test('android shortcut fallback is cancelled by homeScreenAdded', () => {
   assert.equal(env.app.getHomeScreenStatus(), 'added');
   assert.equal(env.nodes.get('#dialog').hidden, true);
   assert.doesNotMatch(env.nodes.get('#dialog-text').textContent, /Откройте чат с ботом/);
+});
+
+test('profile form saves member and household names and rolls back on failure', async () => {
+  let fail = false;
+  const env = setup(undefined, {
+    stubReload: false,
+    api: (action, payload) => {
+      if (action === 'save_profile') {
+        if (fail) return Promise.reject(Object.assign(new Error('bad_name'), { code: 'bad_name' }));
+        return Promise.resolve({ ok: true, member_name: payload.member_name, household_name: payload.household_name });
+      }
+      return Promise.resolve(action === 'me' ? { member: env.st.member } : []);
+    },
+  });
+  env.st.member = { id: 'me', name: 'Аня', households: { id: 'h1', name: 'Наша семья' } };
+  env.app.openSettings('family');
+  const formNode = {
+    elements: { member_name: { value: '  Анечка ' }, household_name: { value: ' Семья 2 ' } },
+    querySelector: selector => selector === '[type="submit"]' ? { disabled: false } : null,
+  };
+  env.app.submitProfile(formNode);
+  assert.equal(env.st.member.name, 'Анечка');
+  assert.equal(env.st.member.households.name, 'Семья 2');
+  await settled();
+  assert.ok(env.apiCalls.some(call => call.action === 'save_profile' && call.payload.member_name === 'Анечка'));
+  assert.match(env.nodes.get('#toast').textContent, /Сохранено/);
+
+  fail = true;
+  const failing = {
+    elements: { member_name: { value: 'Имя 2' }, household_name: { value: 'Семья 3' } },
+    querySelector: () => ({ disabled: false }),
+  };
+  env.app.submitProfile(failing);
+  assert.equal(env.st.member.name, 'Имя 2');
+  await settled();
+  assert.equal(env.st.member.name, 'Анечка');
+  assert.equal(env.st.member.households.name, 'Семья 2');
 });
 
 test('solo add form forces is_shared false even without the toggle', () => {

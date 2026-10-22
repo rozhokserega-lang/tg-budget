@@ -1391,11 +1391,15 @@
         '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Деление общих трат')) + '</span></div>' +
         '<div class="card"><div class="segments">' + splitSegment('proportional', 'По доходу') + splitSegment('equal', 'Поровну') + splitSegment('none', 'Не делить') + '</div>' +
         '<p class="small muted">' + e(T('Действует с текущего месяца и на будущие. Прошлые месяцы не меняются.')) + '</p></div></div>';
-      content = '<div class="card family-details">' +
-        '<div class="settings-row"><span class="settings-row__label">' + e(T('Семья')) + '</span><span class="settings-row__value">' + e(h.name || '—') + '</span></div>' +
-        '<div class="settings-row"><span class="settings-row__label">' + e(T('Вы')) + '</span><span class="settings-row__value">' + e(m ? m.name : '—') + '</span></div>' +
-        '<div class="settings-row"><span class="settings-row__label">' + e(T('Деление общих трат')) + '</span><span class="settings-row__value">' + e(State.splitModeLabel(effectiveSplit)) + '</span></div>' +
-        '</div>' +
+      content = '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Имена')) + '</span></div>' +
+        '<form class="card" data-form="profile" novalidate>' +
+        '<label class="field"><span class="field__label">' + e(T('Ваше имя')) + '</span>' +
+        '<input class="input" name="member_name" maxlength="40" autocomplete="name" placeholder="' + e(T('Как вас звать?')) + '" value="' + e(m ? m.name : '') + '"></label>' +
+        '<label class="field"><span class="field__label">' + e(T('Название семьи')) + '</span>' +
+        '<input class="input" name="household_name" maxlength="60" placeholder="' + e(T('Наша семья')) + '" value="' + e(h.name || '') + '"></label>' +
+        '<div class="actions"><button type="submit" class="btn btn--primary btn--full">' + e(T('Сохранить')) + '</button></div>' +
+        '</form></div>' +
+        '<div class="card family-details"><div class="settings-row"><span class="settings-row__label">' + e(T('Деление общих трат')) + '</span><span class="settings-row__value">' + e(State.splitModeLabel(effectiveSplit)) + '</span></div></div>' +
         splitSection +
         (State.isSolo()
           ? '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Режим')) + '</span></div>' +

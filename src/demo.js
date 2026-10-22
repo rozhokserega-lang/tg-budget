@@ -442,6 +442,27 @@
       state.monthSplit[month] = mode;
       return { ok: true, month: month, split_mode: mode };
     },
+    save_profile: function (p) {
+      var hasMember = Object.prototype.hasOwnProperty.call(p, 'member_name');
+      var hasHousehold = Object.prototype.hasOwnProperty.call(p, 'household_name');
+      if (!hasMember && !hasHousehold) throw new Error('bad_name');
+      var memberName = hasMember ? String(p.member_name || '').trim().slice(0, 40) : '';
+      var householdName = hasHousehold ? String(p.household_name || '').trim().slice(0, 60) : '';
+      if (hasMember && !memberName) throw new Error('bad_name');
+      if (hasHousehold && !householdName) throw new Error('bad_name');
+      if (hasMember) {
+        state.member = Object.assign({}, state.member, { name: memberName });
+        state.members = state.members.map(function (m) {
+          return m.id === state.member.id ? Object.assign({}, m, { name: memberName }) : m;
+        });
+      }
+      if (hasHousehold) {
+        state.member = Object.assign({}, state.member, {
+          households: Object.assign({}, state.member.households, { name: householdName }),
+        });
+      }
+      return { ok: true, member_name: state.member.name, household_name: state.member.households && state.member.households.name };
+    },
     categories: function () {
       return state.categories.filter(function (c) { return !c.archived; }).sort(function (a, b) { return a.sort - b.sort; });
     },

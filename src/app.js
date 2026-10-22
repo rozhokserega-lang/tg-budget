@@ -1423,6 +1423,50 @@
     });
   }
 
+  // Имя участника и название семьи сохраняются отдельным действием API.
+  function submitProfile(formEl) {
+    if (!st.member) return;
+    var v = formEl.elements;
+    var memberName = String(v.member_name.value || '').trim();
+    var householdName = String(v.household_name.value || '').trim();
+    if (!memberName) return badInput(T('Введите имя'), v.member_name);
+    if (!householdName) return badInput(T('Введите название'), v.household_name);
+    var previous = {
+      name: st.member.name,
+      household: st.member.households && st.member.households.name,
+    };
+    if (memberName === previous.name && householdName === previous.household) {
+      root.Tg.haptic('light');
+      toast(T('Сохранено'));
+      return;
+    }
+    var btn = formEl.querySelector('[type="submit"]');
+    if (btn) btn.disabled = true;
+    // Оптимистично: имя сразу доступно главной и профилю, без ожидания сети.
+    st.member = Object.assign({}, st.member, {
+      name: memberName,
+      households: Object.assign({}, st.member.households, { name: householdName }),
+    });
+    mutate('save_profile', { member_name: memberName, household_name: householdName }).then(function (res) {
+      if (res && res.member_name) st.member = Object.assign({}, st.member, { name: res.member_name });
+      if (res && res.household_name && st.member.households) {
+        st.member.households = Object.assign({}, st.member.households, { name: res.household_name });
+      }
+      root.Tg.haptic('success');
+      toast(T('Сохранено'));
+      if (route.name === 'settings') render(Views.renderSettings(route.section));
+    }).catch(function (err) {
+      st.member = Object.assign({}, st.member, {
+        name: previous.name,
+        households: Object.assign({}, st.member.households, { name: previous.household }),
+      });
+      if (btn) btn.disabled = false;
+      root.Tg.haptic('error');
+      toast(err.message || T('Не удалось сохранить'));
+      if (route.name === 'settings') render(Views.renderSettings(route.section));
+    });
+  }
+
   // --- Промокод ---
 
   function redeemPromo(code) {
@@ -2498,6 +2542,7 @@
     else if (kind === 'plan') submitPlan(f);
     else if (kind === 'category') submitCategory(f);
     else if (kind === 'promo') redeemPromo(f.elements.code.value);
+    else if (kind === 'profile') submitProfile(f);
     else if (kind === 'create' || kind === 'join') submitOnboarding(f, kind);
   });
 

@@ -70,6 +70,37 @@ test('30-day demo family month keeps totals and split in sync', async () => {
   assert.equal((await env.DEMO_API.call('summary', { month: '2026-11' })).expense, 0);
 });
 
+test('demo profile renames the member and household independently', async () => {
+  const env = environment();
+  const before = await env.DEMO_API.call('me');
+  assert.equal(before.member.name, 'Аня');
+  assert.equal(before.member.households.name, 'Наша семья');
+
+  const member = await env.DEMO_API.call('save_profile', { member_name: '  Анечка  ' });
+  assert.equal(member.ok, true);
+  assert.equal(member.member_name, 'Анечка');
+  assert.equal(member.household_name, 'Наша семья');
+  let current = await env.DEMO_API.call('me');
+  assert.equal(current.member.name, 'Анечка');
+  assert.equal(current.member.households.name, 'Наша семья');
+
+  const both = await env.DEMO_API.call('save_profile', { member_name: 'Аня', household_name: '  Семья Ивановых ' });
+  assert.equal(both.member_name, 'Аня');
+  assert.equal(both.household_name, 'Семья Ивановых');
+  current = await env.DEMO_API.call('me');
+  assert.equal(current.member.name, 'Аня');
+  assert.equal(current.member.households.name, 'Семья Ивановых');
+
+  await env.DEMO_API.call('switch_account', { member_id: 'm2' });
+  const partner = await env.DEMO_API.call('me');
+  assert.equal(partner.member.name, 'Игорь');
+  assert.equal(partner.member.households.name, 'Семья Ивановых');
+
+  await assert.rejects(() => env.DEMO_API.call('save_profile', {}), err => err.code === 'bad_name');
+  await assert.rejects(() => env.DEMO_API.call('save_profile', { member_name: '   ' }), err => err.code === 'bad_name');
+  await assert.rejects(() => env.DEMO_API.call('save_profile', { household_name: '' }), err => err.code === 'bad_name');
+});
+
 test('demo account switch keeps one family and attributes new records to the second member', async () => {
   const env = environment();
   await env.DEMO_API.call('run_test_month');
