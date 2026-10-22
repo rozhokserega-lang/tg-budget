@@ -185,7 +185,10 @@
       '<span class="cat-tx__date">' + e(Fmt.dayLabel(t.occurred_on)) + '</span>' +
       '<span class="cat-tx__note">' + (meta.length ? meta.join(' · ') : '—') + '</span>' +
       '<span class="amount ' + (isIncome ? 'amount--pos' : '') + '">' + e(Fmt.signedMoney(t.amount, isIncome)) + '</span>' +
-      (!isIncome && !t._local ? '<button type="button" class="tx-edit" data-action="edit-tx" data-id="' + e(t.id) + '" aria-label="' + e(T('Редактировать расход')) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m15 4 5 5M4 20l4-1L20 7a2 2 0 0 0-4-4L4 15z"/></svg></button>' : '') +
+      (!isIncome && !t._local
+        ? '<button type="button" class="tx-edit" data-action="edit-tx" data-id="' + e(t.id) + '" aria-label="' + e(T('Редактировать расход')) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m15 4 5 5M4 20l4-1L20 7a2 2 0 0 0-4-4L4 15z"/></svg></button>' +
+          '<button type="button" class="tx-delete" data-tx-delete="' + e(t.id) + '" aria-label="' + e(T('Удалить расход')) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V5h6v2m-9 0 1 13h10l1-13M10 11v5m4-5v5"/></svg></button>'
+        : '') +
       '</div>';
   }
 

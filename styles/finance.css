@@ -849,6 +849,8 @@ button.finance-stat:focus-visible { outline: 2px solid var(--stat-color); outlin
 
 .tx-edit { flex: none; width: 36px; height: 36px; display: grid; place-items: center; color: var(--c-accent, #67efa2); }
 .tx-edit svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.tx-delete { flex: none; width: 36px; height: 36px; display: grid; place-items: center; color: #ff8b84; }
+.tx-delete svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .home-category-sort { display: flex; gap: 6px; margin: 0 0 12px; flex-wrap: wrap; }
 .home-category-sort button,.home-empty-toggle { padding: 8px 12px; border-radius: 12px; color: var(--c-text); background: var(--c-surface, #252938); font-size: 12px; }
 .home-category-sort [aria-pressed="true"] { color: #67efa2; box-shadow: inset 0 0 0 1px currentColor; }

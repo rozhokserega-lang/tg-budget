@@ -1067,6 +1067,44 @@
     st.lastSummary = next;
   }
 
+  // Копия сводки для отката оптимистичного удаления: меняем только те массивы,
+  // которые пересчитываются на клиенте.
+  function cloneSummary(s) {
+    if (!s) return s;
+    return Object.assign({}, s, {
+      categories: (s.categories || []).map(function (c) { return Object.assign({}, c); }),
+      members: (s.members || []).map(function (m) { return Object.assign({}, m); }),
+    });
+  }
+
+  // Пересчёт сводки без запроса к серверу: убираем сумму записи из итогов,
+  // категории и личных/общих сумм участника.
+  function summaryAfterRemoval(s, tx) {
+    var isIncome = (tx.categories && tx.categories.kind) === 'income';
+    var amount = Number(tx.amount) || 0;
+    var next = Object.assign({}, s);
+    next.income = Math.max(0, Number(s.income || 0) - (isIncome ? amount : 0));
+    next.expense = Math.max(0, Number(s.expense || 0) - (isIncome ? 0 : amount));
+    next.balance = next.income - next.expense;
+    next.categories = (s.categories || []).map(function (c) {
+      return c.id === tx.category_id
+        ? Object.assign({}, c, { fact: Math.max(0, Number(c.fact || 0) - amount) })
+        : c;
+    });
+    next.members = (s.members || []).map(function (m) {
+      if (m.id !== tx.member_id) return m;
+      var paid = Number(m.paid_shared || 0) - (!isIncome && tx.is_shared ? amount : 0);
+      var personal = Number(m.personal || 0) - (!isIncome && !tx.is_shared ? amount : 0);
+      return Object.assign({}, m, {
+        income: Math.max(0, Number(m.income || 0) - (isIncome ? amount : 0)),
+        paid_shared: Math.max(0, paid),
+        personal: Math.max(0, personal),
+        balance: paid - Number(m.share || 0),
+      });
+    });
+    return next;
+  }
+
   // Переключение типа операций по карточкам на экране финансов.
   function setTxKind(kind) {
     if (!st.txFilter) st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
@@ -1967,42 +2005,89 @@
     var scope = memberScope(st.member);
     dialog(T('Удалить эту запись?'), T('Удалить')).then(function (ok) {
       if (!ok || scope !== memberScope(st.member)) return;
-      // Оптимистично: убираем из кэшей сразу, сервер догонит.
+      // Оптимистично: убираем запись из локальных кэшей и сразу пересчитываем
+      // сводку, не дожидаясь ответа сервера и не показывая скелетон.
       var removed = null;
+      var positions = [];
       Object.keys(st).forEach(function (k) {
         if (k.indexOf('txCache:') !== 0) return;
-        ((st[k] || {}).data || []).forEach(function (t) { if (t.id === id) removed = t; });
+        var list = (st[k] && st[k].data) || [];
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].id !== id) continue;
+          removed = removed || list[i];
+          positions.push({ key: k, index: i, tx: list[i] });
+          cached(k, list.slice(0, i).concat(list.slice(i + 1)));
+          break;
+        }
       });
-      // Удалённый чек снова можно добавить: снимаем локальную отметку.
-      if (removed && receiptStore()) receiptStore().forgetForTx(scope, removed);
-      // Кэш месяца инвалидируем в любом случае (removeLocalTx) — список перерисуется
-      // с сервера с учётом отправленной операции.
-      if (removed) removeOptimisticTx(removed);
-      removeLocalTx(id);
+      var pendingRestore = [];
+      Object.keys(pendingAdds).forEach(function (opId) {
+        var t = pendingAdds[opId];
+        if (!t || (t.id !== id && t._serverId !== id)) return;
+        pendingRestore.push({ opId: opId, tx: t });
+        delete pendingAdds[opId];
+      });
+
+      var month = removed && removed.occurred_on ? String(removed.occurred_on).slice(0, 7) : st.month;
+      var summarySnapshot = removed ? cloneSummary(cached('summaryCache:' + month)) : null;
+      var expandedSnapshot = expandedCat
+        ? { id: expandedCat.id, rows: expandedCat.rows ? expandedCat.rows.slice() : null }
+        : null;
+      deletingTx[id] = true;
+
+      if (removed) {
+        var summary = cached('summaryCache:' + month);
+        if (summary) {
+          var nextSummary = summaryAfterRemoval(summary, removed);
+          cached('summaryCache:' + month, nextSummary);
+          if (month === st.month) st.lastSummary = nextSummary;
+        }
+        if (expandedCat && expandedCat.rows) {
+          expandedCat = {
+            id: expandedCat.id,
+            rows: expandedCat.rows.filter(function (t) { return t.id !== id; }),
+          };
+        }
+      }
+
+      // Ставим операцию в очередь до перерисовки: пока она не отправлена,
+      // fetchSummary отдаёт локальную сводку и не успевает вернуть удалённую запись.
+      var op = Queue.push('delete_tx', { id: id });
       root.Tg.haptic('success');
       toast(T('Удалено'));
       closeSwipes();
       if (route.name === 'tx') openTx();
-      else openSummary(true);
+      else if (route.name === 'summary') openSummary();
 
-      var op = Queue.push('delete_tx', { id: id });
       root.addEventListener('queue-sent', function onSent(ev) {
         if (ev.detail.id !== op.id) return;
         root.removeEventListener('queue-sent', onSent);
         if (scope !== memberScope(st.member)) return;
         delete deletingTx[id];
-        clearCache();
-        if (route.name === 'tx') openTx(); else if (route.name === 'summary') openSummary();
+        // Только после подтверждения сервера освобождаем чек: при ошибке
+        // запись вернётся, и защита от повторного добавления должна остаться.
+        if (removed && receiptStore()) receiptStore().forgetForTx(scope, removed);
       });
       root.addEventListener('queue-failed', function onFailed(ev) {
         if (ev.detail.op.id !== op.id) return;
         root.removeEventListener('queue-failed', onFailed);
         if (scope !== memberScope(st.member)) return;
         delete deletingTx[id];
+        positions.forEach(function (pos) {
+          var current = (cached(pos.key) || []).slice();
+          current.splice(Math.min(pos.index, current.length), 0, pos.tx);
+          cached(pos.key, current);
+        });
+        pendingRestore.forEach(function (item) { pendingAdds[item.opId] = item.tx; });
+        if (summarySnapshot) {
+          cached('summaryCache:' + month, summarySnapshot);
+          if (month === st.month) st.lastSummary = summarySnapshot;
+        }
+        expandedCat = expandedSnapshot;
         root.Tg.haptic('error');
         toast(T('Не удалилось: {error}', { error: (ev.detail.error && ev.detail.error.message) || T('ошибка') }));
-        clearCache();
         if (route.name === 'tx') openTx();
+        else if (route.name === 'summary') openSummary();
       });
     });
   }

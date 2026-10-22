@@ -137,13 +137,18 @@ test('finance filters by operation kind and highlights the matching overview car
   assert.doesNotMatch(expenses, /data-tx-id="income"/);
   assert.match(expenses, /Расходы · Найдено: 1/);
 });
-test('home only edits confirmed expenses and does not sort or group their operations', () => {
+test('home edits and deletes confirmed expenses and does not sort or group their operations', () => {
   const ctx = setup();
   const rows = [tx('older', '2025-01-01', ''), tx('newer', '2025-01-03', '')];
   const html = ctx.Views.categoryTxList(rows, true);
   assert.ok(html.indexOf('data-id="older"') < html.indexOf('data-id="newer"'));
   assert.doesNotMatch(html, /tx-group/);
-  assert.doesNotMatch(ctx.Views.categoryTxList([tx('i', '2025-01-01', '', { categories: { kind: 'income' } })], true), /edit-tx/);
+  assert.match(html, /data-action="edit-tx" data-id="older"/);
+  assert.match(html, /data-tx-delete="older"/);
+  const income = ctx.Views.categoryTxList([tx('i', '2025-01-01', '', { categories: { kind: 'income' } })], true);
+  assert.doesNotMatch(income, /edit-tx|data-tx-delete/);
+  const local = ctx.Views.categoryTxList([tx('local', '2025-01-01', '', { _local: true })], true);
+  assert.doesNotMatch(local, /edit-tx|data-tx-delete/);
 });
 test('shared edit form preserves values, escapes user text and offers explicit save/cancel only', () => {
   const ctx = setup();

@@ -434,6 +434,7 @@ test('member scope change removes pending add and delete overlays', async () => 
 
 test('delete uses confirmation, removes cached record and ignores outdated server list while queued', async () => {
   const env = setup(undefined, { api: () => Promise.resolve([env.tx]) });
+  env.st.lastSummary = env.st['summaryCache:2026-09'].data;
   env.app.deleteTx('expense');
   assert.equal(env.queueOps.length, 0);
   env.app.closeDialog(false);
@@ -446,9 +447,39 @@ test('delete uses confirmation, removes cached record and ignores outdated serve
   assert.equal(env.queueOps[0].action, 'delete_tx');
   assert.equal(env.queueOps[0].payload.id, 'expense');
   assert.equal(env.context.window.AppState.isDeleting('expense'), true);
+  assert.equal(env.st['txCache:2026-09'].data.length, 0);
+  assert.equal(env.st['summaryCache:2026-09'].data.expense, 0);
+  assert.equal(env.st.lastSummary.expense, 0);
   assert.equal((await env.app.loadTx('2026-09', true)).length, 0);
   env.windowEvents.dispatch('queue-sent', { detail: { id: env.queueOps[0].id, result: {} } });
   assert.equal(env.context.window.AppState.isDeleting('expense'), false);
+});
+
+test('failed delete restores the record, category totals and member amounts', async () => {
+  const env = setup();
+  const summary = {
+    income: 0, expense: 20, balance: -20,
+    categories: [{ id: 'food', fact: 20, plan: 100 }],
+    members: [{ id: 'me', income: 0, paid_shared: 0, personal: 20, share: 0, balance: 0 }],
+  };
+  env.st['summaryCache:2026-09'].data = summary;
+  env.st.lastSummary = summary;
+  env.app.deleteTx('expense');
+  env.app.closeDialog(true);
+  await settled();
+  assert.equal(env.st['txCache:2026-09'].data.length, 0);
+  assert.equal(env.st.lastSummary.expense, 0);
+  assert.equal(env.st.lastSummary.categories[0].fact, 0);
+  assert.equal(env.st.lastSummary.members[0].personal, 0);
+  const op = env.queueOps[0];
+  env.windowEvents.dispatch('queue-failed', { detail: { op, error: { code: 'not_found', message: 'nope' } } });
+  assert.equal(env.context.window.AppState.isDeleting('expense'), false);
+  assert.equal(env.st['txCache:2026-09'].data[0].id, 'expense');
+  assert.equal(env.st['summaryCache:2026-09'].data.expense, 20);
+  assert.equal(env.st.lastSummary.expense, 20);
+  assert.equal(env.st.lastSummary.categories[0].fact, 20);
+  assert.equal(env.st.lastSummary.members[0].personal, 20);
+  assert.match(env.nodes.get('#toast').textContent, /Не удалилось/);
 });
 
 test('plan SWR shows cached goals and retains them if background refresh fails', async () => {
