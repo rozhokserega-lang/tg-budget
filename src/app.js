@@ -50,6 +50,9 @@
   // Категория, из которой открыли форму: после сохранения вернёмся к ней.
   var pendingFromCategory = null;
   var homeScreenCheckSeq = 0;
+  var homeScreenAttemptSeq = 0;
+  var homeScreenAttemptTimer = null;
+  var homeScreenFallbackOpen = false;
 
   var ICON = function (d) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + d + '</svg>'; };
   var TABS = [
@@ -80,13 +83,24 @@
       dialogResolve = resolve;
       el.dialogText.textContent = text;
       el.dialogOk.textContent = okLabel || T('Удалить');
-      if (el.dialogCancel) el.dialogCancel.textContent = T('Отмена');
+      if (el.dialogCancel) {
+        el.dialogCancel.textContent = T('Отмена');
+        el.dialogCancel.hidden = false;
+      }
       el.dialog.hidden = false;
     });
   }
 
+  function infoDialog(text) {
+    el.dialogText.textContent = text;
+    el.dialogOk.textContent = T('Понятно');
+    if (el.dialogCancel) el.dialogCancel.hidden = true;
+    el.dialog.hidden = false;
+  }
+
   function closeDialog(result) {
     el.dialog.hidden = true;
+    homeScreenFallbackOpen = false;
     if (dialogResolve) dialogResolve(result);
     dialogResolve = null;
   }
@@ -644,6 +658,50 @@
     };
   }
 
+  function isAndroidHomeScreen() {
+    var platform = root.Tg && root.Tg.platform ? root.Tg.platform() : '';
+    return platform === 'android' || platform === 'android_x';
+  }
+
+  function clearHomeScreenAttempt() {
+    homeScreenAttemptSeq++;
+    if (homeScreenAttemptTimer) {
+      clearTimeout(homeScreenAttemptTimer);
+      homeScreenAttemptTimer = null;
+    }
+  }
+
+  function showHomeScreenFallback() {
+    homeScreenFallbackOpen = true;
+    infoDialog(T('Системное окно не появилось. Откройте чат с ботом, нажмите ⋮ и выберите «Добавить на главный экран». Если ярлык уже есть, удалите старый и добавьте заново.'));
+  }
+
+  // Android не присылает homeScreenFailed, если лаунчер не умеет закреплять
+  // ярлыки. Поэтому после вызова проверяем статус и подсказываем ручной путь.
+  function watchHomeScreenAttempt() {
+    if (!isAndroidHomeScreen()) return;
+    var seq = ++homeScreenAttemptSeq;
+    clearTimeout(homeScreenAttemptTimer);
+    homeScreenAttemptTimer = setTimeout(function () {
+      if (seq !== homeScreenAttemptSeq || st.homeScreenStatus === 'added') return;
+      if (document.visibilityState && document.visibilityState !== 'visible') return;
+      var check = root.Tg && root.Tg.checkHomeScreenStatus;
+      if (typeof check !== 'function') {
+        showHomeScreenFallback();
+        return;
+      }
+      check(function (status) {
+        if (seq !== homeScreenAttemptSeq) return;
+        if (status === 'added') {
+          st.homeScreenStatus = 'added';
+          if (route.name === 'settings' && !route.section) render(Views.renderSettings());
+          return;
+        }
+        showHomeScreenFallback();
+      });
+    }, 4000);
+  }
+
   // Статус ярлыка на главном экране. На десктопе и в старых клиентах
   // checkHomeScreenStatus вернёт unsupported — тогда строку в профиле не рисуем.
   function refreshHomeScreenStatus() {
@@ -658,6 +716,10 @@
       var next = status === 'added' || status === 'missed' || status === 'unknown' ? status : 'unsupported';
       var changed = st.homeScreenStatus !== next;
       st.homeScreenStatus = next;
+      if (next === 'added') {
+        clearHomeScreenAttempt();
+        if (homeScreenFallbackOpen) closeDialog(true);
+      }
       if (changed && route.name === 'settings' && !route.section) render(Views.renderSettings());
     });
   }
@@ -676,6 +738,11 @@
     root.Tg.haptic('light');
     if (typeof root.Tg.addToHomeScreen !== 'function' || !root.Tg.addToHomeScreen()) {
       toast(T('Не удалось добавить ярлык'));
+      return;
+    }
+    if (isAndroidHomeScreen()) {
+      toast(T('Подтвердите добавление в системном окне'));
+      watchHomeScreenAttempt();
     }
   }
 
@@ -2745,7 +2812,9 @@
   // --- Старт ---
 
   function markHomeScreenAdded() {
+    clearHomeScreenAttempt();
     st.homeScreenStatus = 'added';
+    if (homeScreenFallbackOpen) closeDialog(true);
     if (route.name === 'settings' && !route.section) render(Views.renderSettings());
     toast(T('Ярлык добавлен'));
   }

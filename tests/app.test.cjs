@@ -38,6 +38,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   const calls = [];
   const apiCalls = [];
   const queueOps = [];
+  const alerts = [];
   const homeScreen = options.homeScreen || { supported: false, status: 'unsupported', added: false };
   const windowEvents = fakeNode();
   const context = { document, console, performance, setTimeout: fn => { timers.set(++timerId, fn); return timerId; }, clearTimeout: id => timers.delete(id), requestAnimationFrame: fn => fn() };
@@ -48,6 +49,8 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     Tg: {
       backButton: fn => { context.backHandler = fn; },
       haptic() {},
+      platform: () => homeScreen.platform || '',
+      showAlert: text => { alerts.push(text); },
       canAddToHomeScreen: () => homeScreen.supported,
       checkHomeScreenStatus: cb => { cb(homeScreen.status); },
       addToHomeScreen: () => { homeScreen.added = true; return homeScreen.supported; },
@@ -107,7 +110,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   st['txCache:2026-10'] = { data: [], at: Date.now() };
   st['summaryCache:2026-10'] = { data: { expense: 0 }, at: Date.now() };
   if (options.stubReload !== false) context.window.TestApp.preventRouteReloadForTest();
-  return { context, app: context.window.TestApp, st, tx, sheet, panel, nodes, calls, apiCalls, windowEvents, queueOps, homeScreen,
+  return { context, app: context.window.TestApp, st, tx, sheet, panel, nodes, calls, apiCalls, windowEvents, queueOps, homeScreen, alerts,
     flushTimers() { const pending = [...timers.values()]; timers.clear(); pending.forEach(fn => fn()); } };
 }
 function form(overrides = {}) {
@@ -637,4 +640,26 @@ test('homeScreenAdded marks the shortcut and refreshes the profile', () => {
   assert.equal(env.app.getHomeScreenStatus(), 'added');
   assert.match(env.nodes.get('#screen').innerHTML, /Ярлык уже добавлен/);
   assert.match(env.nodes.get('#toast').textContent, /Ярлык добавлен/);
+});
+
+test('android shortcut shows a manual fallback when the native dialog produces no event', () => {
+  const env = setup(undefined, { homeScreen: { supported: true, status: 'missed', added: false, platform: 'android' } });
+  env.app.openSettings();
+  env.app.addHomeScreen();
+  assert.equal(env.homeScreen.added, true);
+  assert.equal(env.app.getHomeScreenStatus(), 'missed');
+  env.flushTimers();
+  assert.match(env.nodes.get('#dialog-text').textContent, /Откройте чат с ботом/);
+  assert.equal(env.nodes.get('#dialog').hidden, false);
+});
+
+test('android shortcut fallback is cancelled by homeScreenAdded', () => {
+  const env = setup(undefined, { homeScreen: { supported: true, status: 'missed', added: false, platform: 'android' } });
+  env.app.openSettings();
+  env.app.addHomeScreen();
+  env.app.markHomeScreenAdded();
+  env.flushTimers();
+  assert.equal(env.app.getHomeScreenStatus(), 'added');
+  assert.equal(env.nodes.get('#dialog').hidden, true);
+  assert.doesNotMatch(env.nodes.get('#dialog-text').textContent, /Откройте чат с ботом/);
 });

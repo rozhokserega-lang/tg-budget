@@ -1275,11 +1275,14 @@
   function homeScreenRow(status) {
     var added = status === 'added';
     if (!added && status !== 'missed' && status !== 'unknown') return '';
+    var platform = root.Tg && root.Tg.platform ? root.Tg.platform() : '';
+    var android = platform === 'android' || platform === 'android_x';
+    var hint = added ? 'Ярлык уже добавлен' : android ? 'Подтвердите в системном окне Android' : 'Открывайте бюджет в один тап';
     return '<div class="profile-menu profile-menu--shortcut">' +
       '<button type="button" class="profile-menu__item profile-menu__item--shortcut' + (added ? ' profile-menu__item--done' : '') + '" data-action="add-home-screen"' + (added ? ' aria-disabled="true"' : '') + '>' +
       '<span class="profile-menu__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="3"/><path d="M12 7v6m-3-3h6M10 18h4"/></svg></span>' +
       '<span class="profile-menu__text"><strong>' + e(T(added ? 'Приложение на главном экране' : 'Добавить на главный экран')) + '</strong>' +
-      '<small>' + e(T(added ? 'Ярлык уже добавлен' : 'Открывайте бюджет в один тап')) + '</small></span>' +
+      '<small>' + e(T(hint)) + '</small></span>' +
       '<span class="profile-menu__arrow" aria-hidden="true">' + (added ? '✓' : '›') + '</span></button></div>';
   }
 

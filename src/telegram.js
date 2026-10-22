@@ -19,6 +19,7 @@
   var tg = null;
   var backHandler = null;
   var homeScreenAddedHandlers = [];
+  var HOME_SCREEN_MOBILE = { ios: true, android: true, android_x: true };
 
   function applyTheme() {
     if (!tg) return;
@@ -163,11 +164,24 @@
     }
   }
 
+  // Платформа Telegram WebApp. На десктопе/в вебе ярлык на главный экран
+  // недоступен, даже если SDK формально знает метод addToHomeScreen.
+  function platform() {
+    var s = currentSdk();
+    return (s && s.platform) || '';
+  }
+
+  function canUseHomeScreenPlatform() {
+    var p = platform();
+    return !p || p === 'unknown' || !!HOME_SCREEN_MOBILE[p];
+  }
+
   // Ярлык на главном экране: Bot API 8.0+, только мобильные клиенты.
   // Вне Telegram и на десктопе методы есть, но checkHomeScreenStatus вернёт unsupported.
   function canAddToHomeScreen() {
     var s = currentSdk();
-    return !!(s && typeof s.addToHomeScreen === 'function' &&
+    return !!(s && canUseHomeScreenPlatform() &&
+      typeof s.addToHomeScreen === 'function' &&
       typeof s.checkHomeScreenStatus === 'function' &&
       (!s.isVersionAtLeast || s.isVersionAtLeast('8.0')));
   }
@@ -233,6 +247,7 @@
   }
 
   root.Tg = {
+    platform: platform,
     canAddToHomeScreen: canAddToHomeScreen,
     checkHomeScreenStatus: checkHomeScreenStatus,
     addToHomeScreen: addToHomeScreen,

@@ -48,6 +48,27 @@ test('home screen shortcut reports supported status and calls the native prompt'
   assert.deepEqual(calls, ['check', 'add']);
 });
 
+test('home screen shortcut is limited to mobile Telegram platforms', () => {
+  const sdk = {
+    platform: 'tdesktop',
+    isVersionAtLeast: () => true,
+    addToHomeScreen() {},
+    checkHomeScreenStatus() {},
+  };
+  assert.equal(setup(sdk).window.Tg.canAddToHomeScreen(), false);
+
+  sdk.platform = 'web';
+  assert.equal(setup(sdk).window.Tg.canAddToHomeScreen(), false);
+
+  sdk.platform = 'android';
+  const android = setup(sdk).window.Tg;
+  assert.equal(android.platform(), 'android');
+  assert.equal(android.canAddToHomeScreen(), true);
+
+  sdk.platform = 'ios';
+  assert.equal(setup(sdk).window.Tg.canAddToHomeScreen(), true);
+});
+
 test('home screen shortcut reports unsupported for old clients and missing methods', () => {
   const old = setup({
     isVersionAtLeast: () => false,

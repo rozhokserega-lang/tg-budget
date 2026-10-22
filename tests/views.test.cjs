@@ -167,6 +167,11 @@ test('profile shows the home screen shortcut only when Telegram reports support'
   ctx.State.get().homeScreenStatus = 'unknown';
   assert.match(ctx.Views.renderSettings(), /data-action="add-home-screen"/);
 
+  ctx.window.Tg = { platform: () => 'android' };
+  assert.match(ctx.Views.renderSettings(), /Подтвердите в системном окне Android/);
+  ctx.window.Tg = { platform: () => 'ios' };
+  assert.match(ctx.Views.renderSettings(), /Открывайте бюджет в один тап/);
+
   ctx.State.get().homeScreenStatus = 'added';
   const added = ctx.Views.renderSettings();
   assert.match(added, /Приложение на главном экране/);
