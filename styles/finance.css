@@ -861,3 +861,60 @@ body { background: var(--c-bg); }
 /* Активная вкладка: цвет и вес меняются не рывком, а поверх плавного краска. */
 .tab { transition: color .22s ease, opacity .24s ease, filter .24s ease; }
 .tab--active { transition: color .2s ease; }
+
+/* --- Сканер чека --- */
+.scan-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 2px 0 12px;
+}
+.scan-row .scan-btn:only-child { grid-column: 1 / -1; }
+.scan-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-card);
+  color: var(--c-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  transition: opacity .15s ease, transform .08s ease;
+}
+.scan-btn svg { width: 17px; height: 17px; flex: none; }
+.scan-btn:active { transform: scale(.98); }
+.scan-btn--primary { background: var(--c-accent); color: var(--c-accent-text); border-color: transparent; }
+.receipt-chip {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 2px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-card);
+  color: var(--c-text);
+  font-size: 13px;
+}
+.receipt-chip__icon { flex: none; font-size: 17px; }
+.receipt-chip__text { flex: 1; min-width: 0; line-height: 1.35; }
+.receipt-chip__x {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: var(--c-hint);
+  font-size: 21px;
+  line-height: 1;
+}
+@media (max-width: 360px) {
+  .scan-row { grid-template-columns: 1fr; }
+}

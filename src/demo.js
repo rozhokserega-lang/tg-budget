@@ -178,9 +178,19 @@
       var c = state.categories.find(function (x) { return x.id === p.category_id; });
       if (!c) throw new Error('bad_category');
       if (!(Number(p.amount) > 0)) throw new Error('bad_amount');
+      var receiptKey = null;
+      if (p.receipt) {
+        if (typeof p.receipt.fn !== 'string' || typeof p.receipt.i !== 'string' || typeof p.receipt.fp !== 'string'
+          || !/^\d{16}$/.test(p.receipt.fn) || !/^\d{1,10}$/.test(p.receipt.i) || !/^\d{1,10}$/.test(p.receipt.fp)) {
+          throw new Error('bad_receipt');
+        }
+        receiptKey = p.receipt.fn + ':' + p.receipt.i + ':' + p.receipt.fp;
+        if (state.tx.some(function (t) { return t.receipt_key === receiptKey; })) throw new Error('duplicate_receipt');
+      }
       var tx = { id: p.local_id || id(), member_id: state.member.id, category_id: c.id, amount: Number(p.amount),
         is_shared: !!p.is_shared, note: p.note || null,
         occurred_on: p.occurred_on || Fmt.todayIso(), created_at: new Date().toISOString() };
+      if (receiptKey) tx.receipt_key = receiptKey;
       state.tx.push(tx);
       return tx;
     },
