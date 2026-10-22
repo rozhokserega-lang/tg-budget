@@ -110,3 +110,19 @@ test('shared edit form preserves values, escapes user text and offers explicit s
   assert.match(html, /data-action="cancel-edit-tx"/);
   assert.doesNotMatch(html, /\smax=|data-sheet-close|<script>/);
 });
+
+test('add form shows photo QR scanning and a removable receipt chip', () => {
+  const ctx = setup();
+  ctx.State.get().categories = [{ id: 'food', name: 'Food', kind: 'expense' }];
+  const html = ctx.Views.renderForm({ kind: 'expense', is_shared: true });
+  assert.match(html, /data-action="pick-receipt-photo"/);
+  assert.match(html, /Распознать QR с фото/);
+  const withReceipt = ctx.Views.renderForm({
+    kind: 'expense', is_shared: true,
+    receipt: { date: '2026-10-22', sum: 12.5 },
+  });
+  assert.match(withReceipt, /receipt-chip/);
+  assert.match(withReceipt, /22\.10\.2026/);
+  assert.match(withReceipt, /data-action="clear-receipt"/);
+  assert.doesNotMatch(withReceipt, /data-action="pick-receipt-photo"/);
+});

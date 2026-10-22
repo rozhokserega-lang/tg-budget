@@ -153,7 +153,37 @@
     }
   }
 
+  // Сканер QR: нативное окно Telegram (Bot API 6.4+). onResult(text) вернёт true — окно закроется.
+  function canScanQr() {
+    var s = (root.Telegram && root.Telegram.WebApp) || tg;
+    return !!(s && typeof s.showScanQrPopup === 'function' && (!s.isVersionAtLeast || s.isVersionAtLeast('6.4')));
+  }
+
+  function scanQr(text, onResult, onClose) {
+    var s = (root.Telegram && root.Telegram.WebApp) || tg;
+    if (!s || typeof s.showScanQrPopup !== 'function' || (s.isVersionAtLeast && !s.isVersionAtLeast('6.4'))) return false;
+    var closed = null;
+    try {
+      if (onClose && typeof s.onEvent === 'function') {
+        closed = function () {
+          if (typeof s.offEvent === 'function') s.offEvent('scanQrPopupClosed', closed);
+          onClose();
+        };
+        s.onEvent('scanQrPopupClosed', closed);
+      }
+      s.showScanQrPopup({ text: text || '' }, function (value) {
+        return onResult(String(value)) === true;
+      });
+      return true;
+    } catch (e) {
+      if (closed && typeof s.offEvent === 'function') s.offEvent('scanQrPopupClosed', closed);
+      return false;
+    }
+  }
+
   root.Tg = {
+    canScanQr: canScanQr,
+    scanQr: scanQr,
     init: init,
     initData: initData,
     isInsideTelegram: isInsideTelegram,

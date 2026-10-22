@@ -10,7 +10,8 @@
   var busy = false;
   var lastError = null;
   var TERMINAL = ['bad_amount', 'bad_category', 'bad_name', 'bad_goal', 'bad_day', 'no_category',
-    'subscription_expired', 'not_found', 'forbidden', 'unauthorized', 'bad_reminder_days'];
+    'subscription_expired', 'not_found', 'forbidden', 'unauthorized', 'bad_reminder_days',
+    'duplicate_receipt', 'bad_receipt'];
 
   function load() {
     try {
@@ -60,7 +61,7 @@
       remove(op.id);
       lastError = null;
       busy = false;
-      root.dispatchEvent(new CustomEvent('queue-sent', { detail: { id: op.id, action: op.action, result: result } }));
+      root.dispatchEvent(new CustomEvent('queue-sent', { detail: { id: op.id, action: op.action, op: op, result: result } }));
       if (load().length) return flush();
     }).catch(function (err) {
       busy = false;

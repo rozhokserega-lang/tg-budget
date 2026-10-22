@@ -606,6 +606,7 @@
       note: preset ? '' : saved.note,
       date: preset ? Fmt.todayIso() : saved.date,
       is_shared: preset ? true : saved.is_shared,
+      receipt: null,
     };
     var seq = ++reqSeq;
     render(Views.skeletonList());
@@ -631,6 +632,7 @@
       kind: form.kind,
       category_id: form.category_id,
       is_shared: shared ? shared.checked : true,
+      receipt: form.receipt || null,
     };
   }
 
@@ -1466,6 +1468,167 @@
 
   // --- Действия ---
 
+  // --- Сканер чека: QR кассового чека подставляет сумму, дату и тип операции ---
+  // Сервер принимает ключ чека после миграции receipt_key и деплоя supabase/functions/api/receipt.ts.
+  var SEND_RECEIPT_KEY = true;
+
+  function demoQr() {
+    var day = Fmt.todayIso().replace(/-/g, '');
+    return 't=' + day + 'T1200&s=187.98&fn=7380440700187177&i=83702&fp=1425956587&n=1';
+  }
+
+  function receiptScope() {
+    return memberScope(st.member);
+  }
+
+  function receiptStore() {
+    return root.ReceiptStore || null;
+  }
+
+  function receiptErrorMessage(reason) {
+    if (reason === 'not_receipt') return T('Это не QR-код чека');
+    if (reason === 'bad_date') return T('В чеке некорректная дата');
+    if (reason === 'bad_sum') return T('В чеке некорректная сумма');
+    if (reason === 'bad_fiscal') return T('В чеке нет реквизитов');
+    return T('Не удалось прочитать данные чека');
+  }
+
+  function receiptStillRelevant(scope) {
+    return route.name === 'add' && scope === receiptScope();
+  }
+
+  function receiptIsKnown(scope, key) {
+    return !!(key && receiptStore() && receiptStore().has(scope, key));
+  }
+
+  function acceptReceipt(text, state, scope) {
+    if (!receiptStillRelevant(scope)) {
+      state.got = true;
+      return true;
+    }
+    var result = root.Receipt ? root.Receipt.parse(text) : { ok: false, reason: 'not_receipt' };
+    state.reason = result.reason || null;
+    if (!result.ok) return false;
+    state.got = true;
+
+    if (!result.kind) {
+      root.Tg.haptic('error');
+      toast(T('Этот тип чека не поддерживается'));
+      return true;
+    }
+    if (result.date > Fmt.todayIso()) {
+      root.Tg.haptic('error');
+      toast(T('Дата чека в будущем. Проверьте дату.'));
+      return true;
+    }
+    if (result.sum > 1e9) {
+      root.Tg.haptic('error');
+      toast(T('Сумма чека слишком большая.'));
+      return true;
+    }
+    if (receiptIsKnown(scope, result.key)) {
+      root.Tg.haptic('error');
+      toast(T('Этот чек уже записан'));
+      return true;
+    }
+
+    var values = formValues();
+    form = Object.assign({}, values, {
+      kind: result.kind,
+      amount: String(result.sum),
+      date: result.date,
+      receipt: {
+        key: result.key, date: result.date, sum: result.sum, kind: result.kind,
+        fn: result.fn, i: result.i, fp: result.fp,
+      },
+      category_id: values.kind === result.kind ? values.category_id : '',
+    });
+    render(Views.renderForm(form));
+    root.Tg.haptic('success');
+    toast(T('Чек распознан'));
+    return true;
+  }
+
+  function scanReceipt() {
+    if (route.name !== 'add' || !root.Receipt) return;
+    var scope = receiptScope();
+    var state = { got: false, reason: null };
+    function finish() {
+      if (state.got || !receiptStillRelevant(scope)) return;
+      toast(receiptErrorMessage(state.reason));
+    }
+
+    if (root.Tg && typeof root.Tg.canScanQr === 'function' && root.Tg.canScanQr()) {
+      var opened = typeof root.Tg.scanQr === 'function' && root.Tg.scanQr(
+        T('Наведите камеру на QR-код чека'),
+        function (text) { return acceptReceipt(text, state, scope); },
+        finish
+      );
+      if (opened) return;
+    }
+    if (root.Tg && typeof root.Tg.isInsideTelegram === 'function' && root.Tg.isInsideTelegram()) {
+      toast(T('Сканер QR недоступен. Обновите Telegram или распознайте QR с фото.'));
+      return;
+    }
+
+    // В браузере сканера Telegram нет — подставляем демонстрационный чек.
+    setTimeout(function () {
+      if (!receiptStillRelevant(scope)) return;
+      if (!acceptReceipt(demoQr(), state, scope)) toast(receiptErrorMessage(state.reason));
+    }, 120);
+  }
+
+  function pickReceiptPhoto() {
+    if (route.name !== 'add' || !root.ReceiptPhoto || !root.document) return;
+    var scope = receiptScope();
+    var input = root.document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.setAttribute('aria-hidden', 'true');
+    input.style.position = 'fixed';
+    input.style.left = '-9999px';
+    input.style.opacity = '0';
+
+    function cleanup() {
+      if (input.parentNode) input.parentNode.removeChild(input);
+    }
+
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      cleanup();
+      if (!file || !receiptStillRelevant(scope)) return;
+      toast(T('Ищем QR-код на фото…'));
+      var state = { got: false, reason: null };
+      root.ReceiptPhoto.decode(file).then(function (text) {
+        if (!receiptStillRelevant(scope)) return;
+        if (!text) {
+          toast(T('QR-код на фото не найден. Сфотографируйте чек целиком.'));
+          return;
+        }
+        if (!acceptReceipt(text, state, scope)) toast(receiptErrorMessage(state.reason));
+      }).catch(function (err) {
+        if (!receiptStillRelevant(scope)) return;
+        root.Tg.haptic('error');
+        toast(err && err.message === 'jsqr_load'
+          ? T('Не удалось загрузить сканер QR. Проверьте связь.')
+          : T('Не удалось открыть фото. Попробуйте другое.'));
+      });
+    });
+    input.addEventListener('cancel', cleanup);
+    (root.document.body || root.document.documentElement).appendChild(input);
+    input.click();
+  }
+
+  // Если add_tx ушёл из очереди после перезагрузки, привязываем локальный id к серверному.
+  root.addEventListener('queue-sent', function (ev) {
+    var detail = ev.detail || {};
+    var op = detail.op;
+    var tx = detail.result;
+    if (!op || op.action !== 'add_tx' || !tx || !tx.id || !receiptStore()) return;
+    var localId = op.payload && op.payload.local_id;
+    if (localId) receiptStore().link(receiptScope(), localId, tx.id, null);
+  });
+
   function openEditTx(id) {
     if (editingTx || State.isExpired()) return;
     var tx = ((st['txCache:' + st.month] || {}).data || []).find(function (t) { return t.id === id; });
@@ -1552,6 +1715,13 @@
       toast(T('Выберите категорию'));
       return;
     }
+    var receipt = values.receipt;
+    var receiptKey = receipt && receipt.key;
+    if (receiptKey && receiptIsKnown(scope, receiptKey)) {
+      root.Tg.haptic('error');
+      toast(T('Этот чек уже записан'));
+      return;
+    }
     var occurred = values.date || Fmt.todayIso();
     var fromCategory = pendingFromCategory || null;
     pendingFromCategory = null;
@@ -1562,8 +1732,13 @@
       occurred_on: occurred,
       is_shared: values.kind === 'expense' ? values.is_shared : false,
     };
+    if (SEND_RECEIPT_KEY && receipt) payload.receipt = { fn: receipt.fn, i: receipt.i, fp: receipt.fp };
     // Оптимистично: форма закрывается сразу, запись уже на экране.
     var local = optimisticTx(payload);
+    if (receiptKey) {
+      local._receiptKey = receiptKey;
+      if (receiptStore()) receiptStore().remember(scope, receiptKey, { txId: local.id, date: occurred, sum: amount });
+    }
     applyLocalTx(local);
     st.month = occurred.slice(0, 7);
     if (fromCategory && fromCategory === values.category_id) expandedCat = { id: fromCategory, rows: null };
@@ -1583,6 +1758,12 @@
       delete pendingAdds[op.id];
       var tx = ev.detail.result;
       if (tx && tx.id) local._serverId = tx.id;
+      if (receiptKey && tx && tx.id && receiptStore()) {
+        receiptStore().link(scope, local.id, tx.id, receiptKey);
+      }
+      if (tx && tx.receipt_key && receiptStore()) {
+        receiptStore().remember(scope, tx.receipt_key, { txId: tx.id, date: occurred, sum: amount });
+      }
       clearCache();
       // Сервер подтвердил — перерисовываем, чтобы убрать «отправляется».
       if (route.name === 'summary') openSummary();
@@ -1598,7 +1779,10 @@
       var code = ev.detail.error && ev.detail.error.code;
       // Откатываем локальную запись: сервер её не принял.
       removeOptimisticTx(local);
+      // Дубль на сервере — чек уже есть, отметку оставляем. Остальные ошибки снимают блокировку.
+      if (receiptKey && code !== 'duplicate_receipt' && receiptStore()) receiptStore().forget(scope, receiptKey);
       if (code === 'subscription_expired') fail(ev.detail.error);
+      else if (code === 'duplicate_receipt') toast(T('Этот чек уже записан'));
       else toast(T('Не сохранилось: {error}', { error: (ev.detail.error && ev.detail.error.message) || T('ошибка') }));
       if (route.name === 'summary') openSummary();
       if (route.name === 'tx') openTx();
@@ -1633,6 +1817,8 @@
         if (k.indexOf('txCache:') !== 0) return;
         ((st[k] || {}).data || []).forEach(function (t) { if (t.id === id) removed = t; });
       });
+      // Удалённый чек снова можно добавить: снимаем локальную отметку.
+      if (removed && receiptStore()) receiptStore().forgetForTx(scope, removed);
       // Кэш месяца инвалидируем в любом случае (removeLocalTx) — список перерисуется
       // с сервера с учётом отправленной операции.
       if (removed) removeOptimisticTx(removed);
@@ -1676,7 +1862,9 @@
 
   function pickKind(kind) {
     var values = formValues();
-    form = Object.assign({}, values, { kind: kind, category_id: '' });
+    // Чек прихода нельзя записать как расход и наоборот: при смене типа убираем отметку.
+    var receipt = values.receipt && values.receipt.kind === kind ? values.receipt : null;
+    form = Object.assign({}, values, { kind: kind, category_id: '', receipt: receipt });
     form._fromCategory = null;   // сменили тип — возвращаемся на общую сводку
     render(Views.renderForm(form));
   }
@@ -1970,6 +2158,9 @@
         break;
       case 'pick-cat': pickCategory(actionBtn.getAttribute('data-id'), actionBtn); break;
       case 'pick-kind': pickKind(actionBtn.getAttribute('data-kind')); break;
+      case 'scan-receipt': scanReceipt(); break;
+      case 'pick-receipt-photo': pickReceiptPhoto(); break;
+      case 'clear-receipt': form = formValues(); form.receipt = null; render(Views.renderForm(form)); break;
       case 'copy-invite':
         root.Tg.copy((st.member && st.member.households && st.member.households.invite_code) || '');
         break;

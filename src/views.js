@@ -779,13 +779,33 @@
             '<span class="cat-chip__icon">' + categoryIcon(c) + '</span><span>' + e(c.name) + '</span></button>';
         }).join('')
       : '<div class="muted small">' + e(T('Нет категорий — обновите приложение')) + '</div>';
+    var scanBlock = '';
+    if (opts.receipt) {
+      var receiptDate = String(opts.receipt.date || '');
+      var shownDate = /^\d{4}-\d{2}-\d{2}$/.test(receiptDate)
+        ? receiptDate.slice(8, 10) + '.' + receiptDate.slice(5, 7) + '.' + receiptDate.slice(0, 4)
+        : receiptDate;
+      scanBlock = '<div class="receipt-chip" role="status"><span class="receipt-chip__icon" aria-hidden="true">🧾</span>' +
+        '<span class="receipt-chip__text">' + e(T('Чек от {date} · {sum}', { date: shownDate, sum: Fmt.money(opts.receipt.sum) })) + '</span>' +
+        '<button type="button" class="receipt-chip__x" data-action="clear-receipt" aria-label="' + e(T('Убрать чек')) + '">×</button></div>';
+    } else {
+      var tg = root.Tg;
+      var canScan = !!(tg && ((typeof tg.canScanQr === 'function' && tg.canScanQr()) ||
+        (typeof tg.isInsideTelegram === 'function' && !tg.isInsideTelegram())));
+      var qrIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/><path d="M8 8h3v3H8zm5 5h3v3h-3z"/></svg>';
+      var photoIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>';
+      scanBlock = '<div class="scan-row">' +
+        (canScan ? '<button type="button" class="scan-btn scan-btn--primary" data-action="scan-receipt">' + qrIcon + '<span>' + e(T('Сканировать чек')) + '</span></button>' : '') +
+        '<button type="button" class="scan-btn" data-action="pick-receipt-photo">' + photoIcon + '<span>' + e(T('Распознать QR с фото')) + '</span></button>' +
+        '</div>';
+    }
     return (
       '<form class="entry-form entry-form--' + kind + '" data-form="add" novalidate>' +
       '<div class="entry-heading"><button type="button" class="profile-back" data-action="start" aria-label="' + e(T('Назад')) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button><div><h1>' + e(T(kind === 'income' ? 'Новый доход' : 'Новый расход')) + '</h1><p>' + e(T('Добавьте запись в свой бюджет')) + '</p></div></div>' +
       '<div class="segments entry-kind" role="group" aria-label="' + e(T('Тип записи')) + '">' +
       '<button type="button" class="segment' + (kind === 'expense' ? ' segment--active' : '') + '" aria-pressed="' + (kind === 'expense') + '" data-action="pick-kind" data-kind="expense"><span aria-hidden="true">↘</span>' + e(T('Расход')) + '</button>' +
       '<button type="button" class="segment' + (kind === 'income' ? ' segment--active' : '') + '" aria-pressed="' + (kind === 'income') + '" data-action="pick-kind" data-kind="income"><span aria-hidden="true">↗</span>' + e(T('Доход')) + '</button>' +
-      '</div>' +
+      '</div>' + scanBlock +
       '<label class="field entry-amount"><span class="field__label">' + e(T(kind === 'income' ? 'Сумма дохода' : 'Сумма расхода')) + '</span>' +
       '<span class="entry-amount__line"><span class="entry-amount__sign" aria-hidden="true">' + (kind === 'income' ? '+' : '−') + '</span><input class="input input--amount" name="amount" inputmode="decimal" autocomplete="off" placeholder="0" value="' + e(amount) + '" required><span class="entry-amount__currency">' + e(Fmt.currencySymbol()) + '</span></span></label>' +
       '<div class="entry-section-heading"><h2>' + e(T('Категория')) + '</h2><span>' + e(T('Выберите одну')) + '</span></div>' +
