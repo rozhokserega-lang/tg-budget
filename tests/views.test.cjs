@@ -56,6 +56,12 @@ test('all-zero month has empty state and reveal; month sums determine new order'
   assert.deepEqual(renderedCategoryIds(home(ctx, [{ id: 'equal-b', fact: 90 }, { id: 'max', fact: 5 }])), ['equal-b', 'max']);
   assert.doesNotMatch(home(ctx, [{ id: 'only', fact: 10 }]), /data-action="home-empty-toggle"/);
 });
+test('home income and expense cards are buttons that open the matching finance filter', () => {
+  const ctx = setup();
+  const html = home(ctx);
+  assert.match(html, /<button type="button" class="hero__item" data-action="go-tx-kind" data-kind="income">/);
+  assert.match(html, /<button type="button" class="hero__item" data-action="go-tx-kind" data-kind="expense">/);
+});
 test('finance groups newest days and creation times first without mutating input', () => {
   const ctx = setup();
   const rows = [tx('old', '2025-01-01', '2025-01-01T03:00:00Z'), tx('a', '2025-01-03', '2025-01-03T02:00:00Z'), tx('b', '2025-01-03', '2025-01-03T06:00:00Z'), tx('tie', '2025-01-03', '2025-01-03T06:00:00Z')];
@@ -89,6 +95,23 @@ test('finance keeps filters, empty results and local Today/Yesterday labels', ()
   assert.match(filtered, /data-tx-id="yesterday"/);
   assert.match(ctx.Views.txResults(rows, { q: 'missing' }), /Ничего не найдено/);
   assert.match(ctx.Views.txResults([], {}), /Записей нет/);
+});
+test('finance filters by operation kind and highlights the matching overview card', () => {
+  const ctx = setup();
+  const rows = [
+    tx('income', '2025-01-02', '', { category_id: 'salary', categories: { name: 'Salary', kind: 'income' }, amount: 100 }),
+    tx('expense', '2025-01-01', '', { amount: 20 }),
+  ];
+  const html = ctx.Views.renderTxList(rows, { kind: 'income' });
+  assert.match(html, /data-tx-id="income"/);
+  assert.doesNotMatch(html, /data-tx-id="expense"/);
+  assert.match(html, /Доходы · Найдено: 1/);
+  assert.match(html, /<button type="button" data-action="tx-kind" data-kind="income" aria-pressed="true" class="finance-stat finance-stat--income finance-stat--active">/);
+  assert.match(html, /<button type="button" data-action="tx-kind" data-kind="expense" aria-pressed="false" class="finance-stat finance-stat--expense">/);
+  const expenses = ctx.Views.txResults(rows, { kind: 'expense' });
+  assert.match(expenses, /data-tx-id="expense"/);
+  assert.doesNotMatch(expenses, /data-tx-id="income"/);
+  assert.match(expenses, /Расходы · Найдено: 1/);
 });
 test('home only edits confirmed expenses and does not sort or group their operations', () => {
   const ctx = setup();

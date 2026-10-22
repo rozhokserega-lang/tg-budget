@@ -70,7 +70,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     closeSheet: closeSheet, beginSheetDrag: beginSheetDrag, syncBackButton: syncBackButton,
     getEditing: function () { return editingTx; }, getSaving: function () { return editSaving; },
     getDrag: function () { return sheetDrag; },
-    openSummary: openSummary, openTx: openTx, loadResource: loadResource,
+    openSummary: openSummary, openTx: openTx, openTxKind: openTxKind, setTxKind: setTxKind, loadResource: loadResource,
     fetchSummary: fetchSummary, loadTx: loadTx, adoptMember: adoptMember,
     refreshOnReturn: refreshOnReturn, clearCache: clearCache, cached: cached,
     applyLocalTx: applyLocalTx,
@@ -450,16 +450,38 @@ test('plan SWR shows cached goals and retains them if background refresh fails',
 test('finance navigation preserves active filters on refresh and resets them on explicit tab entry', async () => {
   const env = setup(undefined, { stubReload: false, api: () => Promise.resolve([env.tx]) });
   env.st.member = { id: 'me', household_id: 'first' };
-  env.st.txFilter = { category_id: 'food', member_id: 'me', q: 'old note' };
+  env.st.txFilter = { kind: 'income', category_id: 'food', member_id: 'me', q: 'old note' };
   env.app.openTx();
   await settled();
+  assert.equal(env.st.txFilter.kind, 'income');
   assert.equal(env.st.txFilter.member_id, 'me');
   assert.equal(env.st.txFilter.q, 'old note');
   env.app.openTab('tx');
   await settled();
+  assert.equal(env.st.txFilter.kind, null);
   assert.equal(env.st.txFilter.category_id, null);
   assert.equal(env.st.txFilter.member_id, null);
   assert.equal(env.st.txFilter.q, '');
+});
+
+test('home income and expense cards open finance with a kind filter and switching stays on the page', async () => {
+  const env = setup(undefined, { stubReload: false, api: () => Promise.resolve([env.tx]) });
+  env.st.member = { id: 'me', household_id: 'first' };
+  env.app.openTxKind('income');
+  assert.equal(env.st.txFilter.kind, 'income');
+  assert.equal(env.st.txFilter.category_id, null);
+  assert.equal(env.st.txFilter.member_id, null);
+  assert.equal(env.st.txFilter.q, '');
+  assert.match(env.nodes.get('#screen').innerHTML, /finance-stat--income finance-stat--active/);
+  await settled();
+  env.app.setTxKind('expense');
+  assert.equal(env.st.txFilter.kind, 'expense');
+  assert.match(env.nodes.get('#screen').innerHTML, /finance-stat--expense finance-stat--active/);
+  env.app.setTxKind('');
+  assert.equal(env.st.txFilter.kind, null);
+  env.app.openTab('tx');
+  await settled();
+  assert.equal(env.st.txFilter.kind, null);
 });
 
 test('confirmed mutation supersedes a pending plans read before reloading plans', async () => {

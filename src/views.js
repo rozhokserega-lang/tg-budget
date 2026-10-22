@@ -505,8 +505,8 @@
       '<div class="hero__label">' + e(T('Остаток за месяц')) + '</div>' +
       '<div class="hero__balance' + (balance < 0 ? ' hero__balance--negative' : '') + '">' + e(money(balance)) + '</div>' +
       '<div class="hero__row">' +
-      '<div class="hero__item"><span class="hero__item-label"><svg class="hero__direction hero__direction--income" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>' + e(T('Доходы')) + '</span><span class="hero__item-value">+' + e(money(s.income)) + '</span></div>' +
-      '<div class="hero__item"><span class="hero__item-label"><svg class="hero__direction hero__direction--expense" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>' + e(T('Расходы')) + '</span><span class="hero__item-value">−' + e(money(s.expense)) + '</span></div>' +
+      '<button type="button" class="hero__item" data-action="go-tx-kind" data-kind="income"><span class="hero__item-label"><svg class="hero__direction hero__direction--income" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>' + e(T('Доходы')) + '</span><span class="hero__item-value">+' + e(money(s.income)) + '</span></button>' +
+      '<button type="button" class="hero__item" data-action="go-tx-kind" data-kind="expense"><span class="hero__item-label"><svg class="hero__direction hero__direction--expense" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>' + e(T('Расходы')) + '</span><span class="hero__item-value">−' + e(money(s.expense)) + '</span></button>' +
       '</div>' +
       '</div>' +
       '<div class="section categories-section"><div class="section__head categories-section__head"><span class="section__title">' + e(T('Категории')) + '</span>' +
@@ -573,6 +573,7 @@
     var q = String(f.q || '').trim().toLowerCase();
     var parts = q ? q.split(/\s+/) : [];
     return (list || []).filter(function (t) {
+      if (f.kind && ((t.categories && t.categories.kind) || 'expense') !== f.kind) return false;
       if (f.category_id && t.category_id !== f.category_id) return false;
       if (f.member_id && t.member_id !== f.member_id) return false;
       if (!parts.length) return true;
@@ -585,7 +586,7 @@
 
   function txFilterActive(filter) {
     var f = filter || {};
-    return !!(f.category_id || f.member_id || String(f.q || '').trim());
+    return !!(f.kind || f.category_id || f.member_id || String(f.q || '').trim());
   }
 
   // Участники и категории для фильтров берутся из загруженного месяца,
@@ -673,7 +674,9 @@
         : empty('🧾', T('Записей нет'), T('За {month} пока ничего не записано.', { month: Fmt.monthTitle(st.month) }),
             '<button type="button" class="btn btn--primary" data-action="go-add">' + e(T('Добавить запись')) + '</button>');
     }
-    var count = '<div class="tx-count"><span>' + e(T('Найдено: {records}', { records: P('records', list.length) })) + '</span>' +
+    var kindLabel = f.kind === 'income' ? T('Доходы') : f.kind === 'expense' ? T('Расходы') : '';
+    var found = T('Найдено: {records}', { records: P('records', list.length) });
+    var count = '<div class="tx-count"><span>' + (kindLabel ? e(kindLabel) + ' · ' : '') + e(found) + '</span>' +
       '<button type="button" class="tx-count__reset" data-action="tx-clear-filter">' + e(T('Сбросить')) + '</button></div>';
     return (active ? count : '') +
       groupByDay(list).map(function (g) {
@@ -685,7 +688,7 @@
     var st = State.get();
     var pending = (root.Queue && Queue.size()) ? '<div class="sync-note">' + e(T('Изменения отправятся, когда появится связь')) + '</div>' : '';
     return '<div class="finance-page"><div class="finance-heading"><h1>' + e(T('Финансы')) + '</h1></div>' +
-      monthNav(st.month) + pending + financeOverview(all) +
+      monthNav(st.month) + pending + financeOverview(all, filter) +
       '<div class="finance-ledger">' + txControls(all, filter) +
       '<h2 class="finance-history-title">' + e(T('История')) + '</h2>' +
       '<div id="tx-results">' + txResults(all, filter) + '</div></div></div>';
@@ -706,8 +709,9 @@
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7"/></svg>' + e(T('Удалить')) + '</button></div>';
   }
 
-  function financeOverview(all) {
+  function financeOverview(all, filter) {
     var income = 0, expense = 0, groups = {};
+    var activeKind = (filter && filter.kind) || '';
     reconcileList(all || []).forEach(function (tx) {
       if (root.AppState && root.AppState.isDeleting(tx.id)) return;
       var amount = Number(tx.amount) || 0;
@@ -722,8 +726,12 @@
       ['expense', T('Расходы'), '−' + money(expense), '<path d="m6 6 12 12M6 18h12V6"/>'],
       ['balance', T('Остаток'), money(income - expense), '<rect x="3" y="6" width="18" height="15" rx="3"/><path d="M3 10h18M16 14h5v4h-5zM6 6V3h12"/>'],
     ].map(function (item) {
-      return '<div class="finance-stat finance-stat--' + item[0] + '"><span class="finance-stat__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + item[3] +
-        '</svg></span><span class="finance-stat__label">' + e(item[1]) + '</span><strong>' + e(item[2]) + '</strong></div>';
+      var filterable = item[0] === 'income' || item[0] === 'expense';
+      var active = filterable && activeKind === item[0];
+      var tag = filterable ? 'button' : 'div';
+      var attrs = filterable ? ' type="button" data-action="tx-kind" data-kind="' + item[0] + '" aria-pressed="' + active + '"' : '';
+      return '<' + tag + attrs + ' class="finance-stat finance-stat--' + item[0] + (active ? ' finance-stat--active' : '') + '"><span class="finance-stat__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + item[3] +
+        '</svg></span><span class="finance-stat__label">' + e(item[1]) + '</span><strong>' + e(item[2]) + '</strong></' + tag + '>';
     }).join('');
     var cats = Object.keys(groups).map(function (key) { return groups[key]; }).sort(function (a, b) { return b.amount - a.amount; });
     if (cats.length > 5) cats = cats.slice(0, 4).concat([{ name: T('Прочее'), amount: cats.slice(4).reduce(function (sum, c) { return sum + c.amount; }, 0) }]);

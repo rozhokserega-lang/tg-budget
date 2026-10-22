@@ -384,7 +384,7 @@
       clearCache();
       st.categories = null;
       st.plans = null;
-      st.txFilter = { category_id: null, member_id: null, q: '' };
+      st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
       pendingAdds = {};
       deletingTx = {};
       expandedCat = null;
@@ -571,8 +571,8 @@
   // Любой явный переход сбрасывает поиск и фильтры участника.
   function openTx(categoryId, force) {
     route = { name: 'tx' };
-    if (categoryId !== undefined) st.txFilter = { category_id: categoryId || null, member_id: null, q: '' };
-    if (!st.txFilter) st.txFilter = { category_id: null, member_id: null, q: '' };
+    if (categoryId !== undefined) st.txFilter = { kind: null, category_id: categoryId || null, member_id: null, q: '' };
+    if (!st.txFilter) st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
     var seq = ++reqSeq;
     var month = st.month;
     var previous = cached('txCache:' + month);
@@ -586,6 +586,12 @@
       if (cached('txCache:' + month)) toast(T('Не удалось обновить — показываем сохранённое'));
       else fail(err);
     });
+  }
+
+  // Переход с главной по карточке доходов или расходов.
+  function openTxKind(kind) {
+    st.txFilter = { kind: kind === 'income' ? 'income' : 'expense', category_id: null, member_id: null, q: '' };
+    openTx();
   }
 
   // params: { category_id, kind } — подставляем категорию, если форма открыта из раздела.
@@ -956,9 +962,17 @@
     st.lastSummary = next;
   }
 
+  // Переключение типа операций по карточкам на экране финансов.
+  function setTxKind(kind) {
+    if (!st.txFilter) st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
+    st.txFilter.kind = kind === 'income' || kind === 'expense' ? kind : null;
+    if (route.name !== 'tx') return;
+    render(Views.renderTxList(cached('txCache:' + st.month) || [], st.txFilter));
+  }
+
   // Сброс фильтров: кнопка «Сбросить» в списке.
   function clearTxFilter() {
-    st.txFilter = { category_id: null, member_id: null, q: '' };
+    st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
     openTx();
   }
 
@@ -2085,6 +2099,14 @@
       case 'month-prev': changeMonth(-1); break;
       case 'month-next': changeMonth(1); break;
       case 'go-tx': openTx(null); break;
+      case 'go-tx-kind':
+        root.Tg.haptic('light');
+        openTxKind(actionBtn.getAttribute('data-kind'));
+        break;
+      case 'tx-kind':
+        root.Tg.haptic('light');
+        setTxKind(actionBtn.getAttribute('data-kind'));
+        break;
       case 'toggle-category-view':
         changeCategoryView(actionBtn);
         break;
@@ -2293,7 +2315,7 @@
       if (route.name !== 'tx') return;
       var current = el.screen.querySelector('#tx-search');
       if (!current || current.value !== value) return;
-      if (!st.txFilter) st.txFilter = { category_id: null, member_id: null, q: '' };
+      if (!st.txFilter) st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
       st.txFilter.q = value;
       var clear = el.screen.querySelector('[data-action="tx-search-clear"]');
       if (clear) clear.hidden = !value;
