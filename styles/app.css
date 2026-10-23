@@ -90,6 +90,7 @@ button,
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   padding: var(--gap) var(--pad) calc(var(--gap) + 24px);
 }
 

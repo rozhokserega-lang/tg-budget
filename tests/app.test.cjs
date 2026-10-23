@@ -54,6 +54,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     Tg: {
       backButton: fn => { context.backHandler = fn; },
       haptic() {},
+      setThemeMode: mode => { context.themeMode = mode; },
       platform: () => homeScreen.platform || '',
       showAlert: text => { alerts.push(text); },
       canAddToHomeScreen: () => homeScreen.supported,
@@ -109,6 +110,12 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     setExpandedForTest: function (value) { expandedCat = value; },
     getExpanded: function () { return expandedCat; },
     setAddDraftForTest: function (draft) { form = draft; },
+    setHomeCategorySort: setHomeCategorySort,
+    setThemePreference: setThemePreference,
+    swipeTarget: swipeTarget,
+    pageSwipeAllowed: pageSwipeAllowed,
+    navigateBySwipe: navigateBySwipe,
+    getRoute: function () { return route; },
     preventRouteReloadForTest: function () {
       openSummary = function () { root.routeReloaded = 'summary'; };
       openTx = function () { root.routeReloaded = 'tx'; };
@@ -885,4 +892,48 @@ test('cover upload validates image type and size before reading', () => {
   assert.match(env.nodes.get('#toast').textContent, /Выберите изображение/);
   env.app.readCoverFile({ type: 'image/jpeg', size: 13 * 1024 * 1024 });
   assert.match(env.nodes.get('#toast').textContent, /Файл слишком большой/);
+});
+
+test('home category sort dropdown updates and persists the preference', () => {
+  const env = setup();
+  env.st.homeShowEmpty = true;
+  env.app.setHomeCategorySort('amount');
+  assert.equal(env.st.homeCategorySort, 'amount');
+  assert.equal(env.st.homeShowEmpty, false);
+  assert.equal(env.storage.get('budget.homeCategorySort'), 'amount');
+  env.app.setHomeCategorySort('unknown');
+  assert.equal(env.st.homeCategorySort, 'default');
+  assert.equal(env.storage.get('budget.homeCategorySort'), 'default');
+});
+
+test('theme preference is saved and passed to the Telegram theme layer', () => {
+  const env = setup();
+  env.app.setThemePreference('dark');
+  assert.equal(env.context.themeMode, 'dark');
+  assert.equal(env.storage.get('budget.theme'), 'dark');
+  env.app.setThemePreference('system');
+  assert.equal(env.context.themeMode, 'system');
+  assert.equal(env.storage.get('budget.theme'), 'system');
+});
+
+test('page swipe follows main tabs, skips add and ignores interactive targets', () => {
+  const env = setup();
+  env.st.member = { id: 'me', household_id: 'home' };
+  assert.equal(env.app.swipeTarget('summary', 1), 'tx');
+  assert.equal(env.app.swipeTarget('tx', 1), 'plans');
+  assert.equal(env.app.swipeTarget('plans', 1), 'settings');
+  assert.equal(env.app.swipeTarget('settings', 1), null);
+  assert.equal(env.app.swipeTarget('summary', -1), null);
+  assert.equal(env.app.swipeTarget('add', 1), null);
+  assert.equal(env.app.swipeTarget('limits', -1), null);
+
+  assert.equal(env.app.pageSwipeAllowed({ closest: () => null }), true);
+  assert.equal(env.app.pageSwipeAllowed({ closest: () => ({}) }), false);
+
+  env.context.window.routeReloaded = null;
+  assert.equal(env.app.navigateBySwipe(1), true);
+  assert.equal(env.context.window.routeReloaded, 'tx');
+  env.context.window.routeReloaded = null;
+  assert.equal(env.app.navigateBySwipe(-1), false);
+  assert.equal(env.context.window.routeReloaded, null);
 });

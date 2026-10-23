@@ -20,17 +20,83 @@
   var backHandler = null;
   var homeScreenAddedHandlers = [];
   var HOME_SCREEN_MOBILE = { ios: true, android: true, android_x: true };
+  var themeMode = 'system';
+
+  function systemPrefersDark() {
+    try {
+      return !!(root.matchMedia && root.matchMedia('(prefers-color-scheme: dark)').matches);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Ручной выбор темы важнее темы Telegram: убираем inline-переменные,
+  // чтобы вступила в силу палитра из CSS для data-theme="light"/"dark".
+  function clearThemeVars() {
+    var style = document.documentElement.style;
+    if (!style || typeof style.removeProperty !== 'function') return;
+    Object.keys(THEME_KEYS).forEach(function (k) {
+      style.removeProperty(THEME_KEYS[k]);
+    });
+  }
+
+  function setThemeAttribute(mode) {
+    document.documentElement.setAttribute('data-theme', mode);
+    document.documentElement.setAttribute('data-theme-mode', themeMode);
+  }
+
+  // Ручная тема должна совпадать с системными панелями Mini App, иначе
+  // светлый экран остаётся в тёмной «рамке» Telegram.
+  function syncTelegramChrome() {
+    if (!tg) return;
+    var color = themeMode === 'light' ? '#f7f5fb' : themeMode === 'dark' ? '#111116' : 'secondary_bg_color';
+    try { if (tg.setHeaderColor) tg.setHeaderColor(color); } catch (e) {}
+    try { if (tg.setBackgroundColor) tg.setBackgroundColor(color); } catch (e) {}
+  }
 
   function applyTheme() {
-    if (!tg) return;
+    if (themeMode === 'light' || themeMode === 'dark') {
+      clearThemeVars();
+      setThemeAttribute(themeMode);
+      syncTelegramChrome();
+      return;
+    }
+
+    if (!tg) {
+      clearThemeVars();
+      setThemeAttribute(systemPrefersDark() ? 'dark' : 'light');
+      return;
+    }
+
     var p = tg.themeParams || {};
+    clearThemeVars();
     Object.keys(THEME_KEYS).forEach(function (k) {
       if (p[k]) document.documentElement.style.setProperty(THEME_KEYS[k], p[k]);
     });
-    document.documentElement.setAttribute('data-theme', p.bg_color && isDark(p.bg_color) ? 'dark' : 'light');
-    if (!p.bg_color && tg.colorScheme) {
-      document.documentElement.setAttribute('data-theme', tg.colorScheme === 'dark' ? 'dark' : 'light');
-    }
+    var dark = p.bg_color
+      ? isDark(p.bg_color)
+      : tg.colorScheme
+        ? tg.colorScheme === 'dark'
+        : systemPrefersDark();
+    setThemeAttribute(dark ? 'dark' : 'light');
+    syncTelegramChrome();
+  }
+
+  function setThemeMode(mode) {
+    themeMode = mode === 'light' || mode === 'dark' ? mode : 'system';
+    applyTheme();
+    return themeMode;
+  }
+
+  if (root.matchMedia) {
+    try {
+      var themeMedia = root.matchMedia('(prefers-color-scheme: dark)');
+      if (themeMedia && themeMedia.addEventListener) {
+        themeMedia.addEventListener('change', function () {
+          if (themeMode === 'system' && !tg) applyTheme();
+        });
+      }
+    } catch (e) {}
   }
 
   function isDark(hex) {
@@ -57,7 +123,10 @@
 
   async function init() {
     await waitForSdk();
-    if (!tg) return false;
+    if (!tg) {
+      applyTheme();
+      return false;
+    }
     try {
       tg.ready();
       tg.expand();
@@ -255,6 +324,8 @@
     canScanQr: canScanQr,
     scanQr: scanQr,
     init: init,
+    setThemeMode: setThemeMode,
+    themeMode: function () { return themeMode; },
     initData: initData,
     isInsideTelegram: isInsideTelegram,
     haptic: haptic,

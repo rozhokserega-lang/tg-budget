@@ -47,6 +47,9 @@
   var QUICK_PAGES = 3;
   // Палец на странице быстрых действий: { x, y, dx, axis } или null.
   var qaSwipe = null;
+  // Горизонтальный свайп между основными страницами.
+  var pageSwipe = null;
+  var pageSwipeClickUntil = 0;
   // Категория, из которой открыли форму: после сохранения вернёмся к ней.
   var pendingFromCategory = null;
   var homeScreenCheckSeq = 0;
@@ -63,8 +66,22 @@
     { id: 'settings', icon: ICON('<circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/>'), label: 'Профиль' },
   ];
   var plansTab = 'goals';
+  // Порядок основных страниц для горизонтального свайпа. «Добавить» —
+  // действие, а не страница, поэтому в навигации не участвует.
+  var MAIN_TABS = ['summary', 'tx', 'plans', 'settings'];
 
   // --- UI-помощники ---
+
+  function themeLabel(mode) {
+    return mode === 'light' ? 'Светлая' : mode === 'dark' ? 'Тёмная' : 'Система';
+  }
+
+  function setThemePreference(mode) {
+    var next = State.setThemeMode(mode);
+    if (root.Tg && typeof root.Tg.setThemeMode === 'function') root.Tg.setThemeMode(next);
+    root.Tg.haptic('light');
+    toast(T('Тема: {name}', { name: T(themeLabel(next)) }));
+  }
 
   var toastTimer = null;
   function toast(text) {
@@ -1509,6 +1526,37 @@
     else if (tab === 'settings') openSettings();
   }
 
+  function swipeTarget(name, direction) {
+    var index = MAIN_TABS.indexOf(name);
+    if (index === -1) return null;
+    var next = index + (direction < 0 ? -1 : 1);
+    return next >= 0 && next < MAIN_TABS.length ? MAIN_TABS[next] : null;
+  }
+
+  function pageSwipeAllowed(target) {
+    if (!st.member || editingTx || st.homeEdit) return false;
+    if (route.name === 'add' || route.name === 'limits') return false;
+    if (route.name === 'settings' && route.section) return false;
+    if (MAIN_TABS.indexOf(route.name) === -1) return false;
+    if (el.sheet && !el.sheet.hidden) return false;
+    if (el.dialog && !el.dialog.hidden) return false;
+    if (target && target.closest &&
+        target.closest('input,textarea,select,button,a,label,[contenteditable],.tx,.cat-tx,.finance-operation,.sheet,.dialog,.quick-actions,details')) {
+      return false;
+    }
+    return true;
+  }
+
+  function navigateBySwipe(direction) {
+    if (!pageSwipeAllowed(null)) return false;
+    var target = swipeTarget(route.name, direction);
+    if (!target) return false;
+    closeSwipes();
+    root.Tg.haptic('light');
+    openTab(target);
+    return true;
+  }
+
   function openQuickActions(page) {
     quickActionsPage = Math.max(0, Math.min(QUICK_PAGES - 1, Number(page) || 0));
     openSheet(Views.renderQuickActions(quickActionsPage));
@@ -2423,6 +2471,13 @@
   });
 
 
+  function setHomeCategorySort(value) {
+    st.homeCategorySort = value === 'amount' ? 'amount' : 'default';
+    st.homeShowEmpty = false;
+    try { root.localStorage.setItem('budget.homeCategorySort', st.homeCategorySort); } catch (e) {}
+    renderSummaryFromCache();
+  }
+
   // Перерисовка сводки из кэша без запроса — нужна для раскрытия/сворачивания.
   // render() сбрасывает прокрутку вверх, поэтому запоминаем позицию и
   // держим раскрытую строку на том же месте экрана.
@@ -2629,12 +2684,6 @@
       case 'home-move': moveHomeBlock(actionBtn.getAttribute('data-id'), actionBtn.getAttribute('data-dir')); break;
       case 'edit-tx': openEditTx(actionBtn.getAttribute('data-id')); break;
       case 'cancel-edit-tx': cancelEditTx(); break;
-      case 'home-category-sort':
-        st.homeCategorySort = actionBtn.getAttribute('data-sort') === 'amount' ? 'amount' : 'default';
-        st.homeShowEmpty = false;
-        try { root.localStorage.setItem('budget.homeCategorySort', st.homeCategorySort); } catch (e) {}
-        renderSummaryFromCache();
-        break;
       case 'home-empty-toggle': st.homeShowEmpty = !st.homeShowEmpty; renderSummaryFromCache(); break;
       case 'month-prev': changeMonth(-1); break;
       case 'month-next': changeMonth(1); break;
@@ -2895,6 +2944,14 @@
       saveNotificationTime(t);
       return;
     }
+    if (t.matches('[data-theme-pref]')) {
+      setThemePreference(t.value);
+      return;
+    }
+    if (t.matches('[data-home-category-sort]')) {
+      setHomeCategorySort(t.value);
+      return;
+    }
     if (t.matches('[data-locale]')) {
       if (!I18n.setLocale(t.value)) return;
       root.Tg.haptic('light');
@@ -3110,6 +3167,50 @@
     if (ev.key === 'ArrowRight' || ev.key === 'Escape') { ev.preventDefault(); closeSwipes(); row.focus(); }
   });
 
+  // Горизонтальный свайп по основным страницам. Стартуем только на
+  // неинтерактивных участках экрана: строки трат, кнопки, поля и открытые
+  // шторки имеют собственные жесты и не должны переключать вкладку.
+  var PAGE_SWIPE_MIN = 56;
+  el.screen.addEventListener('touchstart', function (ev) {
+    if (ev.touches.length !== 1 || !pageSwipeAllowed(ev.target)) return;
+    pageSwipe = { x: ev.touches[0].clientX, y: ev.touches[0].clientY, dx: 0, axis: '' };
+  }, { passive: true });
+
+  el.screen.addEventListener('touchmove', function (ev) {
+    var gesture = pageSwipe;
+    if (!gesture) return;
+    if (ev.touches.length !== 1) { pageSwipe = null; return; }
+    var dx = ev.touches[0].clientX - gesture.x;
+    var dy = ev.touches[0].clientY - gesture.y;
+    if (!gesture.axis) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      if (Math.abs(dy) >= Math.abs(dx) || Math.abs(dx) < Math.abs(dy) * 1.2) {
+        pageSwipe = null;
+        return;
+      }
+      gesture.axis = 'x';
+    }
+    gesture.dx = dx;
+    if (ev.cancelable) ev.preventDefault();
+  }, { passive: false });
+
+  el.screen.addEventListener('touchend', function (ev) {
+    var gesture = pageSwipe;
+    pageSwipe = null;
+    if (!gesture || gesture.axis !== 'x' || Math.abs(gesture.dx) < PAGE_SWIPE_MIN) return;
+    if (ev.cancelable) ev.preventDefault();
+    pageSwipeClickUntil = Date.now() + 350;
+    navigateBySwipe(gesture.dx < 0 ? 1 : -1);
+  }, { passive: false });
+
+  el.screen.addEventListener('touchcancel', function () { pageSwipe = null; }, { passive: true });
+
+  el.screen.addEventListener('click', function (ev) {
+    if (Date.now() < pageSwipeClickUntil) {
+      ev.preventDefault(); ev.stopImmediatePropagation();
+    }
+  }, true);
+
   // Долгое нажатие на строке — путь удаления для мыши (на таче — свайп).
   // Слушаем document: перерисовка экрана не теряет состояние удержания.
   var hold = null;
@@ -3286,6 +3387,7 @@
     var loaderText = document.querySelector('.loader__text');
     if (loaderText) loaderText.textContent = T('Загружаем бюджет…');
     if (typeof root.Tg.onHomeScreenAdded === 'function') root.Tg.onHomeScreenAdded(markHomeScreenAdded);
+    if (typeof root.Tg.setThemeMode === 'function') root.Tg.setThemeMode(State.themeMode());
     var coversReady = root.Covers && typeof root.Covers.loadCustom === 'function'
       ? root.Covers.loadCustom().catch(function () { return null; })
       : Promise.resolve(null);

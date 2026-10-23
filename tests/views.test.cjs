@@ -377,3 +377,29 @@ test('custom cover fills the hero and appearance offers upload, crop and reset',
   assert.match(editor, /data-action="apply-cover"/);
   assert.match(editor, /data-sheet-close/);
 });
+
+test('home sorting is a labelled dropdown with the selected mode', () => {
+  const ctx = setup();
+  let html = home(ctx);
+  assert.match(html, /home-category-sort__label">Сортировка</);
+  assert.match(html, /<select[^>]*data-home-category-sort[^>]*aria-label="Сортировка категорий"/);
+  assert.match(html, /<option value="default" selected>По умолчанию<\/option>/);
+  assert.doesNotMatch(html, /data-action="home-category-sort"/);
+
+  ctx.State.get().homeCategorySort = 'amount';
+  html = home(ctx);
+  assert.match(html, /<option value="amount" selected>По сумме<\/option>/);
+});
+
+test('appearance offers system, light and dark theme choices', () => {
+  const ctx = setup();
+  let html = ctx.Views.renderSettings('appearance');
+  assert.match(html, /data-theme-pref/);
+  assert.match(html, /<option value="system" selected>Система<\/option>/);
+  assert.match(html, /<option value="light">Светлая<\/option>/);
+  assert.match(html, /<option value="dark">Тёмная<\/option>/);
+
+  ctx.State.setThemeMode('dark');
+  html = ctx.Views.renderSettings('appearance');
+  assert.match(html, /<option value="dark" selected>Тёмная<\/option>/);
+});

@@ -51,6 +51,18 @@
   var homeOrder = readHomeOrder();
   state.homeOrder = homeOrder.slice();
 
+  // Тема оформления: системная (по умолчанию), светлая или тёмная.
+  // Выбор общий для всех участников на этом устройстве, поэтому не сбрасывается.
+  var THEME_KEY = 'budget.theme';
+  var THEME_MODES = ['system', 'light', 'dark'];
+
+  function normalizeThemeMode(mode) {
+    return THEME_MODES.indexOf(mode) !== -1 ? mode : 'system';
+  }
+
+  var themeMode = 'system';
+  try { themeMode = normalizeThemeMode(root.localStorage.getItem(THEME_KEY)); } catch (e) {}
+
   function displayName(m) {
     if (!m) return '';
     return (m.households && m.households.name) || (root.I18n ? root.I18n.t('Наша семья') : 'Наша семья');
@@ -117,6 +129,12 @@
       return (state.categories || []).find(function (c) { return c.id === cid; }) || null;
     },
     displayName: displayName,
+    themeMode: function () { return themeMode; },
+    setThemeMode: function (mode) {
+      themeMode = normalizeThemeMode(mode);
+      try { root.localStorage.setItem(THEME_KEY, themeMode); } catch (e) {}
+      return themeMode;
+    },
     isSolo: isSolo,
     planDaysLeft: planDaysLeft,
     isExpired: isExpired,

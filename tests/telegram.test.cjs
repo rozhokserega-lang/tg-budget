@@ -19,14 +19,21 @@ function setup(webApp, extra = {}) {
 }
 
 function fakeDocument() {
+  const attrs = {};
+  const props = {};
   const element = {
-    style: { setProperty() {} },
+    style: {
+      setProperty(name, value) { props[name] = value; },
+      removeProperty(name) { delete props[name]; },
+    },
     classList: { add() {} },
-    setAttribute() {},
+    setAttribute(name, value) { attrs[name] = value; },
   };
   return {
     documentElement: element,
     body: { classList: { add() {} } },
+    attrs,
+    props,
   };
 }
 
@@ -105,4 +112,44 @@ test('homeScreenAdded event reaches registered app handlers', async () => {
   context.window.Tg.onHomeScreenAdded(() => { added += 1; });
   handlers.homeScreenAdded();
   assert.equal(added, 1);
+});
+
+test('manual theme overrides Telegram and system restores its palette', async () => {
+  const document = fakeDocument();
+  const chrome = [];
+  const sdk = {
+    themeParams: { bg_color: '#111116', text_color: '#f4f1f7' },
+    colorScheme: 'dark',
+    ready() {},
+    expand() {},
+    disableVerticalSwipes() {},
+    setHeaderColor(color) { chrome.push(['header', color]); },
+    setBackgroundColor(color) { chrome.push(['background', color]); },
+    onEvent() {},
+  };
+  const context = setup(sdk, { document });
+  const Tg = context.window.Tg;
+  await Tg.init();
+
+  assert.equal(document.attrs['data-theme'], 'dark');
+  assert.equal(document.attrs['data-theme-mode'], 'system');
+  assert.equal(document.props['--tg-bg'], '#111116');
+
+  Tg.setThemeMode('light');
+  assert.equal(Tg.themeMode(), 'light');
+  assert.equal(document.attrs['data-theme'], 'light');
+  assert.equal(document.attrs['data-theme-mode'], 'light');
+  assert.equal(document.props['--tg-bg'], undefined);
+  assert.deepEqual(chrome.slice(-2), [['header', '#f7f5fb'], ['background', '#f7f5fb']]);
+
+  Tg.setThemeMode('dark');
+  assert.equal(document.attrs['data-theme'], 'dark');
+  assert.equal(document.attrs['data-theme-mode'], 'dark');
+  assert.deepEqual(chrome.slice(-2), [['header', '#111116'], ['background', '#111116']]);
+
+  Tg.setThemeMode('unknown');
+  assert.equal(Tg.themeMode(), 'system');
+  assert.equal(document.attrs['data-theme'], 'dark');
+  assert.equal(document.props['--tg-bg'], '#111116');
+  assert.deepEqual(chrome.slice(-2), [['header', 'secondary_bg_color'], ['background', 'secondary_bg_color']]);
 });

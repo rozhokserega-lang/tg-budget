@@ -509,10 +509,14 @@
           return categoryRow(c, expandedCat && expandedCat.id === c.id ? expandedCat : null, index);
         }).join('')
       : '<div class="empty">' + e(T(originalCategories.length ? 'Расходов за этот месяц нет' : 'Категорий пока нет')) + '</div>';
-    var sortControls = '<div class="home-category-sort" role="group" aria-label="' + e(T('Порядок категорий')) + '">' +
-      ['default', 'amount'].map(function (mode) {
-        return '<button type="button" class="btn btn--sm" data-action="home-category-sort" data-sort="' + mode + '" aria-pressed="' + (categorySort === mode) + '">' + e(T(mode === 'amount' ? 'По сумме' : 'По умолчанию')) + '</button>';
-      }).join('') + '</div>';
+    var sortOptions = ['default', 'amount'].map(function (mode) {
+      return '<option value="' + mode + '"' + (categorySort === mode ? ' selected' : '') + '>' +
+        e(T(mode === 'amount' ? 'По сумме' : 'По умолчанию')) + '</option>';
+    }).join('');
+    var sortControls = '<div class="home-category-sort">' +
+      '<span class="home-category-sort__label">' + e(T('Сортировка')) + '</span>' +
+      '<select class="currency-row__select home-category-sort__select" data-home-category-sort aria-label="' + e(T('Сортировка категорий')) + '">' +
+      sortOptions + '</select></div>';
     var emptyControl = categorySort === 'amount' && zeroCategories.length
       ? '<button type="button" class="btn btn--sm home-empty-toggle" data-action="home-empty-toggle">' + e(T(st.homeShowEmpty ? 'Скрыть пустые категории' : 'Показать пустые категории')) + ' (' + zeroCategories.length + ')</button>' : '';
     var cover = root.Covers ? root.Covers.current() : null;
@@ -1276,6 +1280,21 @@
       '</div></div>';
   }
 
+  function themeCard() {
+    var current = State.themeMode ? State.themeMode() : 'system';
+    var labels = { system: 'Система', light: 'Светлая', dark: 'Тёмная' };
+    var options = ['system', 'light', 'dark'].map(function (mode) {
+      return '<option value="' + mode + '"' + (mode === current ? ' selected' : '') + '>' +
+        e(T(labels[mode])) + '</option>';
+    }).join('');
+    return '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Тема')) + '</span></div>' +
+      '<div class="card">' +
+      '<label class="currency-row"><span class="currency-row__label">' + e(T('Тема интерфейса')) + '</span>' +
+      '<select class="currency-row__select" data-theme-pref>' + options + '</select></label>' +
+      '<p class="small muted mt-8">' + e(T('Выбор сохраняется на этом устройстве.')) + '</p>' +
+      '</div></div>';
+  }
+
   function coverCard() {
     var current = root.Covers ? root.Covers.id() : 'default';
     var options = (root.Covers ? root.Covers.list : []).map(function (c) {
@@ -1441,7 +1460,7 @@
     var sections = [
       ['family', 'Семья и участники', 'Участники, общие траты и приглашение', '<circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3m1-16a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 5v2"/>'],
       ['budget', 'Бюджет и лимиты', 'Категории, лимиты и баланс карты', '<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 9h18m-5 5h5v3h-5z"/>'],
-      ['appearance', 'Оформление и язык', 'Обложка, язык и обозначение валюты', '<path d="M12 3a9 9 0 0 0 0 18h2a2 2 0 0 0 1-4 2 2 0 0 1 1-4h2a3 3 0 0 0 3-3 9 9 0 0 0-9-7z"/><path d="M7 10h.01M10 6h.01M15 7h.01"/>'],
+      ['appearance', 'Оформление и язык', 'Тема, обложка, язык и валюта', '<path d="M12 3a9 9 0 0 0 0 18h2a2 2 0 0 0 1-4 2 2 0 0 1 1-4h2a3 3 0 0 0 3-3 9 9 0 0 0-9-7z"/><path d="M7 10h.01M10 6h.01M15 7h.01"/>'],
       ['notifications', 'Уведомления', 'Напоминания, лимиты и отчёты в Telegram', '<path d="M5 17h14l-2-4V9a5 5 0 0 0-10 0v4zM10 21h4M12 2v2"/>'],
       ['subscription', 'Подписка и промокоды', 'Срок доступа, продление и промокоды', '<path d="m12 3 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/>'],
       ['about', 'О приложении и данные', 'Документы, обновление и управление данными', '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/>'],
@@ -1490,7 +1509,7 @@
             '</div></div>');
     }
     if (section === 'budget') content = limitsCard();
-    if (section === 'appearance') content = coverCard() + languageCard() + currencyCard();
+    if (section === 'appearance') content = themeCard() + coverCard() + languageCard() + currencyCard();
     if (section === 'notifications') content = notificationsCard(notif);
     if (section === 'subscription') content = '<div class="card subscription-access"><div class="settings-row"><span class="settings-row__label">' + e(T('Доступ')) + '</span><span class="settings-row__value' + (left !== null && left < 0 ? ' amount--neg' : '') + '">' + e(planText) +
       (untilText ? e(T(' · до {date}', { date: untilText })) : '') + '</span></div></div>' + starsCard(st.tariffs, st.buying) + promoCard(st.promo);
