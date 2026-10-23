@@ -154,6 +154,9 @@ test('finance chart switches income, expense and balance independently of the li
   assert.match(income, /Salary<\/span><small>67%<\/small>/);
   assert.match(income, /Gift<\/span><small>33%<\/small>/);
   assert.equal((income.match(/finance-ring__segment/g) || []).length, 2);
+  assert.match(income, /stroke="#54ef9c"/);
+  assert.match(income, /stroke="#6cb8ff"/);
+  assert.doesNotMatch(income, /#7fe3c1/);
   assert.match(income, /--circ:439\.82/);
   assert.match(income, /--segment-delay:0ms/);
   assert.match(income, /--segment-delay:80ms/);

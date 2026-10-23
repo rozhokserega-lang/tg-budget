@@ -817,7 +817,7 @@
     // Расходный график сохраняет прежнюю палитру; доходный — зелёно-голубую,
     // чтобы доходные сегменты не выглядели как расходные.
     var colors = mode === 'income'
-      ? ['#54ef9c', '#7fe3c1', '#6cb8ff', '#b8f27c', '#b984ff']
+      ? ['#54ef9c', '#6cb8ff', '#b984ff', '#b8f27c', '#ffd166']
       : ['#54ef9c', '#ff637c', '#7989ff', '#eb62e4', '#b984ff'];
     var offset = 0, circumference = 2 * Math.PI * 70;
     var segments = total > 0 ? cats.map(function (c, i) {
