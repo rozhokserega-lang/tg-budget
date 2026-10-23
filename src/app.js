@@ -1729,14 +1729,169 @@
     }
   }
 
-  // Обложка главной карточки: хранится на устройстве, как валюта и язык.
-  function setCover(id) {
-    if (!root.Covers || !Covers.set(id)) return;
-    root.Tg.haptic('light');
+  // Обложка главной карточки: выбор хранится на устройстве, как валюта и язык.
+  // Своё фото лежит в IndexedDB и никогда не отправляется на сервер.
+  var coverDraft = null;
+  var coverSaving = false;
+
+  function refreshCoverSettings() {
+    if (route.name !== 'settings' || route.section !== 'appearance') return;
     var scroll = el.screen.scrollTop;
     render(Views.renderSettings(route.section));
     el.screen.scrollTop = scroll;
+  }
+
+  function setCover(id) {
+    if (!root.Covers || !root.Covers.set(id)) return;
+    root.Tg.haptic('light');
+    refreshCoverSettings();
     toast(T('Обложка обновлена'));
+  }
+
+  function coverStorageMessage(err) {
+    if (err && err.code === 'storage_full') return T('На устройстве не хватает места для фона. Освободите память и попробуйте снова.');
+    if (err && (err.code === 'storage_unsupported' || err.code === 'storage_blocked')) return T('Хранилище изображений недоступно. Проверьте настройки приватности.');
+    if (err && err.code === 'image_decode') return T('Не удалось открыть изображение. Выберите JPG или PNG.');
+    return T('Не удалось сохранить фон на устройстве');
+  }
+
+  function openCoverFilePicker() {
+    var input = el.screen.querySelector('[data-cover-file]');
+    if (input) input.click();
+  }
+
+  function readCoverFile(file) {
+    if (!file) return;
+    if (!/^image\//.test(String(file.type || ''))) return toast(T('Выберите изображение'));
+    if (Number(file.size) > 12 * 1024 * 1024) return toast(T('Файл слишком большой — до 12 МБ'));
+    if (!root.FileReader) return toast(T('Не удалось прочитать изображение'));
+    var reader = new root.FileReader();
+    reader.onload = function () { openCoverDraft(String(reader.result || '')); };
+    reader.onerror = function () { toast(T('Не удалось прочитать изображение')); };
+    reader.readAsDataURL(file);
+  }
+
+  function openCoverDraft(src) {
+    if (!src || !root.Image) return;
+    var image = new root.Image();
+    image.onload = function () {
+      coverDraft = { image: image, zoom: 1, x: 50, y: 50 };
+      coverSaving = false;
+      openSheet(Views.renderCoverEditor());
+      drawCoverPreview();
+    };
+    image.onerror = function () {
+      var err = new Error('Image decode failed');
+      err.code = 'image_decode';
+      toast(coverStorageMessage(err));
+    };
+    image.src = src;
+  }
+
+  // Кадр под пропорции карточки: заполняем по большей стороне и даём
+  // пользователю выбрать масштаб и положение. Тот же расчёт используется
+  // для превью и для финального сжатого изображения.
+  function drawCoverCrop(canvas, image, zoom, x, y) {
+    var ctx = canvas.getContext && canvas.getContext('2d');
+    if (!ctx) return false;
+    var tw = canvas.width, th = canvas.height;
+    var iw = Number(image.naturalWidth || image.width) || 0;
+    var ih = Number(image.naturalHeight || image.height) || 0;
+    if (!iw || !ih) return false;
+    var scale = Math.max(tw / iw, th / ih) * Math.max(1, Number(zoom) || 1);
+    var sw = Math.min(iw, tw / scale);
+    var sh = Math.min(ih, th / scale);
+    var sx = Math.max(0, iw - sw) * Math.max(0, Math.min(100, Number(x) || 0)) / 100;
+    var sy = Math.max(0, ih - sh) * Math.max(0, Math.min(100, Number(y) || 0)) / 100;
+    ctx.clearRect(0, 0, tw, th);
+    ctx.drawImage(image, sx, sy, sw, sh, 0, 0, tw, th);
+    return true;
+  }
+
+  function drawCoverPreview() {
+    if (!coverDraft) return;
+    var canvas = el.sheetBody.querySelector('[data-cover-preview]');
+    if (!canvas) return;
+    drawCoverCrop(canvas, coverDraft.image, coverDraft.zoom, coverDraft.x, coverDraft.y);
+  }
+
+  function updateCoverDraft(input) {
+    if (!coverDraft || !input || !input.matches) return;
+    if (input.matches('[data-cover-zoom]')) coverDraft.zoom = Math.max(1, Number(input.value) / 100);
+    else if (input.matches('[data-cover-x]')) coverDraft.x = Number(input.value);
+    else if (input.matches('[data-cover-y]')) coverDraft.y = Number(input.value);
+    drawCoverPreview();
+  }
+
+  function coverBlob(canvas, done) {
+    if (typeof canvas.toBlob === 'function') {
+      canvas.toBlob(done, 'image/jpeg', 0.82);
+      return;
+    }
+    try {
+      var data = canvas.toDataURL('image/jpeg', 0.82);
+      var binary = root.atob(data.split(',')[1] || '');
+      var bytes = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      done(new Blob([bytes], { type: 'image/jpeg' }));
+    } catch (e) {
+      done(null);
+    }
+  }
+
+  function applyCoverDraft() {
+    if (!coverDraft || coverSaving || !root.Covers || !root.Covers.saveCustom) return;
+    var canvas = document.createElement('canvas');
+    canvas.width = 1500;
+    canvas.height = 600;
+    if (!drawCoverCrop(canvas, coverDraft.image, coverDraft.zoom, coverDraft.x, coverDraft.y)) {
+      return toast(T('Не удалось подготовить изображение'));
+    }
+    var button = el.sheetBody.querySelector('[data-action="apply-cover"]');
+    var label = button ? button.textContent : '';
+    coverSaving = true;
+    if (button) {
+      button.disabled = true;
+      button.textContent = T('Сохраняем…');
+    }
+    function unlock() {
+      coverSaving = false;
+      if (button) {
+        button.disabled = false;
+        button.textContent = label;
+      }
+    }
+    coverBlob(canvas, function (blob) {
+      if (!blob) {
+        unlock();
+        return toast(T('Не удалось подготовить изображение'));
+      }
+      root.Covers.saveCustom(blob).then(function () {
+        coverSaving = false;
+        coverDraft = null;
+        closeSheet();
+        root.Tg.haptic('success');
+        if (route.name === 'summary') renderSummaryFromCache();
+        else refreshCoverSettings();
+        toast(T('Фон обновлён'));
+      }).catch(function (err) {
+        unlock();
+        root.Tg.haptic('error');
+        toast(coverStorageMessage(err));
+      });
+    });
+  }
+
+  function resetCustomCover() {
+    if (!root.Covers || !root.Covers.clearCustom) return;
+    root.Covers.clearCustom().then(function () {
+      root.Tg.haptic('success');
+      refreshCoverSettings();
+      toast(T('Свой фон убран'));
+    }).catch(function (err) {
+      root.Tg.haptic('error');
+      toast(coverStorageMessage(err));
+    });
   }
 
   // --- Действия ---
@@ -2538,6 +2693,9 @@
       case 'add-cat': openCategoryForm(null, actionBtn.getAttribute('data-kind')); break;
       case 'go-limits': openLimits(); break;
       case 'pick-cover': setCover(actionBtn.getAttribute('data-cover')); break;
+      case 'pick-cover-file': openCoverFilePicker(); break;
+      case 'clear-custom-cover': resetCustomCover(); break;
+      case 'apply-cover': applyCoverDraft(); break;
       case 'split-mode': setSplitMode(actionBtn.getAttribute('data-mode')); break;
       case 'cat-kind':
         catKind = actionBtn.getAttribute('data-kind');
@@ -2721,6 +2879,12 @@
   el.screen.addEventListener('change', function (ev) {
     var t = ev.target;
     if (!t || !t.matches) return;
+    if (t.matches('[data-cover-file]')) {
+      var file = t.files && t.files[0];
+      t.value = '';
+      readCoverFile(file);
+      return;
+    }
     if (t.matches('[data-notif]')) {
       toggleNotification(t);
       return;
@@ -2761,6 +2925,12 @@
 
   el.sheet.addEventListener('click', function (ev) {
     if (ev.target.closest('[data-sheet-close]')) closeSheet();
+  });
+
+  el.sheet.addEventListener('input', function (ev) {
+    var t = ev.target;
+    if (!t || !t.matches) return;
+    if (t.matches('[data-cover-zoom], [data-cover-x], [data-cover-y]')) updateCoverDraft(t);
   });
 
   // Карточки планов: «···» → удалить, «+ Пополнить» / «− 1000» → сумма и API.
@@ -3114,13 +3284,17 @@
     var loaderText = document.querySelector('.loader__text');
     if (loaderText) loaderText.textContent = T('Загружаем бюджет…');
     if (typeof root.Tg.onHomeScreenAdded === 'function') root.Tg.onHomeScreenAdded(markHomeScreenAdded);
+    var coversReady = root.Covers && typeof root.Covers.loadCustom === 'function'
+      ? root.Covers.loadCustom().catch(function () { return null; })
+      : Promise.resolve(null);
     root.Tg.init().then(function () {
       refreshHomeScreenStatus();
       if (!root.Tg.isInsideTelegram()) {
         console.info(T('Mini App открыт вне Telegram — демо-режим.'));
       }
-      return loadMember();
-    }).then(function (me) {
+      return Promise.all([loadMember(), coversReady]);
+    }).then(function (result) {
+      var me = result[0];
       hideLoader();
       if (!me) render(Views.renderOnboarding(onboarding));
       else openSummary(true);

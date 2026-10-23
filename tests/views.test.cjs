@@ -6,7 +6,7 @@ const { runInNewContext } = require('node:vm');
 function setup() {
   const context = { window: {} };
   context.window.localStorage = { getItem: () => null };
-  context.window.I18n = { t: (s, args) => s.replace(/\{(\w+)\}/g, (_, k) => args?.[k] ?? k), locale: () => 'ru', plural: (_, n) => String(n) };
+  context.window.I18n = { t: (s, args) => s.replace(/\{(\w+)\}/g, (_, k) => args?.[k] ?? k), locale: () => 'ru', plural: (_, n) => String(n), locales: [{ code: 'ru', name: 'Русский' }] };
   context.I18n = context.window.I18n;
   for (const file of ['format', 'state', 'views']) {
     runInNewContext(readFileSync(require.resolve(`../src/${file}.js`), 'utf8'), context);
@@ -337,4 +337,35 @@ test('home edit mode shows every block with keyboard reorder controls and inert 
   assert.match(html, /Переместить «Категории» выше/);
   assert.match(html, /Между партнёрами/);
   assert.match(html, /Нет данных для этого блока/);
+});
+
+test('custom cover fills the hero and appearance offers upload, crop and reset', () => {
+  const ctx = setup();
+  const custom = { id: 'custom', name: 'Своё фото', file: 'blob:local-cover', tone: 'dark', custom: true };
+  ctx.window.Covers = {
+    list: [{ id: 'default', name: 'Стандартная' }, { id: 'blue', name: 'Синий', file: 'covers/blue.webp', tone: 'dark' }],
+    id: () => 'custom',
+    current: () => custom,
+    custom: () => custom,
+    set: () => true,
+    clearCustom: () => Promise.resolve(),
+  };
+  const html = home(ctx);
+  assert.match(html, /class="hero hero--cover hero--custom"/);
+  assert.match(html, /background-image:url\('blob:local-cover'\)/);
+
+  const appearance = ctx.Views.renderSettings('appearance');
+  assert.match(appearance, /data-action="pick-cover-file"/);
+  assert.match(appearance, /data-cover-file/);
+  assert.match(appearance, /data-cover="custom"/);
+  assert.match(appearance, /Убрать своё фото/);
+  assert.match(appearance, /Своё фото хранится только на этом устройстве/);
+
+  const editor = ctx.Views.renderCoverEditor();
+  assert.match(editor, /data-cover-preview/);
+  assert.match(editor, /data-cover-zoom/);
+  assert.match(editor, /data-cover-x/);
+  assert.match(editor, /data-cover-y/);
+  assert.match(editor, /data-action="apply-cover"/);
+  assert.match(editor, /data-sheet-close/);
 });

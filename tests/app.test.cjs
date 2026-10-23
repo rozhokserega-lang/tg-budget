@@ -61,7 +61,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
       addToHomeScreen: () => { homeScreen.added = true; return homeScreen.supported; },
       onHomeScreenAdded: fn => { context.homeScreenAddedHandler = fn; },
     },
-    I18n: { t: s => s, locale: () => 'ru', plural: (_, n) => String(n) },
+    I18n: { t: s => s, locale: () => 'ru', plural: (_, n) => String(n), locales: [{ code: 'ru', name: 'Русский' }] },
     Api: {
       updateTx: payload => { calls.push(payload); return updateTx(payload); },
       call(action, payload) {
@@ -72,6 +72,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     },
     Queue: { size: () => queueOps.length, push(action, payload) { const op = { id: 'op-' + (queueOps.length + 1), action, payload }; queueOps.push(op); return op; } },
   };
+  if (options.covers) context.window.Covers = options.covers;
   Object.assign(context, context.window);
   for (const file of ['recurring', 'format', 'state', 'views', 'cache']) {
     runInNewContext(readFileSync(require.resolve(`../src/${file}.js`), 'utf8'), context);
@@ -101,6 +102,10 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     fillExpandedCat: fillExpandedCat,
     startHomeEdit: startHomeEdit, saveHomeEdit: saveHomeEdit, resetHomeEdit: resetHomeEdit,
     cancelHomeEdit: cancelHomeEdit, moveHomeBlock: moveHomeBlock,
+    setCover: setCover, resetCustomCover: resetCustomCover, readCoverFile: readCoverFile,
+    drawCoverCrop: drawCoverCrop, updateCoverDraft: updateCoverDraft,
+    setCoverDraftForTest: function (draft) { coverDraft = draft; },
+    getCoverDraft: function () { return coverDraft; },
     setExpandedForTest: function (value) { expandedCat = value; },
     getExpanded: function () { return expandedCat; },
     setAddDraftForTest: function (draft) { form = draft; },
@@ -808,4 +813,74 @@ test('solo add form forces is_shared false even without the toggle', () => {
   env.st.member = { id: 'me', name: 'Me', households: { mode: 'pair' } };
   formNode.elements.is_shared = { checked: true };
   assert.equal(env.app.formValues().is_shared, true);
+});
+
+
+test('custom cover selection and reset update appearance without server calls', async () => {
+  let selected = 'custom';
+  let cleared = 0;
+  const custom = { id: 'custom', name: 'Своё фото', file: 'blob:cover', tone: 'dark', custom: true };
+  const covers = {
+    list: [{ id: 'default', name: 'Стандартная' }, { id: 'blue', name: 'Синий', file: 'covers/blue.webp', tone: 'dark' }],
+    id: () => selected,
+    current: () => selected === 'custom' ? custom : null,
+    custom: () => custom,
+    set(id) { selected = id; return true; },
+    clearCustom() { cleared++; selected = 'default'; return Promise.resolve(true); },
+    loadCustom() { return Promise.resolve(custom); },
+  };
+  const env = setup(undefined, { covers });
+  env.app.openSettings('appearance');
+  assert.match(env.nodes.get('#screen').innerHTML, /data-cover="custom"/);
+  env.app.setCover('blue');
+  assert.equal(selected, 'blue');
+  assert.match(env.nodes.get('#toast').textContent, /Обложка обновлена/);
+  selected = 'custom';
+  env.app.resetCustomCover();
+  await settled();
+  assert.equal(cleared, 1);
+  assert.equal(selected, 'default');
+  assert.match(env.nodes.get('#toast').textContent, /Свой фон убран/);
+  assert.equal(env.apiCalls.length, 0);
+});
+
+test('cover crop keeps the card ratio and respects zoom and offsets', () => {
+  const env = setup();
+  const calls = [];
+  const canvas = {
+    width: 1500,
+    height: 600,
+    getContext: () => ({
+      clearRect() {},
+      drawImage() { calls.push(Array.from(arguments).slice(1)); },
+    }),
+  };
+  const image = { naturalWidth: 3000, naturalHeight: 3000 };
+  assert.equal(env.app.drawCoverCrop(canvas, image, 1, 50, 50), true);
+  assert.deepEqual(calls[0], [0, 900, 3000, 1200, 0, 0, 1500, 600]);
+  calls.length = 0;
+  assert.equal(env.app.drawCoverCrop(canvas, image, 2, 25, 50), true);
+  assert.deepEqual(calls[0], [375, 1200, 1500, 600, 0, 0, 1500, 600]);
+  calls.length = 0;
+  assert.equal(env.app.drawCoverCrop(canvas, image, 0.2, -20, 120), true);
+  assert.deepEqual(calls[0], [0, 1800, 3000, 1200, 0, 0, 1500, 600]);
+  assert.equal(env.app.drawCoverCrop({ getContext: () => null }, image, 1, 0, 0), false);
+  assert.equal(env.app.drawCoverCrop(canvas, { naturalWidth: 0, naturalHeight: 1 }, 1, 0, 0), false);
+
+  const draft = { image, zoom: 1, x: 50, y: 50 };
+  env.app.setCoverDraftForTest(draft);
+  env.app.updateCoverDraft({ matches: selector => selector === '[data-cover-zoom]', value: '250' });
+  assert.equal(draft.zoom, 2.5);
+  env.app.updateCoverDraft({ matches: selector => selector === '[data-cover-x]', value: '10' });
+  assert.equal(draft.x, 10);
+  env.app.updateCoverDraft({ matches: selector => selector === '[data-cover-y]', value: '90' });
+  assert.equal(draft.y, 90);
+});
+
+test('cover upload validates image type and size before reading', () => {
+  const env = setup();
+  env.app.readCoverFile({ type: 'application/pdf', size: 20 });
+  assert.match(env.nodes.get('#toast').textContent, /Выберите изображение/);
+  env.app.readCoverFile({ type: 'image/jpeg', size: 13 * 1024 * 1024 });
+  assert.match(env.nodes.get('#toast').textContent, /Файл слишком большой/);
 });

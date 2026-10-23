@@ -157,6 +157,12 @@ body { background: var(--c-bg); }
   backdrop-filter: blur(8px);
 }
 .hero--cover::before { opacity: .72; }
+/* Своё фото заполняет карточку без растяжения; затемнение держит текст читаемым. */
+.hero.hero--custom { background-size: cover; }
+.hero.hero--custom::before {
+  opacity: 1;
+  background: linear-gradient(180deg, rgba(8, 6, 14, .34) 0%, rgba(8, 6, 14, .58) 58%, rgba(8, 6, 14, .74) 100%);
+}
 .forecast {
   margin-top: 11px;
   padding: 13px 15px;

@@ -515,10 +515,10 @@
       }).join('') + '</div>';
     var emptyControl = categorySort === 'amount' && zeroCategories.length
       ? '<button type="button" class="btn btn--sm home-empty-toggle" data-action="home-empty-toggle">' + e(T(st.homeShowEmpty ? 'Скрыть пустые категории' : 'Показать пустые категории')) + ' (' + zeroCategories.length + ')</button>' : '';
-    var cover = root.Covers ? Covers.current() : null;
+    var cover = root.Covers ? root.Covers.current() : null;
     var edit = !!st.homeEdit;
     var heroBlock =
-      '<div class="hero' + (cover ? ' hero--cover' + (cover.tone === 'light' ? ' hero--cover--light' : '') : '') + '"' +
+      '<div class="hero' + (cover ? ' hero--cover' + (cover.tone === 'light' ? ' hero--cover--light' : '') + (cover.custom ? ' hero--custom' : '') : '') + '"' +
       (cover ? ' style="background-image:url(\'' + e(cover.file) + '\')"' : '') + '>' +
       balanceTrendSvg(transactions, st.month) +
       '<button type="button" class="hero__link" data-action="go-tx">' + e(T('Финансы →')) + '</button>' +
@@ -1272,8 +1272,8 @@
   }
 
   function coverCard() {
-    var current = root.Covers ? Covers.id() : 'default';
-    var options = (root.Covers ? Covers.list : []).map(function (c) {
+    var current = root.Covers ? root.Covers.id() : 'default';
+    var options = (root.Covers ? root.Covers.list : []).map(function (c) {
       var bg = c.file ? ' style="background-image:url(\'' + e(c.file) + '\')"' : '';
       var active = c.id === current;
       return '<button type="button" class="cover-option' + (active ? ' cover-option--active' : '') + '"' +
@@ -1283,12 +1283,46 @@
         (active ? '<span class="cover-option__check">✓</span>' : '') +
         '</button>';
     }).join('');
+    var custom = root.Covers && root.Covers.custom ? root.Covers.custom() : null;
+    if (custom) {
+      var customActive = current === 'custom';
+      options += '<button type="button" class="cover-option cover-option--custom' + (customActive ? ' cover-option--active' : '') + '"' +
+        ' data-action="pick-cover" data-cover="custom"' +
+        ' aria-label="' + e(T('Своё фото')) + '" aria-pressed="' + (customActive ? 'true' : 'false') + '"' +
+        ' style="background-image:url(\'' + e(custom.file) + '\')">' +
+        '<span class="cover-option__name">' + e(T('Своё фото')) + '</span>' +
+        (customActive ? '<span class="cover-option__check">✓</span>' : '') +
+        '</button>';
+    }
     return '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Оформление')) + '</span></div>' +
       '<div class="card">' +
       '<div class="cover-label">' + e(T('Обложка главной карты')) + '</div>' +
       '<div class="cover-grid">' + options + '</div>' +
+      '<input type="file" class="cover-upload__input" accept="image/*" data-cover-file aria-label="' + e(T('Выбрать изображение')) + '">' +
+      '<div class="cover-upload">' +
+      '<button type="button" class="btn btn--sm" data-action="pick-cover-file">' + e(T(custom ? 'Заменить фото' : 'Загрузить фото')) + '</button>' +
+      (custom ? '<button type="button" class="btn btn--sm btn--ghost" data-action="clear-custom-cover">' + e(T('Убрать своё фото')) + '</button>' : '') +
+      '</div>' +
+      '<p class="small muted mt-8">' + e(T('Своё фото хранится только на этом устройстве, не отправляется на сервер и не синхронизируется.')) + '</p>' +
       '<p class="small muted mt-8">' + e(T('Применяется к карточке остатка на главной. Выбор сохраняется на этом устройстве.')) + '</p>' +
       '</div></div>';
+  }
+
+  // Редактор своего фона: кадр под размер карточки, масштаб и положение.
+  function renderCoverEditor() {
+    return '<div class="sheet__title">' + e(T('Свой фон')) + '</div>' +
+      '<p class="small muted">' + e(T('Выберите кадр — он сохранится только на этом устройстве.')) + '</p>' +
+      '<div class="cover-crop"><canvas data-cover-preview width="750" height="300" aria-label="' + e(T('Предпросмотр фона')) + '"></canvas></div>' +
+      '<label class="cover-control"><span class="cover-control__label">' + e(T('Масштаб')) + '</span>' +
+      '<input type="range" min="100" max="300" value="100" data-cover-zoom aria-label="' + e(T('Масштаб')) + '"></label>' +
+      '<label class="cover-control"><span class="cover-control__label">' + e(T('Сдвиг по горизонтали')) + '</span>' +
+      '<input type="range" min="0" max="100" value="50" data-cover-x aria-label="' + e(T('Сдвиг по горизонтали')) + '"></label>' +
+      '<label class="cover-control"><span class="cover-control__label">' + e(T('Сдвиг по вертикали')) + '</span>' +
+      '<input type="range" min="0" max="100" value="50" data-cover-y aria-label="' + e(T('Сдвиг по вертикали')) + '"></label>' +
+      '<div class="actions actions--row">' +
+      '<button type="button" class="btn btn--ghost" data-sheet-close>' + e(T('Отмена')) + '</button>' +
+      '<button type="button" class="btn btn--primary" data-action="apply-cover">' + e(T('Применить')) + '</button>' +
+      '</div>';
   }
 
   // Уведомления в Telegram: платежи, лимиты, недельная сводка и ежедневный отчёт.
@@ -1539,6 +1573,7 @@
     txResults: txResults,
     renderForm: renderForm,
     renderEditForm: renderEditForm,
+    renderCoverEditor: renderCoverEditor,
     renderSettings: renderSettings,
     starsCard: starsCard,
     legalCard: legalCard,
