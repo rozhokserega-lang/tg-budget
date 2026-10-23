@@ -117,6 +117,10 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     navigateBySwipe: navigateBySwipe,
     pagePreviewHtml: pagePreviewHtml,
     pageSwipeFlip: pageSwipeFlip,
+    settlePageSwipe: settlePageSwipe,
+    flushPageSettle: flushPageSettle,
+    dropPageSettle: dropPageSettle,
+    getPageSettle: function () { return pageSettle; },
     getRoute: function () { return route; },
     preventRouteReloadForTest: function () {
       openSummary = function () { root.routeReloaded = 'summary'; };
@@ -958,4 +962,29 @@ test('page swipe peeks at the neighbouring page rendered from cached data', () =
   assert.equal(env.app.pageSwipeFlip({ dx: -40, width: 320, dir: -1, fast: true }), true);
   assert.equal(env.app.pageSwipeFlip({ dx: 30, width: 320, dir: -1 }), false);
   assert.equal(env.app.pageSwipeFlip({ dx: -30, width: 320, dir: -1, edge: true, fast: true }), false);
+});
+
+test('a new swipe finishes the previous transition instead of fighting it', () => {
+  const env = setup();
+  env.st.member = { id: 'me', household_id: 'home' };
+  env.app.settlePageSwipe({ dx: -200, width: 320, dir: -1, from: 'summary', target: 'tx', peek: null }, true);
+  assert.ok(env.app.getPageSettle());
+  env.app.flushPageSettle();
+  assert.equal(env.context.window.routeReloaded, 'tx');
+  assert.equal(env.app.getPageSettle(), null);
+
+  // Таймер завершённого перехода уже снят и не перелистнёт страницу ещё раз.
+  env.context.window.routeReloaded = null;
+  env.flushTimers();
+  assert.equal(env.context.window.routeReloaded, null);
+});
+
+test('changing tabs drops a half-finished swipe without navigating', () => {
+  const env = setup();
+  env.st.member = { id: 'me', household_id: 'home' };
+  env.app.settlePageSwipe({ dx: -200, width: 320, dir: -1, from: 'summary', target: 'tx', peek: null }, true);
+  env.app.dropPageSettle();
+  assert.equal(env.app.getPageSettle(), null);
+  env.flushTimers();
+  assert.equal(env.context.window.routeReloaded, undefined);
 });

@@ -51,6 +51,8 @@
   // Горизонтальный свайп между основными страницами.
   var pageSwipe = null;
   var pageSwipeClickUntil = 0;
+  // Доезжающая страница: пока идёт анимация, новый жест её не ждёт.
+  var pageSettle = null;
   // Категория, из которой открыли форму: после сохранения вернёмся к ней.
   var pendingFromCategory = null;
   var homeScreenCheckSeq = 0;
@@ -1523,6 +1525,8 @@
   function openTab(tab) {
     if (editingTx) return;
     if (!st.member) return;
+    // Переход по вкладке отменяет недоехавший свайп: пользователь выбрал другое.
+    if (!instantRender) dropPageSettle();
     if (st.homeEdit) {
       st.homeEdit = false;
       st.homeDraft = null;
@@ -1605,6 +1609,12 @@
     if (!viewport || !document.createElement) return null;
     var html = pagePreviewHtml(name);
     if (!html) return null;
+    // На всякий случай убираем превью прошлого жеста, если оно не успело уехать.
+    if (viewport.querySelectorAll) {
+      Array.prototype.forEach.call(viewport.querySelectorAll('.screen--peek'), function (node) {
+        if (node.parentNode === viewport) viewport.removeChild(node);
+      });
+    }
     var pane = document.createElement('div');
     pane.className = 'screen screen--peek';
     // Копия не должна спорить с настоящей страницей за id, фокус и жесты.
@@ -1628,6 +1638,8 @@
 
   function clearPageSwipeStyles(gesture) {
     if (gesture && gesture.peek && gesture.peek.parentNode) gesture.peek.parentNode.removeChild(gesture.peek);
+    // Экран уже ведёт новый жест — старый не должен дёргать его назад.
+    if (pageSwipe && pageSwipe !== gesture) return;
     el.screen.classList.remove('screen--dragging');
     el.screen.style.transition = 'none';
     el.screen.style.transform = '';
@@ -1635,10 +1647,24 @@
     el.screen.style.transition = '';
   }
 
-  function cancelPageSwipe() {
-    var gesture = pageSwipe;
-    pageSwipe = null;
-    if (gesture && gesture.axis === 'x') clearPageSwipeStyles(gesture);
+  // Страница ещё доезжает, а палец уже начал новый жест: доводим переход
+  // сразу, чтобы маршрут и превью не разошлись.
+  function flushPageSettle() {
+    var settle = pageSettle;
+    if (!settle) return;
+    pageSettle = null;
+    clearTimeout(settle.timer);
+    if (settle.flip) finishPageSwipe(settle.gesture);
+    else clearPageSwipeStyles(settle.gesture);
+  }
+
+  // Переход отменили извне (например, нажали другую вкладку) — просто убираем.
+  function dropPageSettle() {
+    var settle = pageSettle;
+    if (!settle) return;
+    pageSettle = null;
+    clearTimeout(settle.timer);
+    clearPageSwipeStyles(settle.gesture);
   }
 
   function finishPageSwipe(gesture) {
@@ -1662,12 +1688,18 @@
     if (!flip) {
       el.screen.style.transform = 'translate3d(0,0,0)';
       if (gesture.peek) gesture.peek.style.transform = 'translate3d(' + (-dir * width) + 'px,0,0)';
-      setTimeout(function () { clearPageSwipeStyles(gesture); }, duration + 20);
-      return;
+    } else {
+      el.screen.style.transform = 'translate3d(' + (dir * width) + 'px,0,0)';
+      if (gesture.peek) gesture.peek.style.transform = 'translate3d(0,0,0)';
     }
-    el.screen.style.transform = 'translate3d(' + (dir * width) + 'px,0,0)';
-    if (gesture.peek) gesture.peek.style.transform = 'translate3d(0,0,0)';
-    setTimeout(function () { finishPageSwipe(gesture); }, duration + 10);
+    // Один незавершённый переход за раз: по таймеру проверяем, что он всё ещё актуален.
+    var timer = setTimeout(function () {
+      if (!pageSettle || pageSettle.timer !== timer) return;
+      pageSettle = null;
+      if (flip) finishPageSwipe(gesture);
+      else clearPageSwipeStyles(gesture);
+    }, duration + (flip ? 10 : 20));
+    pageSettle = { gesture: gesture, timer: timer, flip: flip };
   }
 
   function openQuickActions(page) {
@@ -3284,30 +3316,69 @@
   // подъезжает превью соседней вкладки. Стартуем только на неинтерактивных
   // участках экрана: строки трат, кнопки, поля и открытые шторки имеют
   // собственные жесты и не должны переключать страницу.
-  el.screen.addEventListener('touchstart', function (ev) {
-    if (ev.touches.length !== 1 || !pageSwipeAllowed(ev.target)) return;
-    var touch = ev.touches[0];
-    pageSwipe = {
-      x: touch.clientX, y: touch.clientY,
-      lastX: touch.clientX, lastT: performance.now(),
-      dx: 0, axis: '', from: route.name, target: null, peek: null, edge: false, fast: false, armed: false,
-    };
-  }, { passive: true });
+  //
+  // Жест ведём pointer-событиями с захватом на viewport: он не перерисовывается,
+  // поэтому быстрый второй свайп не теряется, даже если первую страницу уже
+  // успели заменить.
+  var pageSurface = pageViewport() || el.screen;
 
-  el.screen.addEventListener('touchmove', function (ev) {
+  function releasePagePointer(gesture) {
+    if (!gesture || gesture.id === undefined) return;
+    try {
+      if (pageSurface.releasePointerCapture) pageSurface.releasePointerCapture(gesture.id);
+    } catch (e) {}
+  }
+
+  function capturePagePointer(gesture) {
+    if (!gesture || gesture.captured) return;
+    try {
+      if (pageSurface.setPointerCapture) pageSurface.setPointerCapture(gesture.id);
+      gesture.captured = true;
+    } catch (e) {}
+  }
+
+  pageSurface.addEventListener('pointerdown', function (ev) {
+    if (ev.isPrimary === false) return;
+    if (pageSwipe) {
+      // Предыдущий pointerup потерялся (отпустили за окном) — не залипаем.
+      releasePagePointer(pageSwipe);
+      if (pageSwipe.axis === 'x') clearPageSwipeStyles(pageSwipe);
+      pageSwipe = null;
+    }
+    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+    if (!pageSwipeAllowed(ev.target)) return;
+    // Если предыдущая страница ещё доезжает — сначала захватываем указатель,
+    // затем доводим её: перерисовка не должна оборвать новый жест.
+    var resuming = !!pageSettle;
+    var next = {
+      id: ev.pointerId,
+      x: ev.clientX, y: ev.clientY,
+      lastX: ev.clientX, lastT: performance.now(),
+      dx: 0, axis: '', from: route.name, target: null, peek: null, edge: false, fast: false, armed: false,
+      captured: false,
+    };
+    if (resuming) {
+      capturePagePointer(next);
+      flushPageSettle();
+      next.from = route.name;
+    }
+    pageSwipe = next;
+  });
+
+  document.addEventListener('pointermove', function (ev) {
     var gesture = pageSwipe;
-    if (!gesture) return;
-    if (ev.touches.length !== 1) { cancelPageSwipe(); return; }
-    var touch = ev.touches[0];
-    var dx = touch.clientX - gesture.x;
-    var dy = touch.clientY - gesture.y;
+    if (!gesture || ev.pointerId !== gesture.id) return;
+    var dx = ev.clientX - gesture.x;
+    var dy = ev.clientY - gesture.y;
     if (!gesture.axis) {
       if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
       if (Math.abs(dy) >= Math.abs(dx) || Math.abs(dx) < Math.abs(dy) * 1.2) {
         pageSwipe = null;
+        releasePagePointer(gesture);
         return;
       }
       gesture.axis = 'x';
+      capturePagePointer(gesture);
       gesture.dir = dx < 0 ? -1 : 1;
       gesture.width = pageSwipeWidth();
       gesture.target = swipeTarget(route.name, -gesture.dir);
@@ -3320,8 +3391,8 @@
     // Скорость пальца к отпусканию: короткий рывок тоже перелистывает.
     var now = performance.now();
     if (now - gesture.lastT > 0) {
-      gesture.fast = Math.abs(touch.clientX - gesture.lastX) / (now - gesture.lastT) > 0.55;
-      gesture.lastX = touch.clientX;
+      gesture.fast = Math.abs(ev.clientX - gesture.lastX) / (now - gesture.lastT) > 0.55;
+      gesture.lastX = ev.clientX;
       gesture.lastT = now;
     }
     // На краю списка страниц экран тянется с сопротивлением, без соседа.
@@ -3340,20 +3411,32 @@
       gesture.armed = true;
       root.Tg.haptic('light');
     }
-  }, { passive: false });
+  });
 
-  el.screen.addEventListener('touchend', function (ev) {
+  function pagePointerEnd(ev) {
     var gesture = pageSwipe;
+    if (!gesture || ev.pointerId !== gesture.id) return;
     pageSwipe = null;
-    if (!gesture || gesture.axis !== 'x') return;
+    releasePagePointer(gesture);
+    if (ev.type === 'pointercancel' || gesture.axis !== 'x') {
+      if (gesture.axis === 'x') clearPageSwipeStyles(gesture);
+      return;
+    }
     if (ev.cancelable) ev.preventDefault();
     if (Math.abs(gesture.dx) > 8) pageSwipeClickUntil = Date.now() + 350;
     settlePageSwipe(gesture, pageSwipeFlip(gesture));
-  }, { passive: false });
+  }
+  document.addEventListener('pointerup', pagePointerEnd);
+  document.addEventListener('pointercancel', pagePointerEnd);
+  window.addEventListener('blur', function () {
+    var gesture = pageSwipe;
+    if (!gesture) return;
+    pageSwipe = null;
+    releasePagePointer(gesture);
+    if (gesture.axis === 'x') clearPageSwipeStyles(gesture);
+  });
 
-  el.screen.addEventListener('touchcancel', function () { cancelPageSwipe(); }, { passive: true });
-
-  el.screen.addEventListener('click', function (ev) {
+  pageSurface.addEventListener('click', function (ev) {
     if (Date.now() < pageSwipeClickUntil) {
       ev.preventDefault(); ev.stopImmediatePropagation();
     }
