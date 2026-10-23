@@ -1523,6 +1523,7 @@
   }
 
   function openTab(tab) {
+    if (pageSwipe) abortPageSwipe();
     if (editingTx) return;
     if (!st.member) return;
     // Переход по вкладке отменяет недоехавший свайп: пользователь выбрал другое.
@@ -3337,14 +3338,17 @@
     } catch (e) {}
   }
 
+  function abortPageSwipe() {
+    var gesture = pageSwipe;
+    if (!gesture) return;
+    pageSwipe = null;
+    releasePagePointer(gesture);
+    if (gesture.axis === 'x') clearPageSwipeStyles(gesture);
+  }
+
   pageSurface.addEventListener('pointerdown', function (ev) {
     if (ev.isPrimary === false) return;
-    if (pageSwipe) {
-      // Предыдущий pointerup потерялся (отпустили за окном) — не залипаем.
-      releasePagePointer(pageSwipe);
-      if (pageSwipe.axis === 'x') clearPageSwipeStyles(pageSwipe);
-      pageSwipe = null;
-    }
+    if (pageSwipe) abortPageSwipe();
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     if (!pageSwipeAllowed(ev.target)) return;
     // Если предыдущая страница ещё доезжает — сначала захватываем указатель,
@@ -3373,8 +3377,7 @@
     if (!gesture.axis) {
       if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
       if (Math.abs(dy) >= Math.abs(dx) || Math.abs(dx) < Math.abs(dy) * 1.2) {
-        pageSwipe = null;
-        releasePagePointer(gesture);
+        abortPageSwipe();
         return;
       }
       gesture.axis = 'x';
@@ -3428,13 +3431,7 @@
   }
   document.addEventListener('pointerup', pagePointerEnd);
   document.addEventListener('pointercancel', pagePointerEnd);
-  window.addEventListener('blur', function () {
-    var gesture = pageSwipe;
-    if (!gesture) return;
-    pageSwipe = null;
-    releasePagePointer(gesture);
-    if (gesture.axis === 'x') clearPageSwipeStyles(gesture);
-  });
+  window.addEventListener('blur', function () { abortPageSwipe(); });
 
   pageSurface.addEventListener('click', function (ev) {
     if (Date.now() < pageSwipeClickUntil) {
