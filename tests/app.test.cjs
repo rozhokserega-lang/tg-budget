@@ -41,10 +41,15 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   const alerts = [];
   const homeScreen = options.homeScreen || { supported: false, status: 'unsupported', added: false };
   const windowEvents = fakeNode();
+  const storage = new Map(options.storage || []);
   const context = { document, console, performance, setTimeout: fn => { timers.set(++timerId, fn); return timerId; }, clearTimeout: id => timers.delete(id), requestAnimationFrame: fn => fn() };
   if (options.clock) context.Date = class extends Date { static now() { return options.clock.now; } };
   context.window = {
-    localStorage: { getItem: () => null, setItem() {} },
+    localStorage: {
+      getItem: key => storage.has(key) ? storage.get(key) : null,
+      setItem: (key, value) => { storage.set(key, String(value)); },
+      removeItem: key => { storage.delete(key); },
+    },
     addEventListener: windowEvents.addEventListener, removeEventListener: windowEvents.removeEventListener,
     Tg: {
       backButton: fn => { context.backHandler = fn; },
@@ -94,6 +99,8 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     mutate: mutate, loadPlans: loadPlans, submitCategory: submitCategory, submitRecurring: submitRecurring,
     submitProfile: submitProfile,
     fillExpandedCat: fillExpandedCat,
+    startHomeEdit: startHomeEdit, saveHomeEdit: saveHomeEdit, resetHomeEdit: resetHomeEdit,
+    cancelHomeEdit: cancelHomeEdit, moveHomeBlock: moveHomeBlock,
     setExpandedForTest: function (value) { expandedCat = value; },
     getExpanded: function () { return expandedCat; },
     setAddDraftForTest: function (draft) { form = draft; },
@@ -111,7 +118,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   st['txCache:2026-10'] = { data: [], at: Date.now() };
   st['summaryCache:2026-10'] = { data: { expense: 0 }, at: Date.now() };
   if (options.stubReload !== false) context.window.TestApp.preventRouteReloadForTest();
-  return { context, app: context.window.TestApp, st, tx, sheet, panel, nodes, calls, apiCalls, windowEvents, queueOps, homeScreen, alerts,
+  return { context, app: context.window.TestApp, st, tx, sheet, panel, nodes, calls, apiCalls, windowEvents, queueOps, homeScreen, alerts, storage,
     flushTimers() { const pending = [...timers.values()]; timers.clear(); pending.forEach(fn => fn()); } };
 }
 function form(overrides = {}) {
@@ -748,6 +755,42 @@ test('profile form saves member and household names and rolls back on failure', 
   await settled();
   assert.equal(env.st.member.name, 'Анечка');
   assert.equal(env.st.member.households.name, 'Семья 2');
+});
+
+test('home edit reorders blocks, persists on save, resets and cancels', () => {
+  const env = setup();
+  const defaults = ['balance', 'categories', 'forecast', 'plans', 'partners'];
+  env.app.startHomeEdit();
+  assert.equal(env.st.homeEdit, true);
+  assert.match(env.nodes.get('#screen').innerHTML, /data-action="home-edit-save"/);
+
+  env.app.moveHomeBlock('categories', 'up');
+  assert.deepEqual(Array.from(env.st.homeDraft), ['categories', 'balance', 'forecast', 'plans', 'partners']);
+  assert.deepEqual(Array.from(env.st.homeOrder), defaults);
+
+  env.app.saveHomeEdit();
+  assert.equal(env.st.homeEdit, false);
+  assert.equal(env.st.homeDraft, null);
+  assert.deepEqual(Array.from(env.st.homeOrder), ['categories', 'balance', 'forecast', 'plans', 'partners']);
+  assert.equal(JSON.parse(env.storage.get('budget.homeOrder'))[0], 'categories');
+
+  const reloaded = setup(undefined, { storage: env.storage });
+  assert.deepEqual(Array.from(reloaded.context.State.homeOrder()), ['categories', 'balance', 'forecast', 'plans', 'partners']);
+
+  env.app.startHomeEdit();
+  env.app.moveHomeBlock('plans', 'up');
+  env.app.cancelHomeEdit();
+  assert.deepEqual(Array.from(env.st.homeOrder), ['categories', 'balance', 'forecast', 'plans', 'partners']);
+  assert.equal(JSON.parse(env.storage.get('budget.homeOrder'))[0], 'categories');
+
+  env.app.startHomeEdit();
+  env.app.moveHomeBlock('partners', 'up');
+  env.app.resetHomeEdit();
+  assert.deepEqual(Array.from(env.st.homeDraft), defaults);
+  assert.match(env.nodes.get('#toast').textContent, /Порядок сброшен/);
+  env.app.saveHomeEdit();
+  assert.deepEqual(Array.from(env.st.homeOrder), defaults);
+  assert.deepEqual(JSON.parse(env.storage.get('budget.homeOrder')), defaults);
 });
 
 test('solo add form forces is_shared false even without the toggle', () => {

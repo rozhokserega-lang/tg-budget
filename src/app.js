@@ -250,6 +250,7 @@
   // Системная «Назад» ведёт из формы добавления на сводку, из остальных мест — недоступна.
   function syncBackButton() {
     if (editingTx) return root.Tg.backButton(function () {});
+    if (st.homeEdit) return root.Tg.backButton(cancelHomeEdit);
     if (route.name === 'add') return root.Tg.backButton(goHome);
     // Лимиты — подэкран настроек: «Назад» возвращает к ним.
     if (route.name === 'limits') return root.Tg.backButton(function () { openSettings('budget'); });
@@ -409,6 +410,8 @@
       editingTx = null;
       editSaving = false;
       editGeneration++;
+      st.homeEdit = false;
+      st.homeDraft = null;
       el.screen.inert = false;
       el.tabs.inert = false;
       closeSheet();
@@ -1490,6 +1493,10 @@
   function openTab(tab) {
     if (editingTx) return;
     if (!st.member) return;
+    if (st.homeEdit) {
+      st.homeEdit = false;
+      st.homeDraft = null;
+    }
     if (tab === 'summary') openSummary();
     else if (tab === 'tx') openTx(null);
     else if (tab === 'plans') openPlans();
@@ -2281,6 +2288,65 @@
     el.screen.scrollTop = Math.max(0, scroll - hiddenAbove);
   }
 
+  // Режим редактирования главной: меняем только черновик, сохраняем явно.
+  // Порядок блоков локальный и не синхронизируется между устройствами.
+  function startHomeEdit() {
+    if (route.name !== 'summary' || st.homeEdit) return;
+    st.homeEdit = true;
+    st.homeDraft = State.homeOrder();
+    expandedCat = null;
+    root.Tg.haptic('light');
+    renderSummaryFromCache();
+  }
+
+  function saveHomeEdit() {
+    if (!st.homeEdit) return;
+    State.setHomeOrder(st.homeDraft || State.homeOrder());
+    st.homeEdit = false;
+    st.homeDraft = null;
+    root.Tg.haptic('success');
+    renderSummaryFromCache();
+    toast(T('Порядок сохранён'));
+  }
+
+  function resetHomeEdit() {
+    if (!st.homeEdit) return;
+    st.homeDraft = State.defaultHomeOrder();
+    root.Tg.haptic('light');
+    renderSummaryFromCache();
+    toast(T('Порядок сброшен — сохраните изменения'));
+  }
+
+  function cancelHomeEdit() {
+    if (!st.homeEdit) return;
+    st.homeEdit = false;
+    st.homeDraft = null;
+    renderSummaryFromCache();
+  }
+
+  function moveHomeBlock(id, direction) {
+    if (!st.homeEdit) return;
+    var order = (st.homeDraft || State.homeOrder()).slice();
+    var from = order.indexOf(id);
+    var to = from + (direction === 'down' ? 1 : -1);
+    if (from < 0 || to < 0 || to >= order.length) return;
+    var moved = order.splice(from, 1)[0];
+    order.splice(to, 0, moved);
+    st.homeDraft = order;
+    root.Tg.haptic('light');
+    renderSummaryFromCache();
+    // После перерисовки возвращаем фокус на ту же кнопку — управление с клавиатуры.
+    setTimeout(function () {
+      var dir = direction === 'down' ? 'down' : 'up';
+      var next = el.screen.querySelector('[data-action="home-move"][data-id="' + id + '"][data-dir="' + dir + '"]');
+      if (!next || next.disabled) {
+        dir = dir === 'up' ? 'down' : 'up';
+        next = el.screen.querySelector('[data-action="home-move"][data-id="' + id + '"][data-dir="' + dir + '"]');
+      }
+      if (next && !next.disabled && next.focus) next.focus({ preventScroll: true });
+    }, 0);
+  }
+
   function changeCategoryView(button) {
     var categories = el.screen.querySelector('.categories--' + categoryView);
     if (!categories) return;
@@ -2377,6 +2443,10 @@
   document.addEventListener('click', function (ev) {
     var tabBtn = ev.target.closest('[data-tab]');
     if (tabBtn) {
+      if (st.homeEdit) {
+        st.homeEdit = false;
+        st.homeDraft = null;
+      }
       openTab(tabBtn.getAttribute('data-tab'));
       return;
     }
@@ -2385,12 +2455,21 @@
     if (!actionBtn) return;
     var action = actionBtn.getAttribute('data-action');
 
+    // В режиме редактирования главной работают только его собственные кнопки:
+    // карточки, месяц и баннеры не должны уводить со страницы.
+    if (st.homeEdit && route.name === 'summary' && !actionBtn.hasAttribute('data-home-edit')) return;
+
     // Раскрытие категории не должно срабатывать на скролле.
     var scrolled = isScrollGesture();
     scrollAtTouch = null;
     if (action === 'toggle-cat' && scrolled) return;
 
     switch (action) {
+      case 'home-edit': startHomeEdit(); break;
+      case 'home-edit-save': saveHomeEdit(); break;
+      case 'home-edit-reset': resetHomeEdit(); break;
+      case 'home-edit-cancel': cancelHomeEdit(); break;
+      case 'home-move': moveHomeBlock(actionBtn.getAttribute('data-id'), actionBtn.getAttribute('data-dir')); break;
       case 'edit-tx': openEditTx(actionBtn.getAttribute('data-id')); break;
       case 'cancel-edit-tx': cancelEditTx(); break;
       case 'home-category-sort':

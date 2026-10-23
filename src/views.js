@@ -516,9 +516,8 @@
     var emptyControl = categorySort === 'amount' && zeroCategories.length
       ? '<button type="button" class="btn btn--sm home-empty-toggle" data-action="home-empty-toggle">' + e(T(st.homeShowEmpty ? 'Скрыть пустые категории' : 'Показать пустые категории')) + ' (' + zeroCategories.length + ')</button>' : '';
     var cover = root.Covers ? Covers.current() : null;
-    return (
-      dueBanner(plans) +
-      monthNav(st.month) +
+    var edit = !!st.homeEdit;
+    var heroBlock =
       '<div class="hero' + (cover ? ' hero--cover' + (cover.tone === 'light' ? ' hero--cover--light' : '') : '') + '"' +
       (cover ? ' style="background-image:url(\'' + e(cover.file) + '\')"' : '') + '>' +
       balanceTrendSvg(transactions, st.month) +
@@ -530,16 +529,57 @@
       '<button type="button" class="hero__item" data-action="go-add-kind" data-kind="expense"><span class="hero__item-label"><svg class="hero__direction hero__direction--expense" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>' + e(T('Расходы')) + '</span><span class="hero__item-value">−' + e(money(s.expense)) + '</span></button>' +
       '</div>' +
       '</div>' +
-      '<button type="button" class="scan-btn scan-btn--primary home-scan" data-action="scan-receipt-home">' + QR_ICON + '<span>' + e(T('Сканировать чек')) + '</span></button>' +
-      '<div class="section categories-section"><div class="section__head categories-section__head"><span class="section__title">' + e(T('Категории')) + '</span>' +
+      '<button type="button" class="scan-btn scan-btn--primary home-scan" data-action="scan-receipt-home">' + QR_ICON + '<span>' + e(T('Сканировать чек')) + '</span></button>';
+    var categoriesBlock = '<div class="section categories-section"><div class="section__head categories-section__head"><span class="section__title">' + e(T('Категории')) + '</span>' +
       '<button type="button" class="categories-view-toggle" data-action="toggle-category-view" data-view="' + (viewMode === 'grid' ? 'list' : 'grid') +
       '" aria-label="' + e(viewLabel) + '" aria-pressed="' + (viewMode === 'list') + '" title="' + e(viewLabel) + '">' +
       '<svg viewBox="0 0 24 24" aria-hidden="true">' + viewIcon + '</svg></button></div>' +
-      sortControls + '<div class="card categories--' + viewMode + '">' + cats + '</div>' + emptyControl + '</div>' +
-      forecastCard(s, plans) +
-      plansTeaser(plans) +
-      (partners ? '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Между партнёрами')) + '</span></div>' + partners + '</div>' : '')
-    );
+      sortControls + '<div class="card categories--' + viewMode + '">' + cats + '</div>' + emptyControl + '</div>';
+    var partnersBlock = partners ? '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Между партнёрами')) + '</span></div>' + partners + '</div>' : '';
+    var blockMap = {
+      balance: heroBlock,
+      categories: categoriesBlock,
+      forecast: forecastCard(s, plans),
+      plans: plansTeaser(plans),
+      partners: partnersBlock,
+    };
+    var blockLabels = {
+      balance: 'Карточка бюджета',
+      categories: 'Категории',
+      forecast: 'Прогноз',
+      plans: 'Планы',
+      partners: 'Между партнёрами',
+    };
+    var order = State.homeOrder ? State.homeOrder() : ['balance', 'categories', 'forecast', 'plans', 'partners'];
+    function editBlock(id, content, index) {
+      var label = T(blockLabels[id]);
+      var emptyText = T('Нет данных для этого блока');
+      return '<section class="home-block" data-home-block="' + e(id) + '" aria-label="' + e(label) + '">' +
+        '<div class="home-block__head"><span class="home-block__title">' + e(label) + '</span>' +
+        '<div class="home-block__actions">' +
+        '<button type="button" class="home-block__move" data-action="home-move" data-home-edit data-id="' + e(id) + '" data-dir="up"' +
+        ' aria-label="' + e(T('Переместить «{name}» выше', { name: label })) + '"' + (index === 0 ? ' disabled' : '') + '>' +
+        '<span aria-hidden="true">↑</span></button>' +
+        '<button type="button" class="home-block__move" data-action="home-move" data-home-edit data-id="' + e(id) + '" data-dir="down"' +
+        ' aria-label="' + e(T('Переместить «{name}» ниже', { name: label })) + '"' + (index === order.length - 1 ? ' disabled' : '') + '>' +
+        '<span aria-hidden="true">↓</span></button>' +
+        '</div></div>' +
+        '<div class="home-block__content" inert>' + (content || '<div class="empty home-block__empty">' + e(emptyText) + '</div>') + '</div>' +
+        '</section>';
+    }
+    var toolbar = edit
+      ? '<div class="home-toolbar home-toolbar--edit"><span class="home-toolbar__title">' + e(T('Порядок блоков')) + '</span>' +
+        '<div class="home-toolbar__actions">' +
+        '<button type="button" class="btn btn--sm" data-action="home-edit-reset" data-home-edit>' + e(T('Сбросить')) + '</button>' +
+        '<button type="button" class="btn btn--sm" data-action="home-edit-cancel" data-home-edit>' + e(T('Отмена')) + '</button>' +
+        '<button type="button" class="btn btn--sm btn--primary" data-action="home-edit-save" data-home-edit>' + e(T('Сохранить')) + '</button>' +
+        '</div></div>'
+      : '<div class="home-toolbar"><button type="button" class="home-toolbar__edit" data-action="home-edit">' + e(T('Изменить главную')) + '</button></div>';
+    var body = order.map(function (id, index) {
+      var content = blockMap[id] || '';
+      return edit ? editBlock(id, content, index) : content;
+    }).join('');
+    return dueBanner(plans) + monthNav(st.month) + toolbar + body;
   }
 
   // --- Траты ---

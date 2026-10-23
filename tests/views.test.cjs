@@ -315,3 +315,26 @@ test('none split hides the partner settlement entirely', () => {
   assert.doesNotMatch(html, /Как делим:/);
   assert.match(html, /Остаток за месяц/);
 });
+
+test('home edit mode shows every block with keyboard reorder controls and inert content', () => {
+  const ctx = setup();
+  const normal = home(ctx);
+  assert.match(normal, /data-action="home-edit"/);
+  assert.doesNotMatch(normal, /data-action="home-edit-save"/);
+  assert.doesNotMatch(normal, /data-home-block=/);
+
+  ctx.State.get().homeEdit = true;
+  ctx.State.get().homeDraft = ['categories', 'balance', 'partners', 'forecast', 'plans'];
+  const html = home(ctx);
+  const ids = [...html.matchAll(/data-home-block="([^"]+)"/g)].map(m => m[1]);
+  assert.deepEqual(ids, ['categories', 'balance', 'partners', 'forecast', 'plans']);
+  assert.match(html, /data-action="home-edit-save"/);
+  assert.match(html, /data-action="home-edit-cancel"/);
+  assert.match(html, /data-action="home-edit-reset"/);
+  assert.match(html, /data-action="home-move" data-home-edit data-id="categories" data-dir="up"[^>]*disabled/);
+  assert.match(html, /data-action="home-move" data-home-edit data-id="plans" data-dir="down"[^>]*disabled/);
+  assert.match(html, /class="home-block__content" inert/);
+  assert.match(html, /Переместить «Категории» выше/);
+  assert.match(html, /Между партнёрами/);
+  assert.match(html, /Нет данных для этого блока/);
+});

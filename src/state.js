@@ -15,7 +15,41 @@
     txChart: 'expense',
     summaryCache: {},
     txCache: {},
+    homeEdit: false,
+    homeOrder: [],
+    homeDraft: null,
   };
+
+  // Порядок блоков главной. Хранится только на устройстве: у каждого
+  // участника может быть свой удобный экран.
+  var HOME_ORDER_KEY = 'budget.homeOrder';
+  var DEFAULT_HOME_ORDER = ['balance', 'categories', 'forecast', 'plans', 'partners'];
+
+  function normalizeHomeOrder(list) {
+    var seen = {};
+    var next = [];
+    (Array.isArray(list) ? list : []).forEach(function (id) {
+      if (DEFAULT_HOME_ORDER.indexOf(id) === -1 || seen[id]) return;
+      seen[id] = true;
+      next.push(id);
+    });
+    DEFAULT_HOME_ORDER.forEach(function (id) {
+      if (!seen[id]) next.push(id);
+    });
+    return next;
+  }
+
+  function readHomeOrder() {
+    try {
+      var saved = JSON.parse(root.localStorage.getItem(HOME_ORDER_KEY) || '[]');
+      return normalizeHomeOrder(saved);
+    } catch (e) {
+      return DEFAULT_HOME_ORDER.slice();
+    }
+  }
+
+  var homeOrder = readHomeOrder();
+  state.homeOrder = homeOrder.slice();
 
   function displayName(m) {
     if (!m) return '';
@@ -90,6 +124,25 @@
     isDueDismissed: isDueDismissed,
     dismissDue: dismissDue,
     remember: remember,
+    homeOrder: function () {
+      var order = state.homeEdit && state.homeDraft ? state.homeDraft : homeOrder;
+      return normalizeHomeOrder(order);
+    },
+    defaultHomeOrder: function () {
+      return DEFAULT_HOME_ORDER.slice();
+    },
+    setHomeOrder: function (list) {
+      homeOrder = normalizeHomeOrder(list);
+      state.homeOrder = homeOrder.slice();
+      try { root.localStorage.setItem(HOME_ORDER_KEY, JSON.stringify(homeOrder)); } catch (e) {}
+      return homeOrder.slice();
+    },
+    resetHomeOrder: function () {
+      homeOrder = DEFAULT_HOME_ORDER.slice();
+      state.homeOrder = homeOrder.slice();
+      try { root.localStorage.removeItem(HOME_ORDER_KEY); } catch (e) {}
+      return homeOrder.slice();
+    },
     reset: function () {
       state.member = null;
       state.categories = null;
@@ -97,6 +150,8 @@
       state.txCache = {};
       state.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
       state.month = Fmt.currentMonth();
+      state.homeEdit = false;
+      state.homeDraft = null;
     },
   };
 })(window);

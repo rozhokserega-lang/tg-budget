@@ -390,6 +390,116 @@ button,
   cursor: default;
 }
 
+/* --- Редактирование главной --- */
+
+.home-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: -4px 0 10px;
+}
+
+.home-toolbar--edit {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-top: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-card);
+}
+
+.home-toolbar__title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.home-toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.home-toolbar__edit {
+  padding: 4px 0;
+  color: var(--c-accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.home-toolbar__edit:focus-visible,
+.home-block__move:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
+
+.home-block {
+  margin-top: var(--gap);
+  padding: 10px;
+  border: 1px dashed color-mix(in srgb, var(--c-accent) 38%, var(--c-border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--c-card) 72%, transparent);
+}
+
+.home-block + .home-block {
+  margin-top: 12px;
+}
+
+.home-block__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.home-block__title {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.home-block__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.home-block__move {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.home-block__move:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.home-block__content {
+  pointer-events: none;
+}
+
+.home-block__content > .section:first-child .section__head,
+.home-block__content > .section:first-child .categories-section__head {
+  margin-top: 0;
+}
+
+.home-block__content > .forecast {
+  margin-top: 0;
+}
+
+.home-block__empty {
+  padding: 16px 8px;
+}
+
 /* --- Категории с прогрессом --- */
 
 .cat {
