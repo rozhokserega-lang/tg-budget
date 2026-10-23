@@ -115,6 +115,8 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     swipeTarget: swipeTarget,
     pageSwipeAllowed: pageSwipeAllowed,
     navigateBySwipe: navigateBySwipe,
+    pagePreviewHtml: pagePreviewHtml,
+    pageSwipeFlip: pageSwipeFlip,
     getRoute: function () { return route; },
     preventRouteReloadForTest: function () {
       openSummary = function () { root.routeReloaded = 'summary'; };
@@ -936,4 +938,24 @@ test('page swipe follows main tabs, skips add and ignores interactive targets', 
   env.context.window.routeReloaded = null;
   assert.equal(env.app.navigateBySwipe(-1), false);
   assert.equal(env.context.window.routeReloaded, null);
+});
+
+test('page swipe peeks at the neighbouring page rendered from cached data', () => {
+  const env = setup();
+  env.st.member = { id: 'me', household_id: 'home' };
+  env.app.cached('summaryCache:2026-09', {
+    expense: 20,
+    categories: [{ id: 'food', name: 'cached-name', fact: 20, kind: 'expense' }],
+  });
+  assert.match(env.app.pagePreviewHtml('summary'), /cached-name/);
+  assert.match(env.app.pagePreviewHtml('tx'), /old note/);
+  assert.match(env.app.pagePreviewHtml('settings'), /profile-page/);
+  assert.equal(env.app.pagePreviewHtml('add'), '');
+
+  // Соседняя страница есть — тянем на четверть ширины; на краю список не листается.
+  assert.equal(env.app.pageSwipeFlip({ dx: -90, width: 320, dir: -1 }), true);
+  assert.equal(env.app.pageSwipeFlip({ dx: -40, width: 320, dir: -1 }), false);
+  assert.equal(env.app.pageSwipeFlip({ dx: -40, width: 320, dir: -1, fast: true }), true);
+  assert.equal(env.app.pageSwipeFlip({ dx: 30, width: 320, dir: -1 }), false);
+  assert.equal(env.app.pageSwipeFlip({ dx: -30, width: 320, dir: -1, edge: true, fast: true }), false);
 });

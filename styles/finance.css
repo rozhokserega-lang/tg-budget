@@ -909,6 +909,15 @@ button.finance-stat:focus-visible { outline: 2px solid var(--stat-color); outlin
 
 /* Старый экран гаснет на 110 мс, затем появляется новый (см. render() в app.js). */
 .screen--fading { opacity: 0; transition: opacity .11s ease; }
+
+/* Свайп страниц: соседняя вкладка накрывает фон и отделяется мягкой тенью. */
+.screen-viewport { background: var(--c-bg); }
+.screen--peek { background: var(--c-bg); box-shadow: 0 0 34px rgba(0,0,0,.45); }
+html[data-theme='light'] .screen--peek { box-shadow: 0 0 30px rgba(33,24,50,.18); }
+/* Превью и мгновенно показанная после свайпа страница не перезапускают
+   анимацию кольца: иначе оно наполнялось бы два раза подряд. */
+.screen--peek .finance-ring__segment,
+.screen--instant .finance-ring__segment { animation: none; }
 /* Появление нового экрана длиннее угасания — нет заметной «пустой» паузы. */
 .screen { transition: opacity .2s cubic-bezier(.22,.86,.3,1); }
 

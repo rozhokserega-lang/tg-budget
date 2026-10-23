@@ -8,6 +8,7 @@
   var $ = function (sel) { return document.querySelector(sel); };
   var el = {
     header: $('#screen-header'),
+    viewport: $('#screen-viewport'),
     screen: $('#screen'),
     tabs: $('#tabs'),
     loader: $('#loader'),
@@ -309,6 +310,11 @@
   var enterTimer = null;
   var fadeTimer = null;
   var renderToken = 0;
+  // Переход свайпом уже отыгран руками — новую страницу показываем без
+  // повторного затухания и каскада появления.
+  var instantRender = false;
+  // Асинхронные дорисовки сразу после свайпа тоже не перезапускают анимации.
+  var instantUntil = 0;
   function screenKey() {
     return route.name + (route.name === 'settings' ? ':' + (route.section || 'home') : route.name === 'plans' ? ':' + plansTab : '');
   }
@@ -317,7 +323,7 @@
     // Мгновенная подмена DOM и анимация только нового и давала «рывок».
     var token = ++renderToken;
     clearTimeout(fadeTimer);
-    var switching = screenKey() !== lastScreen && lastScreen !== null && el.screen.firstChild;
+    var switching = !instantRender && screenKey() !== lastScreen && lastScreen !== null && el.screen.firstChild;
     if (switching) {
       el.screen.classList.add('screen--fading');
       // Панель вкладок и «назад» переключаем сразу — отклик не ждёт анимации.
@@ -334,14 +340,19 @@
   function renderContent(html) {
     el.screen.innerHTML = html;
     el.screen.scrollTop = 0;
+    el.screen.classList.remove('screen--fading');
+    var instant = instantRender || Date.now() < instantUntil;
+    el.screen.classList.toggle('screen--instant', instant);
     // Каскад появления — только при смене экрана, не при каждом обновлении данных.
     if (screenKey() !== lastScreen) {
       lastScreen = screenKey();
       el.screen.classList.remove('screen--in');
-      void el.screen.offsetWidth;
-      el.screen.classList.add('screen--in');
-      clearTimeout(enterTimer);
-      enterTimer = setTimeout(function () { el.screen.classList.remove('screen--in'); }, 900);
+      if (!instant) {
+        void el.screen.offsetWidth;
+        el.screen.classList.add('screen--in');
+        clearTimeout(enterTimer);
+        enterTimer = setTimeout(function () { el.screen.classList.remove('screen--in'); }, 900);
+      }
     }
     applyRouteUi();
     pendingScrollTxFilter();
@@ -1555,6 +1566,108 @@
     root.Tg.haptic('light');
     openTab(target);
     return true;
+  }
+
+  // Превью соседней страницы для свайпа: собираем из уже загруженных данных,
+  // чтобы страница подъезжала под палец без запроса и ожидания.
+  function pagePreviewHtml(name) {
+    if (name === 'summary') {
+      var summary = cached('summaryCache:' + st.month) || st.lastSummary;
+      return summary
+        ? Views.renderSummary(summary, st.plans, expandedCat, cached('txCache:' + st.month), categoryView)
+        : Views.skeletonSummary();
+    }
+    if (name === 'tx') {
+      var rows = cached('txCache:' + st.month);
+      var filter = st.txFilter || { kind: null, category_id: null, member_id: null, q: '' };
+      return rows ? Views.renderTxList(rows, filter, st.txChart || 'expense') : Views.skeletonList();
+    }
+    if (name === 'plans') return st.plans ? Views.renderPlans(st.plans, plansTab) : Views.skeletonList();
+    if (name === 'settings') return Views.renderSettings(null);
+    return '';
+  }
+
+  function pageViewport() {
+    return el.viewport || (el.screen && el.screen.parentNode) || null;
+  }
+
+  function pageSwipeWidth() {
+    var viewport = pageViewport();
+    if (viewport && viewport.getBoundingClientRect) {
+      var width = viewport.getBoundingClientRect().width;
+      if (width) return width;
+    }
+    return el.screen.clientWidth || 320;
+  }
+
+  function buildPagePeek(name) {
+    var viewport = pageViewport();
+    if (!viewport || !document.createElement) return null;
+    var html = pagePreviewHtml(name);
+    if (!html) return null;
+    var pane = document.createElement('div');
+    pane.className = 'screen screen--peek';
+    // Копия не должна спорить с настоящей страницей за id, фокус и жесты.
+    pane.setAttribute('aria-hidden', 'true');
+    pane.setAttribute('inert', '');
+    pane.innerHTML = html;
+    Array.prototype.forEach.call(pane.querySelectorAll('[id]'), function (node) { node.removeAttribute('id'); });
+    viewport.appendChild(pane);
+    return pane;
+  }
+
+  // Доля пути или быстрый рывок решают, доедет ли страница до соседней.
+  function pageSwipeFlip(gesture) {
+    if (!gesture || gesture.edge) return false;
+    // Развернули палец обратно — страница остаётся на месте.
+    if (gesture.dx && gesture.dir && Math.sign(gesture.dx) !== gesture.dir) return false;
+    var width = gesture.width || pageSwipeWidth();
+    var moved = Math.abs(gesture.shift === undefined ? gesture.dx : gesture.shift);
+    return moved > width / 4 || (!!gesture.fast && moved > 24);
+  }
+
+  function clearPageSwipeStyles(gesture) {
+    if (gesture && gesture.peek && gesture.peek.parentNode) gesture.peek.parentNode.removeChild(gesture.peek);
+    el.screen.classList.remove('screen--dragging');
+    el.screen.style.transition = 'none';
+    el.screen.style.transform = '';
+    void el.screen.offsetWidth;
+    el.screen.style.transition = '';
+  }
+
+  function cancelPageSwipe() {
+    var gesture = pageSwipe;
+    pageSwipe = null;
+    if (gesture && gesture.axis === 'x') clearPageSwipeStyles(gesture);
+  }
+
+  function finishPageSwipe(gesture) {
+    var canGo = gesture.target && route.name === gesture.from && pageSwipeAllowed(null);
+    if (!canGo) { clearPageSwipeStyles(gesture); return; }
+    root.Tg.haptic('light');
+    closeSwipes();
+    // Новую страницу уже показало превью: без повторного затухания и каскада.
+    instantRender = true;
+    instantUntil = Date.now() + 800;
+    try { openTab(gesture.target); } finally { instantRender = false; }
+    clearPageSwipeStyles(gesture);
+  }
+
+  function settlePageSwipe(gesture, flip) {
+    var width = gesture.width || pageSwipeWidth();
+    var duration = 240;
+    var dir = gesture.dir || (gesture.dx < 0 ? -1 : 1);
+    el.screen.style.transition = 'transform ' + duration + 'ms cubic-bezier(.22,.61,.36,1)';
+    if (gesture.peek) gesture.peek.style.transition = el.screen.style.transition;
+    if (!flip) {
+      el.screen.style.transform = 'translate3d(0,0,0)';
+      if (gesture.peek) gesture.peek.style.transform = 'translate3d(' + (-dir * width) + 'px,0,0)';
+      setTimeout(function () { clearPageSwipeStyles(gesture); }, duration + 20);
+      return;
+    }
+    el.screen.style.transform = 'translate3d(' + (dir * width) + 'px,0,0)';
+    if (gesture.peek) gesture.peek.style.transform = 'translate3d(0,0,0)';
+    setTimeout(function () { finishPageSwipe(gesture); }, duration + 10);
   }
 
   function openQuickActions(page) {
@@ -3167,21 +3280,27 @@
     if (ev.key === 'ArrowRight' || ev.key === 'Escape') { ev.preventDefault(); closeSwipes(); row.focus(); }
   });
 
-  // Горизонтальный свайп по основным страницам. Стартуем только на
-  // неинтерактивных участках экрана: строки трат, кнопки, поля и открытые
-  // шторки имеют собственные жесты и не должны переключать вкладку.
-  var PAGE_SWIPE_MIN = 56;
+  // Горизонтальный свайп по основным страницам: экран едет за пальцем, а сбоку
+  // подъезжает превью соседней вкладки. Стартуем только на неинтерактивных
+  // участках экрана: строки трат, кнопки, поля и открытые шторки имеют
+  // собственные жесты и не должны переключать страницу.
   el.screen.addEventListener('touchstart', function (ev) {
     if (ev.touches.length !== 1 || !pageSwipeAllowed(ev.target)) return;
-    pageSwipe = { x: ev.touches[0].clientX, y: ev.touches[0].clientY, dx: 0, axis: '' };
+    var touch = ev.touches[0];
+    pageSwipe = {
+      x: touch.clientX, y: touch.clientY,
+      lastX: touch.clientX, lastT: performance.now(),
+      dx: 0, axis: '', from: route.name, target: null, peek: null, edge: false, fast: false, armed: false,
+    };
   }, { passive: true });
 
   el.screen.addEventListener('touchmove', function (ev) {
     var gesture = pageSwipe;
     if (!gesture) return;
-    if (ev.touches.length !== 1) { pageSwipe = null; return; }
-    var dx = ev.touches[0].clientX - gesture.x;
-    var dy = ev.touches[0].clientY - gesture.y;
+    if (ev.touches.length !== 1) { cancelPageSwipe(); return; }
+    var touch = ev.touches[0];
+    var dx = touch.clientX - gesture.x;
+    var dy = touch.clientY - gesture.y;
     if (!gesture.axis) {
       if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
       if (Math.abs(dy) >= Math.abs(dx) || Math.abs(dx) < Math.abs(dy) * 1.2) {
@@ -3189,21 +3308,50 @@
         return;
       }
       gesture.axis = 'x';
+      gesture.dir = dx < 0 ? -1 : 1;
+      gesture.width = pageSwipeWidth();
+      gesture.target = swipeTarget(route.name, -gesture.dir);
+      gesture.edge = !gesture.target;
+      if (gesture.target) gesture.peek = buildPagePeek(gesture.target);
+      el.screen.classList.add('screen--dragging');
     }
     gesture.dx = dx;
     if (ev.cancelable) ev.preventDefault();
+    // Скорость пальца к отпусканию: короткий рывок тоже перелистывает.
+    var now = performance.now();
+    if (now - gesture.lastT > 0) {
+      gesture.fast = Math.abs(touch.clientX - gesture.lastX) / (now - gesture.lastT) > 0.55;
+      gesture.lastX = touch.clientX;
+      gesture.lastT = now;
+    }
+    // На краю списка страниц экран тянется с сопротивлением, без соседа.
+    // В обратную сторону экран не уезжает: иначе между страницами появлялся бы зазор.
+    var shift = gesture.edge ? dx * 0.24 : dx;
+    if (!gesture.edge) shift = gesture.dir < 0 ? Math.min(0, shift) : Math.max(0, shift);
+    var limit = gesture.edge ? gesture.width * 0.24 : gesture.width;
+    shift = Math.max(-limit, Math.min(limit, shift));
+    gesture.shift = shift;
+    el.screen.style.transform = 'translate3d(' + shift.toFixed(1) + 'px,0,0)';
+    if (gesture.peek) {
+      var base = -gesture.dir * gesture.width;
+      gesture.peek.style.transform = 'translate3d(' + (base + shift).toFixed(1) + 'px,0,0)';
+    }
+    if (!gesture.edge && !gesture.armed && Math.abs(shift) > gesture.width / 4) {
+      gesture.armed = true;
+      root.Tg.haptic('light');
+    }
   }, { passive: false });
 
   el.screen.addEventListener('touchend', function (ev) {
     var gesture = pageSwipe;
     pageSwipe = null;
-    if (!gesture || gesture.axis !== 'x' || Math.abs(gesture.dx) < PAGE_SWIPE_MIN) return;
+    if (!gesture || gesture.axis !== 'x') return;
     if (ev.cancelable) ev.preventDefault();
-    pageSwipeClickUntil = Date.now() + 350;
-    navigateBySwipe(gesture.dx < 0 ? 1 : -1);
+    if (Math.abs(gesture.dx) > 8) pageSwipeClickUntil = Date.now() + 350;
+    settlePageSwipe(gesture, pageSwipeFlip(gesture));
   }, { passive: false });
 
-  el.screen.addEventListener('touchcancel', function () { pageSwipe = null; }, { passive: true });
+  el.screen.addEventListener('touchcancel', function () { cancelPageSwipe(); }, { passive: true });
 
   el.screen.addEventListener('click', function (ev) {
     if (Date.now() < pageSwipeClickUntil) {

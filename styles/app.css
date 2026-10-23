@@ -86,12 +86,37 @@ button,
   text-overflow: ellipsis;
 }
 
+.screen-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .screen {
   flex: 1;
+  height: 100%;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
   padding: var(--gap) var(--pad) calc(var(--gap) + 24px);
+}
+
+/* Соседняя страница, которую свайп вытягивает сбоку. */
+.screen--peek {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: auto;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.screen--dragging,
+.screen--peek {
+  will-change: transform;
 }
 
 .app--has-tabs .screen {
