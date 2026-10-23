@@ -810,6 +810,9 @@
   }
 
   function openSettings(section) {
+    // Смена экрана отменяет ответы от предыдущей страницы (например, планов),
+    // иначе они дорисуются поверх настроек.
+    ++reqSeq;
     var allowed = ['family', 'budget', 'appearance', 'notifications', 'subscription', 'about'];
     route = { name: 'settings', section: allowed.indexOf(section) !== -1 ? section : null };
     render(Views.renderSettings(route.section));
@@ -878,11 +881,11 @@
     if (st.plans) render(Views.renderPlans(st.plans, plansTab)); else render(Views.skeletonList());
     var seq = ++reqSeq;
     loadPlans(true).then(function (plans) {
-      if (seq !== reqSeq) return;
+      if (seq !== reqSeq || route.name !== 'plans') return;
       render(Views.renderPlans(plans, plansTab));
       if (State.isExpired()) banner(T('Пробный период закончился — изменения недоступны.'));
     }).catch(function (err) {
-      if (seq !== reqSeq || err.code === 'stale_response') return;
+      if (seq !== reqSeq || route.name !== 'plans' || err.code === 'stale_response') return;
       if (st.plans) toast(T('Не удалось обновить — показываем сохранённое')); else fail(err);
     });
   }
@@ -1340,6 +1343,7 @@
 
   // focusId: сразу открыть редактор нужной категории (переход из списка трат).
   function openLimits(focusId) {
+    ++reqSeq;
     route = { name: 'limits' };
     render(Views.skeletonList());
     loadCategories().then(function () {
@@ -1347,6 +1351,7 @@
       render(Views.renderLimits());
       if (focusId) openCategoryForm(focusId);
     }).catch(function (err) {
+      if (route.name !== 'limits' || err.code === 'stale_response') return;
       fail(err);
     });
   }

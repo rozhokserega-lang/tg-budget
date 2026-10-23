@@ -518,6 +518,30 @@ test('plan SWR shows cached goals and retains them if background refresh fails',
   assert.match(env.nodes.get('#toast').textContent, /Не удалось обновить/);
 });
 
+test('a delayed plans response does not repaint settings after a quick tab switch', async () => {
+  const plans = deferred();
+  const env = setup(undefined, {
+    api(action) {
+      if (action === 'list_plans') return plans.promise;
+      if (action === 'list_recurring') return Promise.resolve([]);
+      return Promise.resolve([]);
+    },
+  });
+  env.st.member = { id: 'me', household_id: 'home' };
+
+  env.app.openPlans();
+  env.app.openTab('settings');
+  plans.resolve({ goals: [{ id: 'g', name: 'late-plan-marker', target: 100, saved: 10 }], debts: [], wishes: [] });
+  await settled();
+  await settled();
+  env.flushTimers();
+
+  const html = env.nodes.get('#screen').innerHTML;
+  assert.match(html, /profile-page/);
+  assert.doesNotMatch(html, /late-plan-marker/);
+  assert.equal(env.app.getRoute().name, 'settings');
+});
+
 test('finance navigation preserves active filters on refresh and resets them on explicit tab entry', async () => {
   const env = setup(undefined, { stubReload: false, api: () => Promise.resolve([env.tx]) });
   env.st.member = { id: 'me', household_id: 'first' };
