@@ -153,6 +153,10 @@ test('finance chart switches income, expense and balance independently of the li
   assert.match(income, /Gift/);
   assert.match(income, /Salary<\/span><small>67%<\/small>/);
   assert.match(income, /Gift<\/span><small>33%<\/small>/);
+  assert.equal((income.match(/finance-ring__segment/g) || []).length, 2);
+  assert.match(income, /--circ:439\.82/);
+  assert.match(income, /--segment-delay:0ms/);
+  assert.match(income, /--segment-delay:80ms/);
 
   const balance = ctx.Views.renderTxList(rows, { kind: null }, 'balance');
   assert.match(balance, /data-kind="balance" aria-pressed="true"/);
@@ -172,6 +176,7 @@ test('finance chart switches income, expense and balance independently of the li
   const empty = ctx.Views.renderTxList([], {}, 'balance');
   assert.match(empty, /Пока нет данных/);
   assert.doesNotMatch(empty, /NaN/);
+  assert.doesNotMatch(empty, /finance-ring__segment/);
 });
 test('home shows the latest confirmed expenses first and keeps edit/delete', () => {
   const ctx = setup();

@@ -740,6 +740,14 @@ button.finance-stat:focus-visible { outline: 2px solid var(--stat-color); outlin
 .finance-ring circle { fill: none; stroke-width: 9; stroke-linecap: round; }
 .finance-ring g { filter: drop-shadow(0 0 5px rgba(88,226,167,.3)); }
 .finance-ring .finance-ring__track { stroke: #263143; }
+.finance-ring__segment {
+  animation: finance-ring-fill .64s cubic-bezier(.2,.8,.25,1) both;
+  animation-delay: var(--segment-delay, 0ms);
+}
+@keyframes finance-ring-fill {
+  from { stroke-dasharray: 0 var(--circ); }
+  to { stroke-dasharray: var(--len) var(--rest); }
+}
 .finance-ring__center { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px; pointer-events: none; }
 .finance-ring__center strong { font-size: clamp(14px,3.5vw,23px); letter-spacing: -.04em; white-space: nowrap; }
 .finance-ring__center span { max-width: 82%; text-align: center; line-height: 1.2; font-size: 10px; color: #939daf; }

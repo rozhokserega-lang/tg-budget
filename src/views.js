@@ -823,7 +823,12 @@
     var segments = total > 0 ? cats.map(function (c, i) {
       var length = c.amount / total * circumference;
       var gap = Math.min(8, length * .2);
-      var segment = '<circle cx="100" cy="100" r="70" stroke="' + (c.color || colors[i]) + '" stroke-dasharray="' + Math.max(0, length - gap) + ' ' + (circumference - Math.max(0, length - gap)) + '" stroke-dashoffset="' + (-offset) + '"/>';
+      var dash = Math.max(0, length - gap);
+      var rest = circumference - dash;
+      // Кольцо «заполняется» после переключения графика: CSS анимирует
+      // stroke-dasharray от пустого сегмента до его доли. Небольшая задержка
+      // по индексу даёт последовательное заполнение по часовой стрелке.
+      var segment = '<circle class="finance-ring__segment" cx="100" cy="100" r="70" stroke="' + (c.color || colors[i]) + '" stroke-dasharray="' + dash + ' ' + rest + '" stroke-dashoffset="' + (-offset) + '" style="--circ:' + circumference.toFixed(2) + ';--len:' + dash.toFixed(2) + ';--rest:' + rest.toFixed(2) + ';--segment-delay:' + (i * 80) + 'ms"/>';
       offset += length;
       return segment;
     }).join('') : '';

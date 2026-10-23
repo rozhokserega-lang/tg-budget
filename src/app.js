@@ -1146,7 +1146,9 @@
     st.txChart = mode;
     st.txFilter.kind = mode === 'balance' ? null : mode;
     if (route.name !== 'tx') return;
+    var scroll = el.screen.scrollTop;
     render(Views.renderTxList(cached('txCache:' + st.month) || [], st.txFilter, st.txChart));
+    el.screen.scrollTop = scroll;
   }
 
   // Сброс фильтров: кнопка «Сбросить» в списке.

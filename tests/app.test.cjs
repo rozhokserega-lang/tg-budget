@@ -532,10 +532,12 @@ test('home income and expense cards open finance with a kind filter and switchin
   assert.equal(env.st.txFilter.q, '');
   assert.match(env.nodes.get('#screen').innerHTML, /finance-stat--income finance-stat--active/);
   await settled();
+  env.nodes.get('#screen').scrollTop = 240;
   env.app.setTxKind('expense');
   assert.equal(env.st.txFilter.kind, 'expense');
   assert.equal(env.st.txChart, 'expense');
   assert.match(env.nodes.get('#screen').innerHTML, /finance-stat--expense finance-stat--active/);
+  assert.equal(env.nodes.get('#screen').scrollTop, 240);
   env.app.setTxKind('');
   assert.equal(env.st.txFilter.kind, null);
   assert.equal(env.st.txChart, 'balance');
