@@ -678,27 +678,33 @@ body { background: var(--c-bg); }
 .tab--primary .tab__icon { transition: background .26s ease, color .2s ease, box-shadow .26s ease, transform .26s cubic-bezier(.3,.86,.24,1), opacity .2s ease; }
 .tab--primary:active .tab__icon { transform: scale(.92); }
 
-/* Падение кнопки в вырез при первом запуске: панель пружинит, кнопка — желе. */
-.tabs--intro::before,
-.tabs--intro::after {
-  animation: dock-drop .78s cubic-bezier(.2,.8,.3,1) both;
+/* Падение кнопки в вырез при первом запуске.
+   Проминается весь док целиком — фон, вырез и вкладки одним блоком,
+   поэтому иконки не «отстают» от фона. Тайминги заданы на каждый отрезок:
+   кнопка падает с ускорением и ударяется ровно на 58% таймлайна,
+   в этот же момент док получает максимальный прогиб; отскок (74%) и
+   успокоение (88%) тоже совпадают кадр в кадр. */
+.tabs--intro {
+  animation: dock-drop .8s linear both;
   transform-origin: 50% 100%;
 }
 .tabs--intro .tab--primary .tab__icon {
-  animation: add-drop .82s cubic-bezier(.2,.8,.3,1) both;
+  animation: add-drop .8s linear both;
 }
 .tab--primary.tab--jelly .tab__icon { animation: add-jelly .44s cubic-bezier(.22,.8,.3,1); }
 @keyframes dock-drop {
-  0% { transform: none; }
-  52% { transform: translateY(4px) scaleY(.94); }
-  74% { transform: translateY(-1px) scaleY(1.012); }
-  100% { transform: none; }
+  0%, 50% { transform: translateX(-50%); animation-timing-function: cubic-bezier(.2,.7,.5,1); }
+  58% { transform: translateX(-50%) translateY(3px) scaleY(.955); animation-timing-function: cubic-bezier(.3,.6,.4,1); }
+  74% { transform: translateX(-50%) translateY(-1px) scaleY(1.008); animation-timing-function: cubic-bezier(.4,0,.6,1); }
+  88% { transform: translateX(-50%) translateY(.5px) scaleY(.998); animation-timing-function: ease-out; }
+  100% { transform: translateX(-50%); }
 }
 @keyframes add-drop {
-  0% { transform: translateY(-92px) scale(.72); opacity: 0; }
-  52% { transform: translateY(3px) scale(1.06,.92); opacity: 1; }
-  70% { transform: translateY(-4px) scale(.97,1.03); }
-  86% { transform: translateY(1px) scale(1.01,.99); }
+  0% { transform: translateY(-84px) scale(.78); opacity: 0; animation-timing-function: cubic-bezier(.5,.05,.8,.4); }
+  14% { opacity: 1; }
+  58% { transform: translateY(2px) scale(1.05,.9); opacity: 1; animation-timing-function: cubic-bezier(.3,.6,.4,1); }
+  74% { transform: translateY(-3px) scale(.98,1.02); animation-timing-function: cubic-bezier(.4,0,.6,1); }
+  88% { transform: translateY(.5px) scale(1.01,.995); animation-timing-function: ease-out; }
   100% { transform: none; opacity: 1; }
 }
 @keyframes add-jelly {
@@ -716,8 +722,7 @@ body { background: var(--c-bg); }
 }
 .tabs--primary-hidden .tab--primary > span:last-child { opacity: 0; }
 @media (prefers-reduced-motion: reduce) {
-  .tabs--intro::before,
-  .tabs--intro::after,
+  .tabs--intro,
   .tabs--intro .tab--primary .tab__icon,
   .tab--primary.tab--jelly .tab__icon { animation: none; }
   .tabs__notch-fill,
