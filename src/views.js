@@ -42,9 +42,12 @@
   }
   var money = Fmt.money;
 
-  var QR_ICON_PATHS = '<path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/><path d="M8 8h3v3H8zm5 5h3v3h-3z"/>';
+  var QR_ICON_PATHS = '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/>' +
+    '<rect x="5" y="5" width="3" height="3" rx=".5" fill="currentColor" stroke="none"/><rect x="16" y="5" width="3" height="3" rx=".5" fill="currentColor" stroke="none"/><rect x="5" y="16" width="3" height="3" rx=".5" fill="currentColor" stroke="none"/>' +
+    '<rect x="14" y="14" width="2" height="2" rx=".3" fill="currentColor" stroke="none"/><rect x="18" y="14" width="2" height="2" rx=".3" fill="currentColor" stroke="none"/><rect x="14" y="18" width="2" height="2" rx=".3" fill="currentColor" stroke="none"/><rect x="19" y="18" width="2" height="2" rx=".3" fill="currentColor" stroke="none"/>' +
+    '<path d="M11 3v2M11 7v2M3 11h2M7 11h2M11 11h2M11 14v2M11 18v3M14 11h2M18 11h3"/>';
   var PHOTO_ICON_PATHS = '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="m21 15-5-5L5 21"/>';
-  var QR_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">' + QR_ICON_PATHS + '</svg>';
+  var QR_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + QR_ICON_PATHS + '</svg>';
   var PHOTO_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">' + PHOTO_ICON_PATHS + '</svg>';
 
   function initLetter(name) {
@@ -532,12 +535,13 @@
       '<button type="button" class="hero__item" data-action="go-add-kind" data-kind="income"><span class="hero__item-label"><svg class="hero__direction hero__direction--income" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>' + e(T('Доходы')) + '</span><span class="hero__item-value">+' + e(money(s.income)) + '</span></button>' +
       '<button type="button" class="hero__item" data-action="go-add-kind" data-kind="expense"><span class="hero__item-label"><svg class="hero__direction hero__direction--expense" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>' + e(T('Расходы')) + '</span><span class="hero__item-value">−' + e(money(s.expense)) + '</span></button>' +
       '</div>' +
-      '</div>' +
-      '<button type="button" class="scan-btn scan-btn--primary home-scan" data-action="scan-receipt-home">' + QR_ICON + '<span>' + e(T('Сканировать чек')) + '</span></button>';
-    var categoriesBlock = '<div class="section categories-section"><div class="section__head categories-section__head"><span class="section__title">' + e(T('Категории')) + '</span>' +
+      '</div>';
+    var categoriesBlock = '<div class="section categories-section"><div class="section__head categories-section__head"><h2 class="categories-title">' + e(T('Категории')) + '</h2>' +
+      '<div class="categories-actions">' +
+      '<button type="button" class="home-scan-btn" data-action="scan-receipt-home" aria-label="' + e(T('Сканировать чек')) + '" title="' + e(T('Сканировать чек')) + '">' + QR_ICON + '</button>' +
       '<button type="button" class="categories-view-toggle" data-action="toggle-category-view" data-view="' + (viewMode === 'grid' ? 'list' : 'grid') +
       '" aria-label="' + e(viewLabel) + '" aria-pressed="' + (viewMode === 'list') + '" title="' + e(viewLabel) + '">' +
-      '<svg viewBox="0 0 24 24" aria-hidden="true">' + viewIcon + '</svg></button></div>' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true">' + viewIcon + '</svg></button></div></div>' +
       sortControls + '<div class="card categories--' + viewMode + '">' + cats + '</div>' + emptyControl + '</div>';
     var partnersBlock = partners ? '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Между партнёрами')) + '</span></div>' + partners + '</div>' : '';
     var blockMap = {
@@ -753,7 +757,7 @@
   function renderTxList(all, filter, chartMode) {
     var st = State.get();
     var pending = (root.Queue && Queue.size()) ? '<div class="sync-note">' + e(T('Изменения отправятся, когда появится связь')) + '</div>' : '';
-    return '<div class="finance-page"><div class="finance-heading"><h1>' + e(T('Финансы')) + '</h1></div>' +
+    return '<div class="finance-page">' +
       monthNav(st.month) + pending + financeOverview(all, filter, chartMode) +
       '<div class="finance-ledger">' + txControls(all, filter) +
       '<h2 class="finance-history-title">' + e(T('История')) + '</h2>' +
@@ -1084,7 +1088,7 @@
     var labels = { goals: ['Накоплено на цели', 'Двигайтесь к тому, что важно'], debts: ['Осталось погасить', 'Держите обязательства под контролем'], wishes: ['На будущие покупки', 'Всё, что хочется осуществить'], recurring: ['Регулярные платежи в месяц', 'Запланированные расходы без сюрпризов'] };
     var addLabels = { goals: 'Новая цель', debts: 'Новый долг', wishes: 'Новое желание', recurring: 'Новый платёж' };
     return (
-      '<div class="plans-page plans-page--' + tab + '"><div class="plans-heading"><div><h1>' + e(T('Планы')) + '</h1><p>' + e(T(labels[tab][1])) + '</p></div>' +
+      '<div class="plans-page plans-page--' + tab + '"><div class="plans-heading"><p>' + e(T(labels[tab][1])) + '</p>' +
       '<button type="button" class="plans-create" data-action="plan-add" data-kind="' + tab + '" aria-label="' + e(T(addLabels[tab])) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>' +
       '<div class="segments plans-segments" role="group" aria-label="' + e(T('Разделы планов')) + '">' +
       PLANS_TABS.map(function (t) {

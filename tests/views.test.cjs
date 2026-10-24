@@ -62,11 +62,17 @@ test('home income and expense cards open the matching add form', () => {
   assert.match(html, /<button type="button" class="hero__item" data-action="go-add-kind" data-kind="income">/);
   assert.match(html, /<button type="button" class="hero__item" data-action="go-add-kind" data-kind="expense">/);
 });
-test('home has a receipt scanner shortcut and quick actions include photo receipt', () => {
+test('home has a square receipt scanner next to the category view toggle', () => {
   const ctx = setup();
   const html = home(ctx);
-  assert.match(html, /data-action="scan-receipt-home"/);
+  assert.match(html, /class="categories-title">Категории<\/h2>/);
+  assert.match(html, /class="categories-actions"/);
+  assert.match(html, /class="home-scan-btn" data-action="scan-receipt-home"/);
   assert.match(html, /Сканировать чек/);
+  assert.doesNotMatch(html, /class="scan-btn scan-btn--primary home-scan"/);
+  const head = html.slice(html.indexOf('categories-section__head'), html.indexOf('home-category-sort'));
+  assert.match(head, /home-scan-btn/);
+  assert.match(head, /categories-view-toggle/);
   const quick = ctx.Views.renderQuickActions(0);
   assert.match(quick, /data-quick="receipt-photo"/);
   assert.match(quick, /Фото чека/);
@@ -129,6 +135,7 @@ test('finance filters by operation kind and highlights the matching overview car
   const html = ctx.Views.renderTxList(rows, { kind: 'income' });
   assert.match(html, /data-tx-id="income"/);
   assert.doesNotMatch(html, /data-tx-id="expense"/);
+  assert.doesNotMatch(html, /finance-heading|<h1>Финансы/);
   assert.match(html, /Доходы · Найдено: 1/);
   assert.match(html, /<button type="button" data-action="tx-kind" data-kind="income" aria-pressed="true" class="finance-stat finance-stat--income finance-stat--active">/);
   assert.match(html, /<button type="button" data-action="tx-kind" data-kind="expense" aria-pressed="false" class="finance-stat finance-stat--expense">/);
@@ -181,6 +188,15 @@ test('finance chart switches income, expense and balance independently of the li
   assert.doesNotMatch(empty, /NaN/);
   assert.doesNotMatch(empty, /finance-ring__segment/);
 });
+test('plans keeps its compact add action but drops the page title', () => {
+  const ctx = setup();
+  const html = ctx.Views.renderPlans({ goals: [], debts: [], wishes: [], recurring: [] }, 'goals');
+  assert.doesNotMatch(html, /<h1>Планы<\/h1>/);
+  assert.match(html, /class="plans-heading"><p>/);
+  assert.match(html, /Двигайтесь к тому, что важно/);
+  assert.match(html, /class="plans-create"/);
+});
+
 test('home shows the latest confirmed expenses first and keeps edit/delete', () => {
   const ctx = setup();
   const rows = [tx('older', '2025-01-01', ''), tx('newer', '2025-01-03', '')];

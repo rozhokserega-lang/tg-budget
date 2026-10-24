@@ -53,6 +53,8 @@
   var pageSwipeClickUntil = 0;
   // Доезжающая страница: пока идёт анимация, новый жест её не ждёт.
   var pageSettle = null;
+  // Первое появление нижней панели: кнопка «Добавить» падает в вырез.
+  var tabsIntroDone = false;
   // Категория, из которой открыли форму: после сохранения вернёмся к ней.
   var pendingFromCategory = null;
   var homeScreenCheckSeq = 0;
@@ -285,6 +287,8 @@
     document.body.classList.toggle('app--has-tabs', inApp);
     if (!inApp) {
       el.tabs.innerHTML = '';
+      el.tabs.classList.remove('tabs--intro', 'tabs--primary-hidden');
+      tabsIntroDone = false;
       return;
     }
     // «Добавить» — не место, а действие: подсвечиваем вкладку, с которой пришли.
@@ -292,11 +296,11 @@
       : route.name === 'limits' ? 'settings'
       : route.name;
     // Меню создаём один раз: перерисовка на каждом переходе вызывала мигание иконок.
-    if (el.tabs.children.length !== TABS.length) {
+    if (!el.tabs.querySelector('.tabs__notch-fill')) {
       el.tabs.innerHTML = TABS.map(function (t) {
         return '<button type="button" class="tab' + (t.primary ? ' tab--primary' : '') + '" data-tab="' + t.id + '" aria-label="' + Fmt.escapeHtml(T(t.label)) + '">' +
           '<span class="tab__icon">' + t.icon + '</span><span>' + T(t.label) + '</span></button>';
-      }).join('');
+      }).join('') + '<span class="tabs__notch-fill" aria-hidden="true"></span>';
     }
     var activeIdx = 0;
     Array.prototype.forEach.call(el.tabs.children, function (b, i) {
@@ -305,6 +309,24 @@
       if (on) activeIdx = i;
     });
     el.tabs.style.setProperty('--tab-i', activeIdx);
+
+    // Зелёная кнопка живёт только на главной: на остальных вкладках она
+    // поднимается, гаснет, а вырез нижней панели выравнивается.
+    var showPrimary = active === 'summary';
+    el.tabs.classList.toggle('tabs--primary-hidden', !showPrimary);
+    if (!showPrimary) el.tabs.classList.remove('tabs--intro');
+    var primaryTab = el.tabs.querySelector('[data-tab="add"]');
+    if (primaryTab) {
+      primaryTab.setAttribute('aria-hidden', showPrimary ? 'false' : 'true');
+      primaryTab.tabIndex = showPrimary ? 0 : -1;
+    }
+    if (!tabsIntroDone && showPrimary) {
+      tabsIntroDone = true;
+      el.tabs.classList.remove('tabs--intro');
+      void el.tabs.offsetWidth;
+      el.tabs.classList.add('tabs--intro');
+      setTimeout(function () { el.tabs.classList.remove('tabs--intro'); }, 950);
+    }
     syncBackButton();
   }
 
@@ -1541,6 +1563,14 @@
     else if (tab === 'tx') openTx(null);
     else if (tab === 'plans') openPlans();
     else if (tab === 'add') {
+      root.Tg.haptic('light');
+      var primaryTab = el.tabs.querySelector('.tab--primary');
+      if (primaryTab) {
+        primaryTab.classList.remove('tab--jelly');
+        void primaryTab.offsetWidth;
+        primaryTab.classList.add('tab--jelly');
+        setTimeout(function () { primaryTab.classList.remove('tab--jelly'); }, 480);
+      }
       if (el.sheet.classList.contains('sheet--quick-actions') && !el.sheet.classList.contains('sheet--closing')) closeSheet();
       else openQuickActions(0);
     }
