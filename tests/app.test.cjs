@@ -544,7 +544,7 @@ test('a delayed plans response does not repaint settings after a quick tab switc
   assert.equal(env.app.getRoute().name, 'settings');
 });
 
-test('the primary add tab stays visible on every tab', () => {
+test('the primary add tab is visible only on home', () => {
   const env = setup(undefined, {
     stubReload: false,
     api: action => Promise.resolve(action === 'summary' ? { expense: 0 } : action === 'list_plans' ? {} : []),
@@ -552,11 +552,11 @@ test('the primary add tab stays visible on every tab', () => {
   env.st.member = { id: 'me', household_id: 'home' };
 
   env.app.openPlans();
-  assert.equal(env.nodes.get('#tabs').classList.contains('tabs--primary-hidden'), false);
+  assert.equal(env.nodes.get('#tabs').classList.contains('tabs--primary-hidden'), true);
   env.app.openSummary();
   assert.equal(env.nodes.get('#tabs').classList.contains('tabs--primary-hidden'), false);
   env.app.openSettings();
-  assert.equal(env.nodes.get('#tabs').classList.contains('tabs--primary-hidden'), false);
+  assert.equal(env.nodes.get('#tabs').classList.contains('tabs--primary-hidden'), true);
 });
 
 test('finance navigation preserves active filters on refresh and resets them on explicit tab entry', async () => {
@@ -746,14 +746,45 @@ test('pull refresh coalesces requests, only refreshes finance rows and keeps dat
  assert.equal(env.nodes.get('#screen').classList.contains('screen--refreshing'),false);
 });
 
-test('primary button remains available on all main tabs after rapid transitions', () => {
+test('dock visibility, focusability and intro follow home across interrupted transitions', () => {
  const env=setup(), tabs=env.nodes.get('#tabs'); env.st.member={id:'me'};
+ const attrs = new Map(), primary=Object.assign(fakeNode(), {contains:()=>false, setAttribute:(k,v)=>attrs.set(k,v)});
  tabs.children=['summary','tx','add','plans','settings'].map(id=>Object.assign(fakeNode(),{getAttribute:()=>id}));
- for (const name of ['summary','plans','summary','settings','tx']) {
+ tabs.querySelector=selector=>selector==='[data-tab="add"]'?primary:selector==='.tabs__notch-fill'?{}:null;
+ for (const name of ['summary','plans','summary','settings','tx','add','limits','summary']) {
    env.app.setRoute(name); env.app.applyRouteUi();
-   assert.equal(tabs.classList.contains('tabs--no-primary'),false);
-   assert.equal(tabs.hidden,false);
+   const shown=name==='summary';
+   assert.equal(tabs.classList.contains('tabs--primary-hidden'),!shown);
+   assert.equal(tabs.classList.contains('tabs--intro'),shown);
+   assert.equal(primary.tabIndex,shown?0:-1);
+   assert.equal(primary.inert,!shown);
+   assert.equal(attrs.get('aria-hidden'),String(!shown));
  }
+ env.flushTimers();
+ assert.equal(tabs.classList.contains('tabs--intro'),false);
+ env.app.applyRouteUi(); // cached repaint does not restart an already settled home intro
+ assert.equal(tabs.classList.contains('tabs--intro'),false);
+ env.app.setRoute('plans'); env.app.applyRouteUi();
+ env.app.setRoute('summary'); env.app.applyRouteUi();
+ assert.equal(tabs.classList.contains('tabs--intro'),true);
+ env.st.member=null; env.app.applyRouteUi(); env.flushTimers();
+ assert.equal(tabs.hidden,true); assert.equal(tabs.classList.contains('tabs--intro'),false);
+});
+test('leaving home moves focus away from the central action before hiding it', () => {
+ const env=setup(), tabs=env.nodes.get('#tabs'); env.st.member={id:'me'};
+ let focused=false;
+ const primary=Object.assign(fakeNode(), {contains:node=>node===primary, setAttribute(name) { if(name==='aria-hidden') assert.equal(focused,true); }});
+ const profile={focus(){focused=true;}};
+ tabs.querySelector=selector=>selector==='[data-tab="add"]'?primary:selector==='[data-tab="settings"]'?profile:{};
+ env.context.document.activeElement=primary;
+ env.app.setRoute('settings'); env.app.applyRouteUi();
+ assert.equal(focused,true); assert.equal(primary.inert,true);
+});
+test('a stale add action outside home cannot open quick actions', () => {
+ const env=setup(); env.st.member={id:'me'};
+ env.app.openSettings(); env.app.openTab('add');
+ assert.equal(env.sheet.hidden,true);
+ assert.equal(env.app.getRoute().name,'settings');
 });
 test('page pull starts only at top, cancels cleanly and does not navigate from expense or sheet', async () => {
  const env=setup(undefined,{stubReload:false}); env.st.member={id:'me'};

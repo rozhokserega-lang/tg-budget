@@ -53,8 +53,9 @@
   var pageSwipeClickUntil = 0;
   // Доезжающая страница: пока идёт анимация, новый жест её не ждёт.
   var pageSettle = null;
-  // Первое появление нижней панели: кнопка «Добавить» падает в вырез.
-  var tabsIntroDone = false;
+  // При возвращении на главную кнопка «Добавить» падает в вырез.
+  var tabsPrimaryVisible = null;
+  var tabsIntroTimer = null;
   // Категория, из которой открыли форму: после сохранения вернёмся к ней.
   var pendingFromCategory = null;
   var homeScreenCheckSeq = 0;
@@ -280,7 +281,7 @@
     root.Tg.backButton(null);
   }
 
-function applyRouteUi() {
+  function applyRouteUi() {
     var inApp = !!st.member;
     if (pageRefresh && refreshPageKey !== screenKey()) { el.screen.classList.remove('screen--refreshing'); el.screen.removeAttribute('aria-busy'); }
     el.header.hidden = true;
@@ -288,8 +289,9 @@ function applyRouteUi() {
     document.body.classList.toggle('app--has-tabs', inApp);
     if (!inApp) {
       el.tabs.innerHTML = '';
-      el.tabs.classList.remove('tabs--intro');
-      tabsIntroDone = false;
+      clearTimeout(tabsIntroTimer);
+      el.tabs.classList.remove('tabs--intro', 'tabs--primary-hidden');
+      tabsPrimaryVisible = null;
       return;
     }
     // «Добавить» — не место, а действие: подсвечиваем вкладку, с которой пришли.
@@ -311,20 +313,28 @@ function applyRouteUi() {
     });
     el.tabs.style.setProperty('--tab-i', activeIdx);
 
-    // Зелёная кнопка видна на всех вкладках: «+» открывает быстрые действия
-    // из любого места, вырез дока не заполняется.
+    // The central action belongs to home. Keep its node for reversible transitions.
+    var showPrimary = route.name === 'summary';
     var primaryTab = el.tabs.querySelector('[data-tab="add"]');
     if (primaryTab) {
-      primaryTab.setAttribute('aria-hidden', 'false');
-      primaryTab.tabIndex = 0;
+      if (!showPrimary && primaryTab.contains(document.activeElement)) {
+        var activeTab = el.tabs.querySelector('[data-tab="' + active + '"]');
+        if (activeTab) activeTab.focus({ preventScroll: true });
+      }
+      primaryTab.setAttribute('aria-hidden', String(!showPrimary));
+      primaryTab.tabIndex = showPrimary ? 0 : -1;
+      primaryTab.inert = !showPrimary;
     }
-    // Интро с падением кнопки — один раз, при первом входе.
-    if (!tabsIntroDone) {
-      tabsIntroDone = true;
+    el.tabs.classList.toggle('tabs--primary-hidden', !showPrimary);
+    if (showPrimary !== tabsPrimaryVisible) {
+      clearTimeout(tabsIntroTimer);
       el.tabs.classList.remove('tabs--intro');
-      void el.tabs.offsetWidth;
-      el.tabs.classList.add('tabs--intro');
-      setTimeout(function () { el.tabs.classList.remove('tabs--intro'); }, 950);
+      if (showPrimary) {
+        void el.tabs.offsetWidth;
+        el.tabs.classList.add('tabs--intro');
+        tabsIntroTimer = setTimeout(function () { el.tabs.classList.remove('tabs--intro'); }, 950);
+      }
+      tabsPrimaryVisible = showPrimary;
     }
     syncBackButton();
   }
@@ -1672,6 +1682,7 @@ function applyRouteUi() {
     else if (tab === 'tx') openTx(null);
     else if (tab === 'plans') openPlans();
     else if (tab === 'add') {
+      if (route.name !== 'summary') return;
       root.Tg.haptic('light');
       var primaryTab = el.tabs.querySelector('.tab--primary');
       if (primaryTab) {

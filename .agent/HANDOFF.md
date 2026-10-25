@@ -34,3 +34,9 @@ E: все 60 тестов проходят (node --test tests/*.test.cjs), synta
 ## UI/UX v2, 2026-10-26
 
 Пользователь разрешил push и merge main. Реализация baa43ca; origin/main515ac88 добавил собственные editor/swipe/dock, scanner/CSV/theme. При интеграции переиспользованы main editor с входом из profile/interface и возвратом, pointer swipe и постоянный плюс. Наши dropdown и pull-refresh сохранены. Порядок member-scoped с legacy fallback. Конфликтующие тесты актуализированы; browser editor/save/return и console[] проверены. 132/132 теста и syntax всех src прошли; Build02005d2d983b. Следующие шаги — STATE. AGENTS.md и untracked план исходные пользовательские, не добавлять.
+
+Публикация завершена: feature/ui-ux-v2 и main на origin b7bdae6, рабочая ветка main. Build b934973230a9 (после нормализации конечной пустой строки CSS). Пользовательские AGENTS временно stash и восстановлены без конфликтов; исходный untracked план сохранён. Память о публикации обновлена локально без отдельного коммита.
+
+## Исправление home-only dock, 2026-10-26
+
+Пользователь уточнил: плюс скрывать вне summary и показывать с drop при каждом возврате. Ветка fix/home-only-add-dock от b7bdae6. Изменены app.js (route visibility, inert/aria/tabIndex, transfer focus, cancel intro timer, stale add guard), finance.css (5→4 grid tracks, morph40→0, hide transform/opacity/visibility, reduced-motion), app tests, README/index asset versions. 134/134, syntax/diff чисты, Build1c9e4aab9d80. Browser375: четыре области84.25px; 320:70.5px; notch0 вне home/40 на home, no overflow, repeated add-drop, rapid tabs и quick actions, console[]. Светлая/тёмная проверены; theme system и viewport восстановлены. Скриншоты dock-home.png/dock-profile.png в visualizations/2026/10/25/01a174f7-5451-7950-8f12-0c2503bf0331. Изменения без коммита/push; прошлый push/merge уже выполнен, не считать его blanket-разрешением на новые публикации. Настоящие устройства/FPS и reduced-motion environment не проверены.

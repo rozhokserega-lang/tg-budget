@@ -676,7 +676,7 @@ body { background: var(--c-bg); }
 .tab--primary .tab__icon { transition: background .26s ease, color .2s ease, box-shadow .26s ease, transform .26s cubic-bezier(.3,.86,.24,1), opacity .2s ease; }
 .tab--primary:active .tab__icon { transform: scale(.92); }
 
-/* Падение кнопки в вырез при первом запуске.
+/* Падение кнопки в вырез при каждом возвращении на главную.
    Проминается весь док целиком — фон, вырез и вкладки одним блоком,
    поэтому иконки не «отстают» от фона. Тайминги заданы на каждый отрезок:
    кнопка падает с ускорением и ударяется ровно на 58% таймлайна,
@@ -931,12 +931,12 @@ button.finance-stat:focus-visible { outline: 2px solid var(--stat-color); outlin
   border-bottom: 0;
   border-radius: 23px 23px 0 0;
   background: linear-gradient(180deg,rgba(34,36,47,.97),rgba(24,26,35,.98));
-  /* Fixed 96x40px notch: horizontal tangents at both shoulders and the bowl.
+  /* Home ends with the existing 96x40px notch: horizontal tangents at both shoulders and the bowl.
      Three adjacent mask pieces plus the lower fill avoid stretching its curve. */
   --dock-mask: linear-gradient(#000 0 0) left top / calc(50% - 48px) 100% no-repeat,
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 40'%3E%3Cpath fill='black' d='M0 0C16 0 12 38 48 38C84 38 80 0 96 0V40H0Z'/%3E%3C/svg%3E") center top / 96px 40px no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 40'%3E%3Cpath fill='black' d='M0 0C16 0 12 38 48 38C84 38 80 0 96 0V40H0Z'/%3E%3C/svg%3E") center top / 96px var(--dock-notch-height, 40px) no-repeat,
     linear-gradient(#000 0 0) right top / calc(50% - 48px) 100% no-repeat,
-    linear-gradient(#000 0 0) center bottom / 100% calc(100% - 39px) no-repeat;
+    linear-gradient(#000 0 0) center bottom / 100% calc(100% - var(--dock-notch-height, 40px) + 1px) no-repeat;
   -webkit-mask: var(--dock-mask);
   mask: var(--dock-mask);
   box-shadow: 0 8px 28px rgba(0,0,0,.32),inset 0 1px rgba(255,255,255,.035);
@@ -961,9 +961,9 @@ button.finance-stat:focus-visible { outline: 2px solid var(--stat-color); outlin
 .tabs::after {
   left: calc((100vw - 100%) / -2);
   width: 100vw;
-  height: 40px;
+  height: var(--dock-notch-height, 40px);
   border-radius: 0;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 40'%3E%3Cpath fill='none' stroke='rgba(191,206,216,.23)' stroke-width='1' d='M0 .5C16 .5 12 38 48 38C84 38 80 .5 96 .5'/%3E%3C/svg%3E") center top / 96px 40px no-repeat;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 40'%3E%3Cpath fill='none' stroke='rgba(191,206,216,.23)' stroke-width='1' d='M0 .5C16 .5 12 38 48 38C84 38 80 .5 96 .5'/%3E%3C/svg%3E") center top / 96px var(--dock-notch-height, 40px) no-repeat;
 }
 @media (max-width: 390px) {
   .finance-stat { padding: 11px 9px; border-radius: 15px; }
@@ -1282,3 +1282,36 @@ html[data-theme='light'] .tx-delete { color: var(--c-expense); }
 .screen--pulling > * { translate: 0 var(--pull-distance, 0px); transition: none; }
 .screen--refreshing > * { translate: 0 32px; }
 @media (prefers-reduced-motion: reduce) { .screen > * { transition: none; } }
+
+/* Only five short dock tracks change size; page content is not laid out again. */
+@property --dock-notch-height {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 40px;
+}
+.tabs {
+  --dock-notch-height: 40px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  transition: grid-template-columns .38s cubic-bezier(.22,1,.36,1), --dock-notch-height .38s cubic-bezier(.22,1,.36,1);
+}
+.tabs > .tab { min-width: 0; }
+.tabs > .tab--primary {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity .22s ease, transform .3s ease, visibility 0s;
+}
+.tabs--primary-hidden {
+  --dock-notch-height: 0px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+.tabs--primary-hidden > .tab--primary {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(16px) scale(.65);
+  pointer-events: none;
+  transition: opacity .2s ease, transform .3s ease, visibility 0s .3s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tabs, .tabs > .tab--primary { transition: none; }
+}
