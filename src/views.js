@@ -529,13 +529,14 @@
         }).join('')
       : '<div class="empty">' + e(T(originalCategories.length ? 'Расходов за этот месяц нет' : 'Категорий пока нет')) + '</div>';
     var sortOptions = ['default', 'amount'].map(function (mode) {
-      return '<option value="' + mode + '"' + (categorySort === mode ? ' selected' : '') + '>' +
-        e(T(mode === 'amount' ? 'По сумме' : 'По умолчанию')) + '</option>';
+      return '<button type="button" class="category-picker__option" data-action="home-category-sort" data-sort="' + mode + '" aria-pressed="' + (categorySort === mode) + '">' +
+        e(T(mode === 'amount' ? 'По сумме' : 'По умолчанию')) + '</button>';
     }).join('');
     var sortControls = '<div class="home-category-sort">' +
       '<span class="home-category-sort__label">' + e(T('Сортировка')) + '</span>' +
-      '<select class="currency-row__select home-category-sort__select" data-home-category-sort aria-label="' + e(T('Сортировка категорий')) + '">' +
-      sortOptions + '</select></div>';
+      '<details class="category-picker home-category-sort__picker"><summary aria-label="' + e(T('Сортировка категорий')) + '" aria-expanded="false"><span class="category-picker__current">' + e(T(categorySort === 'amount' ? 'По сумме' : 'По умолчанию')) + '</span>' +
+      '<svg class="category-picker__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>' +
+      '<div class="category-picker__options" role="group" aria-label="' + e(T('Сортировка категорий')) + '">' + sortOptions + '</div></details></div>';
     var emptyControl = categorySort === 'amount' && zeroCategories.length
       ? '<button type="button" class="btn btn--sm home-empty-toggle" data-action="home-empty-toggle">' + e(T(st.homeShowEmpty ? 'Скрыть пустые категории' : 'Показать пустые категории')) + ' (' + zeroCategories.length + ')</button>' : '';
     var cover = root.Covers ? root.Covers.current() : null;
@@ -559,7 +560,7 @@
       '<button type="button" class="categories-view-toggle" data-action="toggle-category-view" data-view="' + (viewMode === 'grid' ? 'list' : 'grid') +
       '" aria-label="' + e(viewLabel) + '" aria-pressed="' + (viewMode === 'list') + '" title="' + e(viewLabel) + '">' +
       '<svg viewBox="0 0 24 24" aria-hidden="true">' + viewIcon + '</svg></button></div></div>' +
-      '<div class="card categories--' + viewMode + '">' + cats + '</div>' + emptyControl + '</div>';
+      sortControls + '<div class="card categories--' + viewMode + '">' + cats + '</div>' + emptyControl + '</div>';
     var partnersBlock = partners ? '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Между партнёрами')) + '</span></div>' + partners + '</div>' : '';
     var blockMap = {
       balance: heroBlock,

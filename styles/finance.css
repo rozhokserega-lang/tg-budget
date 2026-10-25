@@ -981,6 +981,8 @@ button.finance-stat:focus-visible { outline: 2px solid var(--stat-color); outlin
 .home-category-sort { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; }
 .home-category-sort__label { font-size: 12px; color: var(--c-hint); }
 .home-category-sort__select { max-width: 62%; }
+.home-category-sort__picker { width: 180px; max-width: 70%; }
+.home-category-sort__picker summary { min-height: 44px; }
 .home-empty-toggle { padding: 8px 12px; border-radius: 12px; color: var(--c-text); background: var(--c-surface, #252938); font-size: 12px; margin-top: 10px; }
 .finance-page .tx__edit-inline { position: absolute; inset: 0 88px 0 auto; width: 88px; display: flex; flex-direction: column; gap: 5px; align-items: center; justify-content: center; background: #276e53; color: #fff; font-size: 11px; visibility: hidden; opacity: 0; }
 .finance-page .tx__edit-inline svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; }

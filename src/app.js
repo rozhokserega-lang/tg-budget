@@ -3000,6 +3000,12 @@ document.addEventListener('click', function (ev) {
       case 'edit-tx': openEditTx(actionBtn.getAttribute('data-id')); break;
       case 'cancel-edit-tx': cancelEditTx(); break;
       case 'home-empty-toggle': st.homeShowEmpty = !st.homeShowEmpty; renderSummaryFromCache(); break;
+      case 'home-category-sort':
+        closeCategoryPicker(actionBtn.closest('.category-picker'));
+        setHomeCategorySort(actionBtn.getAttribute('data-sort'));
+        var sortSummary = el.screen.querySelector('.home-category-sort__picker summary');
+        if (sortSummary) sortSummary.focus({ preventScroll: true });
+        break;
       case 'month-prev': changeMonth(-1); break;
       case 'month-next': changeMonth(1); break;
       case 'go-tx': openTx(null); break;

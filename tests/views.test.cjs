@@ -247,7 +247,7 @@ test('interface settings persist block order per member and render home in that 
   assert.equal(ctx.State.homeOrder()[0], 'balance');
   ctx.State.setMember({id:'a'});
   assert.equal(ctx.State.homeOrder()[0], 'categories');
-  assert.doesNotMatch(home(ctx), /data-action="home-category-sort"/);
+  assert.match(home(ctx), /data-action="home-category-sort"/);
 });
 test('plans removes top create control but keeps creation for empty and populated lists', () => {
   const ctx = setup();
@@ -417,7 +417,21 @@ test('custom cover fills the hero and appearance offers upload, crop and reset',
   assert.match(editor, /data-sheet-close/);
 });
 
-test('home sorting is a labelled dropdown with the selected mode', () => {
+test('home sorting stays visible in a styled dropdown and reflects the active mode', () => {
+  const ctx = setup();
+  let html = home(ctx);
+  assert.match(html, /<details class="category-picker home-category-sort__picker">/);
+  assert.match(html, /<summary aria-label="Сортировка категорий"/);
+  assert.match(html, /data-action="home-category-sort" data-sort="default" aria-pressed="true"/);
+  assert.match(html, /data-action="home-category-sort" data-sort="amount" aria-pressed="false"/);
+  ctx.State.get().homeCategorySort = 'amount';
+  html = home(ctx);
+  assert.match(html, /data-sort="amount" aria-pressed="true"/);
+  assert.match(html, /category-picker__current">По сумме</);
+  assert.deepEqual(renderedCategoryIds(html), ['max', 'equal-a', 'equal-b']);
+});
+
+test('interface settings keep their sorting preference', () => {
   const ctx = setup();
   let html = ctx.Views.renderSettings('interface');
   assert.match(html, /home-category-sort__label">Сортировка</);
