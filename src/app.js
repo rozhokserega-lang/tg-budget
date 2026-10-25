@@ -287,7 +287,7 @@
     document.body.classList.toggle('app--has-tabs', inApp);
     if (!inApp) {
       el.tabs.innerHTML = '';
-      el.tabs.classList.remove('tabs--intro', 'tabs--primary-hidden');
+      el.tabs.classList.remove('tabs--intro');
       tabsIntroDone = false;
       return;
     }
@@ -310,17 +310,15 @@
     });
     el.tabs.style.setProperty('--tab-i', activeIdx);
 
-    // Зелёная кнопка живёт только на главной: на остальных вкладках она
-    // поднимается, гаснет, а вырез нижней панели выравнивается.
-    var showPrimary = active === 'summary';
-    el.tabs.classList.toggle('tabs--primary-hidden', !showPrimary);
-    if (!showPrimary) el.tabs.classList.remove('tabs--intro');
+    // Зелёная кнопка видна на всех вкладках: «+» открывает быстрые действия
+    // из любого места, вырез дока не заполняется.
     var primaryTab = el.tabs.querySelector('[data-tab="add"]');
     if (primaryTab) {
-      primaryTab.setAttribute('aria-hidden', showPrimary ? 'false' : 'true');
-      primaryTab.tabIndex = showPrimary ? 0 : -1;
+      primaryTab.setAttribute('aria-hidden', 'false');
+      primaryTab.tabIndex = 0;
     }
-    if (!tabsIntroDone && showPrimary) {
+    // Интро с падением кнопки — один раз, при первом входе.
+    if (!tabsIntroDone) {
       tabsIntroDone = true;
       el.tabs.classList.remove('tabs--intro');
       void el.tabs.offsetWidth;

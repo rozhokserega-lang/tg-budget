@@ -542,7 +542,7 @@ test('a delayed plans response does not repaint settings after a quick tab switc
   assert.equal(env.app.getRoute().name, 'settings');
 });
 
-test('the primary add tab hides outside home and returns on the home tab', () => {
+test('the primary add tab stays visible on every tab', () => {
   const env = setup(undefined, {
     stubReload: false,
     api: action => Promise.resolve(action === 'summary' ? { expense: 0 } : action === 'list_plans' ? {} : []),
@@ -550,11 +550,11 @@ test('the primary add tab hides outside home and returns on the home tab', () =>
   env.st.member = { id: 'me', household_id: 'home' };
 
   env.app.openPlans();
-  assert.equal(env.nodes.get('#tabs').classList.contains('tabs--primary-hidden'), true);
+  assert.equal(env.nodes.get('#tabs').classList.contains('tabs--primary-hidden'), false);
   env.app.openSummary();
   assert.equal(env.nodes.get('#tabs').classList.contains('tabs--primary-hidden'), false);
   env.app.openSettings();
-  assert.equal(env.nodes.get('#tabs').classList.contains('tabs--primary-hidden'), true);
+  assert.equal(env.nodes.get('#tabs').classList.contains('tabs--primary-hidden'), false);
 });
 
 test('finance navigation preserves active filters on refresh and resets them on explicit tab entry', async () => {
