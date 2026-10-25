@@ -1,7 +1,3 @@
 # Текущее состояние
 
-Обновлено: 2026-10-21 (Europe/Moscow).
-Задача: реализовать tg-budget-codex-final-plan.md, этапы A → B → C → D → E.
-Прогресс: A–D и локальные проверки E завершены на feature/expenses-ux-performance от b8688cd; 60/60 тестов, syntax/diff check, browser smoke пройдены. Коммиты реализации 4d9d0b2 и 7146102.
-Ограничения: real update неподтверждён → честный unsupported; demo edit работает. Auto-review отклонил git push из-за отсутствия явного разрешения публикации приватных commits на remote. PR не создан.
-Следующий шаг: после явного разрешения пользователя опубликовать ветку на origin (rozhokserega-lang/tg-budget), создать PR в main без merge, прикрепить его к чату и записать ссылку в HANDOFF. Не обходить отказ через другой инструмент.
+2026-10-26. UI/UX v2: локальные этапы 0–5 завершены (6/6). Ветка feature/ui-ux-v2 от 9702c37, новые изменения пока без коммита/push/merge. 67/67 тестов, syntax/diff check и browser demo 320/375 пройдены. Матрица Telegram Android/iOS/Desktop и FPS не проверены; ограничения — README. Следующий шаг: ручная приёмка на устройствах, затем публикация по запросу пользователя.

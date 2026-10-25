@@ -103,10 +103,32 @@ test('shared edit form preserves values, escapes user text and offers explicit s
   const row = tx('id', '2025-01-01', '', { note: '"><script>' });
   const html = ctx.Views.renderEditForm(row);
   assert.match(html, /data-form="edit-tx"/);
-  assert.match(html, /value="food" selected/);
+  assert.match(html, /name="category_id" value="food"/);
   assert.match(html, /name="amount"[^>]*value="10"/);
   assert.match(html, /name="occurred_on"[^>]*value="2025-01-01"/);
   assert.match(html, /&quot;&gt;&lt;script&gt;/);
   assert.match(html, /data-action="cancel-edit-tx"/);
   assert.doesNotMatch(html, /\smax=|data-sheet-close|<script>/);
+});
+
+test('interface settings persist block order per member and render home in that order', () => {
+  const ctx = setup(), stored = new Map();
+  ctx.window.localStorage = { getItem: k => stored.get(k), setItem: (k,v) => stored.set(k,v) };
+  ctx.State.setMember({id:'a'});
+  ctx.State.moveHomeBlock('categories', -1);
+  assert.ok(home(ctx).indexOf('categories-section') < home(ctx).indexOf('class="hero'));
+  assert.match(ctx.Views.renderSettings('interface'), /Настройка главной страницы/);
+  ctx.State.setMember({id:'b'});
+  assert.equal(ctx.State.homeOrder()[0], 'balance');
+  ctx.State.setMember({id:'a'});
+  assert.equal(ctx.State.homeOrder()[0], 'categories');
+  assert.doesNotMatch(home(ctx), /data-action="home-category-sort"/);
+});
+test('plans removes top create control but keeps creation for empty and populated lists', () => {
+  const ctx = setup();
+  for (const goals of [[], [{id:'g', name:'Goal', saved:0, target:100}]]) {
+    const html = ctx.Views.renderPlans({goals}, 'goals');
+    assert.doesNotMatch(html, /class="plans-create"/);
+    assert.match(html, /data-action="plan-add"/);
+  }
 });

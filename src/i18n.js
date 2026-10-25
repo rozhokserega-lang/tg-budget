@@ -39,6 +39,12 @@
   // и не требует придумывать отдельные идентификаторы для каждой надписи.
   var DICT = {
     en: {
+      "Настройки интерфейса": "Interface settings",
+      "Настройка главной страницы": "Home page settings",
+      "Выше": "Move up",
+      "Ниже": "Move down",
+      "Прогноз": "Forecast",
+      "Не удалось сохранить настройки": "Could not save settings",
       'Финансы': 'Finances',
       'Редактирование расходов на сервере пока не подключено. Изменения не сохранены.': 'Expense editing is not available on the server yet. Changes were not saved.',
       'Финансы →': 'Finances →',
@@ -408,6 +414,12 @@
       'ошибка': 'error',
     },
     es: {
+      "Настройки интерфейса": "Ajustes de interfaz",
+      "Настройка главной страницы": "Configurar inicio",
+      "Выше": "Subir",
+      "Ниже": "Bajar",
+      "Прогноз": "Pronóstico",
+      "Не удалось сохранить настройки": "No se pudieron guardar los ajustes",
       'Финансы': 'Finanzas',
       'Редактирование расходов на сервере пока не подключено. Изменения не сохранены.': 'La edición de gastos aún no está disponible en el servidor. Los cambios no se guardaron.',
       'Финансы →': 'Finanzas →',

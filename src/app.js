@@ -241,8 +241,10 @@
     root.Tg.backButton(null);
   }
 
+  var primaryVisible = null;
   function applyRouteUi() {
     var inApp = !!st.member;
+    if (pageRefresh && refreshPageKey !== screenKey()) { el.screen.classList.remove('screen--refreshing'); el.screen.removeAttribute('aria-busy'); }
     el.header.hidden = true;
     el.tabs.hidden = !inApp;
     document.body.classList.toggle('app--has-tabs', inApp);
@@ -261,8 +263,16 @@
           '<span class="tab__icon">' + t.icon + '</span><span>' + T(t.label) + '</span></button>';
       }).join('');
     }
+    var showPrimary = route.name === 'summary' || route.name === 'add';
+    if (showPrimary !== primaryVisible) {
+      primaryVisible = showPrimary;
+      el.tabs.classList.toggle('tabs--no-primary', !showPrimary);
+      el.tabs.classList.toggle('tabs--drop-enter', showPrimary);
+    }
     var activeIdx = 0;
     Array.prototype.forEach.call(el.tabs.children, function (b, i) {
+      var primary = b.getAttribute('data-tab') === 'add';
+      if (primary) { b.setAttribute('aria-hidden', String(!showPrimary)); b.tabIndex = showPrimary ? 0 : -1; }
       var on = b.getAttribute('data-tab') === active;
       b.classList.toggle('tab--active', on);
       if (on) activeIdx = i;
@@ -635,7 +645,7 @@
   }
 
   function openSettings(section) {
-    var allowed = ['family', 'budget', 'appearance', 'notifications', 'subscription', 'about'];
+    var allowed = ['family', 'budget', 'interface', 'appearance', 'notifications', 'subscription', 'about'];
     route = { name: 'settings', section: allowed.indexOf(section) !== -1 ? section : null };
     render(Views.renderSettings(route.section));
     if (route.section === 'subscription') loadTariffs();
@@ -1721,14 +1731,17 @@
 
   // --- События ---
 
-  el.screen.addEventListener('toggle', function (ev) {
-    var picker = ev.target;
-    if (!picker.matches('.category-picker') || !picker.open) return;
-    var rect = picker.getBoundingClientRect();
-    picker.classList.toggle('category-picker--up', root.innerHeight - rect.bottom < 370 && rect.top > 300);
-  }, true);
-
-  document.addEventListener('click', function (ev) {
+document.addEventListener('click', function (ev) {
+    var formChoice = ev.target.closest('[data-category-value]');
+    if (formChoice) {
+      var field = formChoice.closest('.field');
+      field.querySelector('[name="category_id"]').value = formChoice.getAttribute('data-category-value');
+      var menu = formChoice.closest('.category-picker');
+      menu.querySelector('.category-picker__current').textContent = formChoice.textContent;
+      menu.querySelectorAll('[data-category-value]').forEach(function (option) { option.setAttribute('aria-pressed', String(option === formChoice)); });
+      closeCategoryPicker(menu);
+      menu.querySelector('summary').focus({ preventScroll: true });
+    }
     var choice = ev.target.closest('[data-tx-choice]');
     if (choice && route.name === 'tx') {
       st.txFilter.category_id = choice.getAttribute('data-tx-choice') || null;
@@ -1737,23 +1750,16 @@
       picker.querySelectorAll('[data-tx-choice]').forEach(function (option) {
         option.setAttribute('aria-pressed', String(option === choice));
       });
-      picker.open = false;
+      closeCategoryPicker(picker);
       picker.querySelector('summary').focus({ preventScroll: true });
       root.Tg.haptic('light');
       refreshTxResults();
     }
-    el.screen.querySelectorAll('.category-picker[open]').forEach(function (picker) {
-      if (!picker.contains(ev.target)) picker.open = false;
+    document.querySelectorAll('.category-picker[open]').forEach(function (picker) {
+      if (!picker.contains(ev.target)) closeCategoryPicker(picker);
     });
   });
-  el.screen.addEventListener('keydown', function (ev) {
-    if (ev.key !== 'Escape') return;
-    var picker = ev.target.closest('.category-picker');
-    if (picker) { picker.open = false; picker.querySelector('summary').focus(); }
-  });
-
-
-  // Перерисовка сводки из кэша без запроса — нужна для раскрытия/сворачивания.
+// Перерисовка сводки из кэша без запроса — нужна для раскрытия/сворачивания.
   // render() сбрасывает прокрутку вверх, поэтому запоминаем позицию и
   // держим раскрытую строку на том же месте экрана.
   function renderSummaryFromCache() {
@@ -1885,6 +1891,9 @@
     if (action === 'toggle-cat' && scrolled) return;
 
     switch (action) {
+      case 'move-home-block':
+        try { State.moveHomeBlock(actionBtn.getAttribute('data-block'), Number(actionBtn.getAttribute('data-direction'))); openSettings('interface'); } catch (err) { toast(T('Не удалось сохранить настройки')); }
+        break;
       case 'edit-tx': openEditTx(actionBtn.getAttribute('data-id')); break;
       case 'cancel-edit-tx': cancelEditTx(); break;
       case 'home-category-sort':
@@ -2374,6 +2383,160 @@
       closeSwipes();
     }
   });
+
+  function closeCategoryPicker(picker) {
+    var menu = picker.querySelector('.category-picker__options');
+    if (!picker.open || picker.closingMotion) return;
+    if (!menu.animate || root.matchMedia('(prefers-reduced-motion: reduce)').matches) { picker.open = false; return; }
+    var motion = menu.animate([{opacity:1}, {opacity:0, transform:'translateY(-4px)'}], {duration:140, easing:'ease-in'});
+    picker.closingMotion = motion;
+    motion.finished.then(function () { if (picker.closingMotion === motion) { picker.open = false; picker.closingMotion = null; } }).catch(function () {});
+  }
+  document.addEventListener('click', function (ev) {
+    var summary = ev.target.closest('.category-picker summary');
+    if (!summary) return;
+    var picker = summary.parentElement;
+    if (picker.closingMotion) { ev.preventDefault(); picker.closingMotion.cancel(); picker.closingMotion = null; }
+    else if (picker.open) { ev.preventDefault(); closeCategoryPicker(picker); }
+  }, true);
+  function positionCategoryPicker(picker) {
+    var summary = picker.querySelector('summary'), menu = picker.querySelector('.category-picker__options');
+    var rect = summary.getBoundingClientRect();
+    var viewport = root.visualViewport;
+    var top = viewport ? viewport.offsetTop : 0;
+    var bottom = top + (viewport ? viewport.height : root.innerHeight);
+    if (!el.tabs.hidden) bottom = Math.min(bottom, el.tabs.getBoundingClientRect().top);
+    var below = bottom - rect.bottom - 12, above = rect.top - top - 12;
+    var up = below < 160 && above > below;
+    menu.style.position = 'fixed';
+    menu.style.left = Math.max(8, rect.left) + 'px';
+    menu.style.width = Math.min(rect.width, root.innerWidth - 16) + 'px';
+    menu.style.right = 'auto';
+    menu.style.maxHeight = Math.max(0, Math.min(280, up ? above : below)) + 'px';
+    menu.style.top = up ? 'auto' : rect.bottom + 6 + 'px';
+    menu.style.bottom = up ? root.innerHeight - rect.top + 6 + 'px' : 'auto';
+  }
+  document.addEventListener('toggle', function (ev) {
+    var picker = ev.target;
+    if (!picker.matches || !picker.matches('.category-picker')) return;
+    picker.querySelector('summary').setAttribute('aria-expanded', String(picker.open));
+    if (picker.open) positionCategoryPicker(picker);
+  }, true);
+  function repositionPickers() {
+    document.querySelectorAll('.category-picker[open]').forEach(positionCategoryPicker);
+  }
+  document.addEventListener('scroll', repositionPickers, true);
+  root.addEventListener('resize', repositionPickers);
+  document.addEventListener('keydown', function (ev) {
+    var picker = ev.target.closest('.category-picker');
+    if (!picker) return;
+    if (ev.key === 'Escape') { ev.preventDefault(); closeCategoryPicker(picker); picker.querySelector('summary').focus(); return; }
+    var keys = ['ArrowDown', 'ArrowUp', 'Home', 'End'];
+    if (keys.indexOf(ev.key) < 0) return;
+    ev.preventDefault(); picker.open = true; positionCategoryPicker(picker);
+    var options = Array.prototype.slice.call(picker.querySelectorAll('.category-picker__option'));
+    var index = options.indexOf(document.activeElement);
+    index = ev.key === 'Home' ? 0 : ev.key === 'End' ? options.length - 1 : (index + (ev.key === 'ArrowUp' ? -1 : 1) + options.length) % options.length;
+    if (options[index]) options[index].focus();
+  });
+
+  // One page recognizer; expense rows and nested gesture surfaces keep priority.
+  var pageGesture = null, pageRefresh = null, refreshPageKey = null, pageSwipeUntil = 0;
+  function pageGestureAxis(dx, dy) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 10) return null;
+    if (Math.abs(dx) > Math.abs(dy) * 1.5) return 'x';
+    if (Math.abs(dy) > Math.abs(dx) * 1.5) return 'y';
+    return null;
+  }
+  function refreshCurrentPage() {
+    if (pageRefresh) return pageRefresh;
+    var name = route.name, key = screenKey(), month = st.month, seq = reqSeq, scope = memberScope(st.member);
+    function current() { return key === screenKey() && month === st.month && seq === reqSeq && scope === memberScope(st.member); }
+    var tasks;
+    if (name === 'summary') tasks = [loadSummary(month, true), loadTx(month, true), loadPlans(true)];
+    else if (name === 'tx') tasks = [loadTx(month, true)];
+    else if (name === 'plans') tasks = [loadPlans(true)];
+    else if (name === 'settings') {
+      tasks = [];
+      if (!route.section || ['family', 'budget', 'notifications', 'subscription'].indexOf(route.section) !== -1) {
+        tasks.push(loadMember().then(function (member) { if (!member && route.name === 'settings') render(Views.renderOnboarding(onboarding)); }));
+      }
+      if (route.section === 'budget') tasks.push(loadCategories(true));
+      if (route.section === 'subscription') tasks.push(loadResource('tariffs', function () { return Api.call('plans'); }, true, function (list) { st.tariffs = Array.isArray(list) ? list : []; }));
+    }
+    else return Promise.resolve();
+    refreshPageKey = key;
+    el.screen.style.setProperty('--pull-distance', '32px');
+    el.screen.classList.add('screen--refreshing');
+    el.screen.setAttribute('aria-busy', 'true');
+    pageRefresh = Promise.allSettled(tasks).then(function (results) {
+      var failure = results.find(function (result) { return result.status === 'rejected'; });
+      if (failure) throw failure.reason;
+      if (!current()) return;
+      if (name === 'summary') {
+        if (expandedCat) expandedCat.rows = (cached('txCache:' + month) || []).filter(function (t) { return t.category_id === expandedCat.id; });
+        renderSummaryFromCache();
+      } else if (name === 'tx') refreshTxResults();
+      else if (name === 'plans') render(Views.renderPlans(st.plans, plansTab));
+      else render(Views.renderSettings(route.section));
+    }).catch(function (err) {
+      if (!current() || err.code === 'stale_response') return;
+      if (err.code === 'unauthorized' || err.code === 'no_household') return fail(err);
+      toast(T('Не удалось обновить — показываем сохранённое'));
+    }).finally(function () {
+      pageRefresh = null; refreshPageKey = null;
+      el.screen.classList.remove('screen--refreshing');
+      el.screen.removeAttribute('aria-busy');
+      el.screen.style.removeProperty('--pull-distance');
+    });
+    return pageRefresh;
+  }
+  function pageGestureBlocked(target) {
+    if (!el.sheet.hidden || !el.dialog.hidden || !st.member || route.name === 'add' || route.name === 'limits') return true;
+    if (target.closest('input,textarea,select,button,a,[contenteditable],.tx,.finance-operation,.category-picker,[draggable="true"],[data-gesture-lock],.segments')) return true;
+    for (var node = target; node && node !== el.screen; node = node.parentElement) {
+      var css = root.getComputedStyle(node);
+      if (node.scrollWidth > node.clientWidth + 1 && /auto|scroll/.test(css.overflowX)) return true;
+    }
+    return false;
+  }
+  el.screen.addEventListener('touchstart', function (ev) {
+    pageGesture = null;
+    if (ev.touches.length !== 1 || pageGestureBlocked(ev.target)) return;
+    var point = ev.touches[0];
+    if (point.clientX < 24 || point.clientX > root.innerWidth - 24) return;
+    var atTop = el.screen.scrollTop <= 0;
+    for (var node = ev.target; node && node !== el.screen; node = node.parentElement) { if (node.scrollTop > 0) atTop = false; }
+    pageGesture = { x: point.clientX, y: point.clientY, dx: 0, dy: 0, axis: null, top: atTop, key: screenKey(), seq: reqSeq };
+  }, { passive: true });
+  el.screen.addEventListener('touchmove', function (ev) {
+    var g = pageGesture;
+    if (!g) return;
+    if (ev.touches.length !== 1 || !el.sheet.hidden || !el.dialog.hidden || g.key !== screenKey()) { cancelPageGesture(); return; }
+    g.dx = ev.touches[0].clientX - g.x; g.dy = ev.touches[0].clientY - g.y;
+    if (!g.axis) g.axis = pageGestureAxis(g.dx, g.dy);
+    if (g.axis === 'y' && g.top && g.dy > 0 && el.screen.scrollTop <= 0 && !pageRefresh) {
+      ev.preventDefault();
+      el.screen.style.setProperty('--pull-distance', Math.min(80, g.dy * .45) + 'px');
+      el.screen.classList.add('screen--pulling');
+    }
+  }, { passive: false });
+  function cancelPageGesture() {
+    pageGesture = null; el.screen.classList.remove('screen--pulling');
+    if (!pageRefresh) el.screen.style.removeProperty('--pull-distance');
+  }
+  el.screen.addEventListener('touchcancel', cancelPageGesture, { passive: true });
+  el.screen.addEventListener('touchend', function () {
+    var g = pageGesture; cancelPageGesture();
+    if (!g || !el.sheet.hidden || !el.dialog.hidden || g.key !== screenKey() || g.seq !== reqSeq) return;
+    if (g.axis === 'y' && g.dy > Math.abs(g.dx) * 1.5 && g.top && g.dy >= 140 && el.screen.scrollTop <= 0) { refreshCurrentPage(); return; }
+    // Matches expense direction lock (10px/1.5); travel requires a quarter screen, bounded for tablets.
+    if (g.axis !== 'x' || Math.abs(g.dx) <= Math.abs(g.dy) * 1.5 || Math.abs(g.dx) < Math.min(100, Math.max(56, el.screen.clientWidth * .25)) || Date.now() < pageSwipeUntil) return;
+    var tabs = ['summary', 'tx', 'plans', 'settings'], index = tabs.indexOf(route.name) + (g.dx < 0 ? 1 : -1);
+    if (index < 0 || index >= tabs.length) return;
+    pageSwipeUntil = Date.now() + 240;
+    openTab(tabs[index]);
+  }, { passive: true });
 
   // --- Сводка: раскрытие категории ---
 

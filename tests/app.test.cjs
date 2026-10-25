@@ -66,6 +66,8 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   // Keep production event registration and implementations; omit network boot only.
   runInNewContext(source.replace(/\n  boot\(\);/, `
   root.TestApp = {
+    getRoute: function () { return route.name; }, applyRouteUi: applyRouteUi, setRoute: function (name) { route = {name:name}; },
+    pageGestureAxis: pageGestureAxis, refreshCurrentPage: refreshCurrentPage,
     openEditTx: openEditTx, submitEditTx: submitEditTx, cancelEditTx: cancelEditTx,
     closeSheet: closeSheet, beginSheetDrag: beginSheetDrag, syncBackButton: syncBackButton,
     getEditing: function () { return editingTx; }, getSaving: function () { return editSaving; },
@@ -118,7 +120,7 @@ test('edit entry points open a shared form with source values without mutating t
   assert.match(html, /name="amount"[^>]*value="20"/);
   assert.match(html, /name="note"[^>]*value="old note"/);
   assert.match(html, /name="occurred_on"[^>]*value="2026-09-30"/);
-  assert.match(html, /value="food" selected/);
+  assert.match(html, /name="category_id" value="food"/);
   assert.equal(JSON.stringify(env.tx), before);
   assert.notEqual(env.app.getEditing(), env.tx);
 });
@@ -569,3 +571,72 @@ for (const code of ['unauthorized', 'no_household']) {
     else assert.match(env.nodes.get('#screen').innerHTML, /Создать семью/);
   });
 }
+
+test('page gesture direction uses movement lock and leaves diagonals undecided', () => {
+ const {app} = setup();
+ assert.equal(app.pageGestureAxis(5,2), null);
+ assert.equal(app.pageGestureAxis(80,20), 'x');
+ assert.equal(app.pageGestureAxis(20,80), 'y');
+ assert.equal(app.pageGestureAxis(40,40), null);
+});
+test('pull refresh coalesces requests, only refreshes finance rows and keeps data on failure', async () => {
+ let reject;
+ const env=setup(undefined,{stubReload:false,api: action => action==='list_tx' ? new Promise((_,r)=>{reject=r;}) : Promise.resolve({})});
+ env.app.openTx();
+ await Promise.resolve();
+ const before=env.apiCalls.length;
+ const first=env.app.refreshCurrentPage();
+ assert.equal(first,env.app.refreshCurrentPage());
+ await Promise.resolve();
+ assert.ok(env.apiCalls.slice(before).every(c=>c.action==='list_tx'));
+ reject(new Error('offline'));
+ await first;
+ assert.equal(env.st['txCache:2026-09'].data[0].id,'expense');
+ assert.equal(env.nodes.get('#screen').classList.contains('screen--refreshing'),false);
+});
+
+test('primary button visibility follows final route across rapid transitions', () => {
+ const env=setup(), tabs=env.nodes.get('#tabs'); env.st.member={id:'me'};
+ tabs.children=['summary','tx','add','plans','settings'].map(id=>Object.assign(fakeNode(),{getAttribute:()=>id}));
+ for (const name of ['summary','plans','summary','settings','tx']) {
+   env.app.setRoute(name); env.app.applyRouteUi();
+   assert.equal(tabs.classList.contains('tabs--no-primary'),name!=='summary');
+   assert.equal(tabs.children[2].tabIndex,name==='summary'?0:-1);
+ }
+ env.app.setRoute('summary'); env.app.applyRouteUi();
+ assert.equal(tabs.classList.contains('tabs--drop-enter'),true);
+});
+
+test('page pull starts only at top, cancels cleanly and does not navigate from expense or sheet', async () => {
+ const env=setup(undefined,{stubReload:false}); env.st.member={id:'me'};
+ const screen=env.nodes.get('#screen'); screen.clientWidth=375;
+ env.context.window.innerWidth=375; env.context.window.getComputedStyle=()=>({overflowX:'visible'});
+ const target={closest:()=>null,parentElement:screen,scrollTop:0,scrollWidth:0,clientWidth:0};
+ const event=(x,y)=>({target,touches:[{clientX:x,clientY:y}],preventDefault(){},cancelable:true});
+ screen.scrollTop=20; screen.dispatch('touchstart',event(180,100)); screen.dispatch('touchmove',event(180,300)); screen.dispatch('touchend',event(180,300));
+ assert.equal(env.apiCalls.length,0);
+ screen.scrollTop=0; screen.dispatch('touchstart',event(180,100)); screen.dispatch('touchmove',event(180,300)); screen.dispatch('touchcancel',event(180,300));
+ assert.equal(screen.classList.contains('screen--pulling'),false); assert.equal(env.apiCalls.length,0);
+ env.sheet.hidden=false; screen.dispatch('touchstart',event(180,100)); screen.dispatch('touchmove',event(30,100)); screen.dispatch('touchend',event(30,100)); assert.equal(env.apiCalls.length,0);
+ env.sheet.hidden=true; const expense={...target,closest:selector=>selector.includes('.tx,')?{}:null};
+ screen.dispatch('touchstart',{...event(180,100),target:expense}); screen.dispatch('touchmove',event(30,100)); screen.dispatch('touchend',event(30,100)); assert.equal(env.apiCalls.length,0);
+});
+
+test('page swipe switches once and vertical top pull refreshes current resources', async () => {
+ const env=setup(undefined,{stubReload:false,api:action=>Promise.resolve(action==='summary'?{income:100,expense:20,balance:80,categories:[]}:action==='list_plans'?{goals:[],debts:[],wishes:[]}:[])});
+ env.st.member={id:'me'}; const screen=env.nodes.get('#screen'); screen.clientWidth=375;
+ env.context.window.innerWidth=375; env.context.window.getComputedStyle=()=>({overflowX:'visible'});
+ const target={closest:()=>null,parentElement:screen,scrollTop:0,scrollWidth:0,clientWidth:0};
+ const event=(x,y)=>({target,touches:[{clientX:x,clientY:y}],preventDefault(){},cancelable:true});
+ screen.dispatch('touchstart',event(200,100)); screen.dispatch('touchmove',event(200,300)); screen.dispatch('touchend',event(200,300));
+ await env.app.refreshCurrentPage();
+ assert.deepEqual(env.apiCalls.map(c=>c.action).sort(),['list_plans','list_recurring','list_tx','summary']);
+ assert.equal(env.st['summaryCache:2026-09'].data.balance,80);
+ env.apiCalls.length=0;
+ screen.dispatch('touchstart',event(200,100)); screen.dispatch('touchmove',event(80,105)); screen.dispatch('touchend',event(80,105));
+ await Promise.resolve(); await Promise.resolve();
+ assert.equal(env.app.getRoute(),'tx');
+ assert.equal(env.apiCalls.filter(c=>c.action==='list_tx').length,0);
+ screen.dispatch('touchstart',event(200,100)); screen.dispatch('touchmove',event(80,105)); screen.dispatch('touchend',event(80,105));
+ assert.equal(env.apiCalls.filter(c=>c.action==='list_plans').length,0);
+});

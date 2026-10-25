@@ -861,3 +861,59 @@ body { background: var(--c-bg); }
 /* Активная вкладка: цвет и вес меняются не рывком, а поверх плавного краска. */
 .tab { transition: color .22s ease, opacity .24s ease, filter .24s ease; }
 .tab--active { transition: color .2s ease; }
+
+/* Shared category menus, including forms inside sheets. */
+.category-picker__options { z-index: 1000; }
+.category-picker__option > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.category-picker__current { min-width: 0; overflow-wrap: anywhere; }
+.category-picker__option[aria-pressed="true"] { background: #3b3857; color: #e0ceff; }
+.category-picker__option:focus-visible, .category-picker summary:focus-visible { outline: 2px solid #bd9cff; outline-offset: -2px; }
+.home-editor .settings-row { gap: 8px; }
+.home-editor button { min-width: 44px; min-height: 44px; }
+
+.screen { overscroll-behavior-y: contain; }
+.screen--pulling::before,.screen--refreshing::before { content: '↻'; display: grid; place-items: center; position: fixed; top: calc(14px + var(--safe-top, 0px)); left: calc(50% - 18px); width: 36px; height: 36px; z-index: 15; border-radius: 50%; background: #34334b; color: #a0ffbd; transform: translateY(var(--pull-distance, 32px)); pointer-events: none; }
+.screen--refreshing::before { animation: refresh-spin .8s linear infinite; }
+@keyframes refresh-spin { to { transform: translateY(32px) rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .screen--refreshing::before { animation: none; } }
+
+/* Animate the notch's small mask segment; no JavaScript frame loop. */
+@property --notch-height { syntax: '<length>'; inherits: true; initial-value: 40px; }
+.tabs { --notch-height: 40px; grid-template-columns: repeat(4, minmax(0, 1fr)); transition: --notch-height .38s cubic-bezier(.22,1,.36,1); }
+.tabs .tab:not(.tab--primary) { transition: transform .38s cubic-bezier(.22,1,.36,1), opacity .24s; }
+.tabs .tab:nth-child(1) { transform: translateX(-10%); }
+.tabs .tab:nth-child(2) { transform: translateX(-30%); }
+.tabs .tab:nth-child(4) { transform: translateX(30%); }
+.tabs .tab:nth-child(5) { transform: translateX(10%); }
+.tabs .tab--primary { position: absolute; left: 40%; width: 20%; top: 0; transition: opacity .24s, transform .34s cubic-bezier(.22,1,.36,1); }
+.tabs--no-primary { --notch-height: 0px; }
+.tabs--no-primary .tab:not(.tab--primary) { transform: translateX(0); }
+.tabs--no-primary .tab--primary { opacity: 0; transform: translateY(18px) scale(.65); pointer-events: none; }
+.tabs::before {
+  --dock-mask: linear-gradient(#000 0 0) left top / calc(50% - 48px) 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 40'%3E%3Cpath fill='black' d='M0 0C16 0 12 38 48 38C84 38 80 0 96 0V40H0Z'/%3E%3C/svg%3E") center top / 96px var(--notch-height) no-repeat,
+    linear-gradient(#000 0 0) right top / calc(50% - 48px) 100% no-repeat,
+    linear-gradient(#000 0 0) center bottom / 100% calc(100% - var(--notch-height) + 1px) no-repeat;
+  transform-origin: center bottom;
+}
+.tabs::after { height: var(--notch-height); background-size: 96px var(--notch-height); }
+.tabs--drop-enter .tab--primary .tab__icon { animation: dock-drop .95s both; }
+.tabs--drop-enter::before { animation: dock-impact .95s both; }
+@keyframes dock-drop {
+  0% { opacity: 0; transform: translateY(-66px) scale(.7,1.25); border-radius: 48% 48% 40% 40%; }
+  32% { opacity: 1; transform: translateY(4px) scale(1.16,.82); }
+  49% { transform: translateY(-7px) scale(.91,1.1); }
+  65% { transform: translateY(2px) scale(1.05,.96); }
+  80% { transform: translateY(-1px) scale(.98,1.02); }
+  100% { opacity: 1; transform: none; border-radius: 50%; }
+}
+@keyframes dock-impact { 0%,25%,100% { transform: scaleY(1); } 35% { transform: scaleY(.9); } 52% { transform: scaleY(1.035); } 70% { transform: scaleY(.99); } }
+@media (prefers-reduced-motion: reduce) {
+  .tabs,.tabs .tab,.tabs .tab__icon,.tabs::before { animation: none !important; transition: none !important; }
+  .screen,.screen--fading,.screen--in,.category-picker__options { animation: none !important; transition: none !important; }
+}
+
+.screen > * { transition: translate .2s ease; }
+.screen--pulling > * { translate: 0 var(--pull-distance, 0px); transition: none; }
+.screen--refreshing > * { translate: 0 32px; }
+@media (prefers-reduced-motion: reduce) { .screen > * { transition: none; } }

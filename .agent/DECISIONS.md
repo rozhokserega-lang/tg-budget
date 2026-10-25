@@ -20,3 +20,7 @@
 - Документированы `/status`, `/model`, `/compact`; конкретную доступность проверять в меню `/` установленного клиента. CLI также поддерживает `codex resume`; новый чат восстанавливает смысл работы через файлы памяти, а не полную переписку.
 
 Источники: [настройки](https://learn.chatgpt.com/docs/config-file/config-reference), [штатные команды](https://learn.chatgpt.com/docs/developer-commands?surface=cli), [практика файлов контекста](https://developers.openai.com/cookbook/examples/codex/iterating-development-workflows-with-codex).
+
+## UI/UX v2 (2026-10-26)
+
+В исходнике нет редактора порядка блоков. Используем простой редактор ↑/↓ в профиле и localStorage budget.homeOrder.<member.id>; общий порядок собирается в views без DOM-перестановок. Глобальные жесты только в app.js, собственные жесты расходов и sheet сохраняют приоритет. Подробности и ограничения — README, раздел UI/UX v2.

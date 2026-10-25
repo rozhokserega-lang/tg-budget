@@ -69,7 +69,24 @@
     state.month = month ? month.slice(0, 7) : state.month;
   }
 
+  var HOME_BLOCKS = ['balance', 'categories', 'forecast', 'plans', 'partners'];
+  function homeOrder() {
+    var saved = [];
+    try { saved = JSON.parse(root.localStorage.getItem('budget.homeOrder.' + (state.member && state.member.id)) || '[]'); } catch (e) {}
+    if (!Array.isArray(saved)) saved = [];
+    return saved.filter(function (id, i) { return HOME_BLOCKS.indexOf(id) !== -1 && saved.indexOf(id) === i; })
+      .concat(HOME_BLOCKS.filter(function (id) { return saved.indexOf(id) === -1; }));
+  }
+  function moveHomeBlock(id, direction) {
+    var order = homeOrder(), from = order.indexOf(id), to = from + direction;
+    if (!state.member || from < 0 || to < 0 || to >= order.length || Math.abs(direction) !== 1) return;
+    order.splice(to, 0, order.splice(from, 1)[0]);
+    root.localStorage.setItem('budget.homeOrder.' + state.member.id, JSON.stringify(order));
+  }
+
   root.State = {
+    homeOrder: homeOrder,
+    moveHomeBlock: moveHomeBlock,
     get: function () { return state; },
     setMember: function (m) {
       state.member = m;
