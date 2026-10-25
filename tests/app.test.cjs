@@ -38,14 +38,31 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   const calls = [];
   const apiCalls = [];
   const queueOps = [];
+  const alerts = [];
+  const homeScreen = options.homeScreen || { supported: false, status: 'unsupported', added: false };
   const windowEvents = fakeNode();
+  const storage = new Map(options.storage || []);
   const context = { document, console, performance, setTimeout: fn => { timers.set(++timerId, fn); return timerId; }, clearTimeout: id => timers.delete(id), requestAnimationFrame: fn => fn() };
   if (options.clock) context.Date = class extends Date { static now() { return options.clock.now; } };
   context.window = {
-    localStorage: { getItem: () => null, setItem() {} },
+    localStorage: {
+      getItem: key => storage.has(key) ? storage.get(key) : null,
+      setItem: (key, value) => { storage.set(key, String(value)); },
+      removeItem: key => { storage.delete(key); },
+    },
     addEventListener: windowEvents.addEventListener, removeEventListener: windowEvents.removeEventListener,
-    Tg: { backButton: fn => { context.backHandler = fn; }, haptic() {} },
-    I18n: { t: s => s, locale: () => 'ru', plural: (_, n) => String(n) },
+    Tg: {
+      backButton: fn => { context.backHandler = fn; },
+      haptic() {},
+      setThemeMode: mode => { context.themeMode = mode; },
+      platform: () => homeScreen.platform || '',
+      showAlert: text => { alerts.push(text); },
+      canAddToHomeScreen: () => homeScreen.supported,
+      checkHomeScreenStatus: cb => { cb(homeScreen.status); },
+      addToHomeScreen: () => { homeScreen.added = true; return homeScreen.supported; },
+      onHomeScreenAdded: fn => { context.homeScreenAddedHandler = fn; },
+    },
+    I18n: { t: s => s, locale: () => 'ru', plural: (_, n) => String(n), locales: [{ code: 'ru', name: 'Русский' }] },
     Api: {
       updateTx: payload => { calls.push(payload); return updateTx(payload); },
       call(action, payload) {
@@ -56,6 +73,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     },
     Queue: { size: () => queueOps.length, push(action, payload) { const op = { id: 'op-' + (queueOps.length + 1), action, payload }; queueOps.push(op); return op; } },
   };
+  if (options.covers) context.window.Covers = options.covers;
   Object.assign(context, context.window);
   for (const file of ['recurring', 'format', 'state', 'views', 'cache']) {
     runInNewContext(readFileSync(require.resolve(`../src/${file}.js`), 'utf8'), context);
@@ -66,24 +84,46 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   // Keep production event registration and implementations; omit network boot only.
   runInNewContext(source.replace(/\n  boot\(\);/, `
   root.TestApp = {
-    getRoute: function () { return route.name; }, applyRouteUi: applyRouteUi, setRoute: function (name) { route = {name:name}; },
+    applyRouteUi: applyRouteUi, setRoute: function (name) { route = {name:name}; },
     pageGestureAxis: pageGestureAxis, refreshCurrentPage: refreshCurrentPage,
     openEditTx: openEditTx, submitEditTx: submitEditTx, cancelEditTx: cancelEditTx,
     closeSheet: closeSheet, beginSheetDrag: beginSheetDrag, syncBackButton: syncBackButton,
     getEditing: function () { return editingTx; }, getSaving: function () { return editSaving; },
     getDrag: function () { return sheetDrag; },
-    openSummary: openSummary, openTx: openTx, loadResource: loadResource,
+    openSummary: openSummary, openTx: openTx, openTxKind: openTxKind, setTxKind: setTxKind, loadResource: loadResource,
     fetchSummary: fetchSummary, loadTx: loadTx, adoptMember: adoptMember,
     refreshOnReturn: refreshOnReturn, clearCache: clearCache, cached: cached,
     applyLocalTx: applyLocalTx,
     loadMember: loadMember, deleteAccount: deleteAccount, closeDialog: closeDialog,
-    openPlans: openPlans, openTab: openTab, refreshTxResults: refreshTxResults,
-    submitAdd: submitAdd, deleteTx: deleteTx, removeLocalTx: removeLocalTx,
+    openPlans: openPlans, openTab: openTab, openSettings: openSettings, refreshTxResults: refreshTxResults,
+    addHomeScreen: addHomeScreen, refreshHomeScreenStatus: refreshHomeScreenStatus,
+    markHomeScreenAdded: markHomeScreenAdded,
+    getHomeScreenStatus: function () { return st.homeScreenStatus; },
+    submitAdd: submitAdd, deleteTx: deleteTx, removeLocalTx: removeLocalTx, formValues: formValues,
     mutate: mutate, loadPlans: loadPlans, submitCategory: submitCategory, submitRecurring: submitRecurring,
+    submitProfile: submitProfile,
     fillExpandedCat: fillExpandedCat,
+    startHomeEdit: startHomeEdit, saveHomeEdit: saveHomeEdit, resetHomeEdit: resetHomeEdit,
+    cancelHomeEdit: cancelHomeEdit, moveHomeBlock: moveHomeBlock,
+    setCover: setCover, resetCustomCover: resetCustomCover, readCoverFile: readCoverFile,
+    drawCoverCrop: drawCoverCrop, updateCoverDraft: updateCoverDraft,
+    setCoverDraftForTest: function (draft) { coverDraft = draft; },
+    getCoverDraft: function () { return coverDraft; },
     setExpandedForTest: function (value) { expandedCat = value; },
     getExpanded: function () { return expandedCat; },
     setAddDraftForTest: function (draft) { form = draft; },
+    setHomeCategorySort: setHomeCategorySort,
+    setThemePreference: setThemePreference,
+    swipeTarget: swipeTarget,
+    pageSwipeAllowed: pageSwipeAllowed,
+    navigateBySwipe: navigateBySwipe,
+    pagePreviewHtml: pagePreviewHtml,
+    pageSwipeFlip: pageSwipeFlip,
+    settlePageSwipe: settlePageSwipe,
+    flushPageSettle: flushPageSettle,
+    dropPageSettle: dropPageSettle,
+    getPageSettle: function () { return pageSettle; },
+    getRoute: function () { return route; },
     preventRouteReloadForTest: function () {
       openSummary = function () { root.routeReloaded = 'summary'; };
       openTx = function () { root.routeReloaded = 'tx'; };
@@ -98,7 +138,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   st['txCache:2026-10'] = { data: [], at: Date.now() };
   st['summaryCache:2026-10'] = { data: { expense: 0 }, at: Date.now() };
   if (options.stubReload !== false) context.window.TestApp.preventRouteReloadForTest();
-  return { context, app: context.window.TestApp, st, tx, sheet, panel, nodes, calls, apiCalls, windowEvents, queueOps,
+  return { context, app: context.window.TestApp, st, tx, sheet, panel, nodes, calls, apiCalls, windowEvents, queueOps, homeScreen, alerts, storage,
     flushTimers() { const pending = [...timers.values()]; timers.clear(); pending.forEach(fn => fn()); } };
 }
 function form(overrides = {}) {
@@ -422,6 +462,7 @@ test('member scope change removes pending add and delete overlays', async () => 
 
 test('delete uses confirmation, removes cached record and ignores outdated server list while queued', async () => {
   const env = setup(undefined, { api: () => Promise.resolve([env.tx]) });
+  env.st.lastSummary = env.st['summaryCache:2026-09'].data;
   env.app.deleteTx('expense');
   assert.equal(env.queueOps.length, 0);
   env.app.closeDialog(false);
@@ -434,9 +475,39 @@ test('delete uses confirmation, removes cached record and ignores outdated serve
   assert.equal(env.queueOps[0].action, 'delete_tx');
   assert.equal(env.queueOps[0].payload.id, 'expense');
   assert.equal(env.context.window.AppState.isDeleting('expense'), true);
+  assert.equal(env.st['txCache:2026-09'].data.length, 0);
+  assert.equal(env.st['summaryCache:2026-09'].data.expense, 0);
+  assert.equal(env.st.lastSummary.expense, 0);
   assert.equal((await env.app.loadTx('2026-09', true)).length, 0);
   env.windowEvents.dispatch('queue-sent', { detail: { id: env.queueOps[0].id, result: {} } });
   assert.equal(env.context.window.AppState.isDeleting('expense'), false);
+});
+
+test('failed delete restores the record, category totals and member amounts', async () => {
+  const env = setup();
+  const summary = {
+    income: 0, expense: 20, balance: -20,
+    categories: [{ id: 'food', fact: 20, plan: 100 }],
+    members: [{ id: 'me', income: 0, paid_shared: 0, personal: 20, share: 0, balance: 0 }],
+  };
+  env.st['summaryCache:2026-09'].data = summary;
+  env.st.lastSummary = summary;
+  env.app.deleteTx('expense');
+  env.app.closeDialog(true);
+  await settled();
+  assert.equal(env.st['txCache:2026-09'].data.length, 0);
+  assert.equal(env.st.lastSummary.expense, 0);
+  assert.equal(env.st.lastSummary.categories[0].fact, 0);
+  assert.equal(env.st.lastSummary.members[0].personal, 0);
+  const op = env.queueOps[0];
+  env.windowEvents.dispatch('queue-failed', { detail: { op, error: { code: 'not_found', message: 'nope' } } });
+  assert.equal(env.context.window.AppState.isDeleting('expense'), false);
+  assert.equal(env.st['txCache:2026-09'].data[0].id, 'expense');
+  assert.equal(env.st['summaryCache:2026-09'].data.expense, 20);
+  assert.equal(env.st.lastSummary.expense, 20);
+  assert.equal(env.st.lastSummary.categories[0].fact, 20);
+  assert.equal(env.st.lastSummary.members[0].personal, 20);
+  assert.match(env.nodes.get('#toast').textContent, /Не удалилось/);
 });
 
 test('plan SWR shows cached goals and retains them if background refresh fails', async () => {
@@ -449,19 +520,99 @@ test('plan SWR shows cached goals and retains them if background refresh fails',
   assert.match(env.nodes.get('#toast').textContent, /Не удалось обновить/);
 });
 
+test('a delayed plans response does not repaint settings after a quick tab switch', async () => {
+  const plans = deferred();
+  const env = setup(undefined, {
+    api(action) {
+      if (action === 'list_plans') return plans.promise;
+      if (action === 'list_recurring') return Promise.resolve([]);
+      return Promise.resolve([]);
+    },
+  });
+  env.st.member = { id: 'me', household_id: 'home' };
+
+  env.app.openPlans();
+  env.app.openTab('settings');
+  plans.resolve({ goals: [{ id: 'g', name: 'late-plan-marker', target: 100, saved: 10 }], debts: [], wishes: [] });
+  await settled();
+  await settled();
+  env.flushTimers();
+
+  const html = env.nodes.get('#screen').innerHTML;
+  assert.match(html, /profile-page/);
+  assert.doesNotMatch(html, /late-plan-marker/);
+  assert.equal(env.app.getRoute().name, 'settings');
+});
+
+test('the primary add tab stays visible on every tab', () => {
+  const env = setup(undefined, {
+    stubReload: false,
+    api: action => Promise.resolve(action === 'summary' ? { expense: 0 } : action === 'list_plans' ? {} : []),
+  });
+  env.st.member = { id: 'me', household_id: 'home' };
+
+  env.app.openPlans();
+  assert.equal(env.nodes.get('#tabs').classList.contains('tabs--primary-hidden'), false);
+  env.app.openSummary();
+  assert.equal(env.nodes.get('#tabs').classList.contains('tabs--primary-hidden'), false);
+  env.app.openSettings();
+  assert.equal(env.nodes.get('#tabs').classList.contains('tabs--primary-hidden'), false);
+});
+
 test('finance navigation preserves active filters on refresh and resets them on explicit tab entry', async () => {
   const env = setup(undefined, { stubReload: false, api: () => Promise.resolve([env.tx]) });
   env.st.member = { id: 'me', household_id: 'first' };
-  env.st.txFilter = { category_id: 'food', member_id: 'me', q: 'old note' };
+  env.st.txFilter = { kind: 'income', category_id: 'food', member_id: 'me', q: 'old note' };
   env.app.openTx();
   await settled();
+  assert.equal(env.st.txFilter.kind, 'income');
   assert.equal(env.st.txFilter.member_id, 'me');
   assert.equal(env.st.txFilter.q, 'old note');
   env.app.openTab('tx');
   await settled();
+  assert.equal(env.st.txFilter.kind, null);
   assert.equal(env.st.txFilter.category_id, null);
   assert.equal(env.st.txFilter.member_id, null);
   assert.equal(env.st.txFilter.q, '');
+});
+
+test('home income and expense cards open finance with a kind filter and switching stays on the page', async () => {
+  const env = setup(undefined, { stubReload: false, api: () => Promise.resolve([env.tx]) });
+  env.st.member = { id: 'me', household_id: 'first' };
+  env.app.openTxKind('income');
+  assert.equal(env.st.txFilter.kind, 'income');
+  assert.equal(env.st.txFilter.category_id, null);
+  assert.equal(env.st.txFilter.member_id, null);
+  assert.equal(env.st.txFilter.q, '');
+  assert.match(env.nodes.get('#screen').innerHTML, /finance-stat--income finance-stat--active/);
+  await settled();
+  env.nodes.get('#screen').scrollTop = 240;
+  env.app.setTxKind('expense');
+  assert.equal(env.st.txFilter.kind, 'expense');
+  assert.equal(env.st.txChart, 'expense');
+  assert.match(env.nodes.get('#screen').innerHTML, /finance-stat--expense finance-stat--active/);
+  assert.equal(env.nodes.get('#screen').scrollTop, 240);
+  env.app.setTxKind('');
+  assert.equal(env.st.txFilter.kind, null);
+  assert.equal(env.st.txChart, 'balance');
+  assert.match(env.nodes.get('#screen').innerHTML, /finance-stat--balance finance-stat--active/);
+  env.app.openTab('tx');
+  await settled();
+  assert.equal(env.st.txFilter.kind, null);
+});
+
+test('category drill-down sets the category filter and the matching chart mode', async () => {
+  const env = setup(undefined, { stubReload: false, api: () => Promise.resolve([env.tx]) });
+  env.st.member = { id: 'me', household_id: 'first' };
+  env.st.categories = [{ id: 'food', name: 'Food', kind: 'expense' }, { id: 'salary', name: 'Salary', kind: 'income' }];
+  env.app.openTx('food');
+  assert.equal(env.st.txFilter.category_id, 'food');
+  assert.equal(env.st.txChart, 'expense');
+  await settled();
+  env.app.openTx('salary');
+  assert.equal(env.st.txFilter.category_id, 'salary');
+  assert.equal(env.st.txChart, 'income');
+  await settled();
 });
 
 test('confirmed mutation supersedes a pending plans read before reloading plans', async () => {
@@ -595,18 +746,15 @@ test('pull refresh coalesces requests, only refreshes finance rows and keeps dat
  assert.equal(env.nodes.get('#screen').classList.contains('screen--refreshing'),false);
 });
 
-test('primary button visibility follows final route across rapid transitions', () => {
+test('primary button remains available on all main tabs after rapid transitions', () => {
  const env=setup(), tabs=env.nodes.get('#tabs'); env.st.member={id:'me'};
  tabs.children=['summary','tx','add','plans','settings'].map(id=>Object.assign(fakeNode(),{getAttribute:()=>id}));
  for (const name of ['summary','plans','summary','settings','tx']) {
    env.app.setRoute(name); env.app.applyRouteUi();
-   assert.equal(tabs.classList.contains('tabs--no-primary'),name!=='summary');
-   assert.equal(tabs.children[2].tabIndex,name==='summary'?0:-1);
+   assert.equal(tabs.classList.contains('tabs--no-primary'),false);
+   assert.equal(tabs.hidden,false);
  }
- env.app.setRoute('summary'); env.app.applyRouteUi();
- assert.equal(tabs.classList.contains('tabs--drop-enter'),true);
 });
-
 test('page pull starts only at top, cancels cleanly and does not navigate from expense or sheet', async () => {
  const env=setup(undefined,{stubReload:false}); env.st.member={id:'me'};
  const screen=env.nodes.get('#screen'); screen.clientWidth=375;
@@ -633,10 +781,328 @@ test('page swipe switches once and vertical top pull refreshes current resources
  assert.deepEqual(env.apiCalls.map(c=>c.action).sort(),['list_plans','list_recurring','list_tx','summary']);
  assert.equal(env.st['summaryCache:2026-09'].data.balance,80);
  env.apiCalls.length=0;
- screen.dispatch('touchstart',event(200,100)); screen.dispatch('touchmove',event(80,105)); screen.dispatch('touchend',event(80,105));
+ env.app.navigateBySwipe(1);
  await Promise.resolve(); await Promise.resolve();
- assert.equal(env.app.getRoute(),'tx');
+ assert.equal(env.app.getRoute().name,'tx');
  assert.equal(env.apiCalls.filter(c=>c.action==='list_tx').length,0);
  screen.dispatch('touchstart',event(200,100)); screen.dispatch('touchmove',event(80,105)); screen.dispatch('touchend',event(80,105));
  assert.equal(env.apiCalls.filter(c=>c.action==='list_plans').length,0);
+});
+test('profile shows add-to-home-screen only for supported statuses and invokes native prompt', () => {
+  const env = setup(undefined, { homeScreen: { supported: true, status: 'missed', added: false } });
+  env.app.openSettings();
+  assert.equal(env.app.getHomeScreenStatus(), 'missed');
+  const html = env.nodes.get('#screen').innerHTML;
+  assert.match(html, /data-action="add-home-screen"/);
+  assert.match(html, /Добавить на главный экран/);
+  env.app.addHomeScreen();
+  assert.equal(env.homeScreen.added, true);
+});
+
+test('profile marks an installed shortcut and hides it when unsupported', () => {
+  const installed = setup(undefined, { homeScreen: { supported: true, status: 'added', added: false } });
+  installed.app.openSettings();
+  const html = installed.nodes.get('#screen').innerHTML;
+  assert.match(html, /Приложение на главном экране/);
+  assert.match(html, /aria-disabled="true"/);
+  installed.app.addHomeScreen();
+  assert.equal(installed.homeScreen.added, false);
+
+  const unsupported = setup();
+  unsupported.app.openSettings();
+  assert.doesNotMatch(unsupported.nodes.get('#screen').innerHTML, /data-action="add-home-screen"/);
+  unsupported.app.addHomeScreen();
+  assert.equal(unsupported.homeScreen.added, false);
+});
+
+test('homeScreenAdded marks the shortcut and refreshes the profile', () => {
+  const env = setup(undefined, { homeScreen: { supported: true, status: 'missed', added: false } });
+  env.app.openSettings();
+  env.app.markHomeScreenAdded();
+  assert.equal(env.app.getHomeScreenStatus(), 'added');
+  assert.match(env.nodes.get('#screen').innerHTML, /Ярлык уже добавлен/);
+  assert.match(env.nodes.get('#toast').textContent, /Ярлык добавлен/);
+});
+
+test('android shortcut shows a manual fallback when the native dialog produces no event', () => {
+  const env = setup(undefined, { homeScreen: { supported: true, status: 'missed', added: false, platform: 'android' } });
+  env.app.openSettings();
+  env.app.addHomeScreen();
+  assert.equal(env.homeScreen.added, true);
+  assert.equal(env.app.getHomeScreenStatus(), 'missed');
+  env.flushTimers();
+  assert.match(env.nodes.get('#dialog-text').textContent, /Откройте чат с ботом/);
+  assert.equal(env.nodes.get('#dialog').hidden, false);
+});
+
+test('android shortcut fallback is cancelled by homeScreenAdded', () => {
+  const env = setup(undefined, { homeScreen: { supported: true, status: 'missed', added: false, platform: 'android' } });
+  env.app.openSettings();
+  env.app.addHomeScreen();
+  env.app.markHomeScreenAdded();
+  env.flushTimers();
+  assert.equal(env.app.getHomeScreenStatus(), 'added');
+  assert.equal(env.nodes.get('#dialog').hidden, true);
+  assert.doesNotMatch(env.nodes.get('#dialog-text').textContent, /Откройте чат с ботом/);
+});
+
+test('profile form saves member and household names and rolls back on failure', async () => {
+  let fail = false;
+  const env = setup(undefined, {
+    stubReload: false,
+    api: (action, payload) => {
+      if (action === 'save_profile') {
+        if (fail) return Promise.reject(Object.assign(new Error('bad_name'), { code: 'bad_name' }));
+        return Promise.resolve({ ok: true, member_name: payload.member_name, household_name: payload.household_name });
+      }
+      return Promise.resolve(action === 'me' ? { member: env.st.member } : []);
+    },
+  });
+  env.st.member = { id: 'me', name: 'Аня', households: { id: 'h1', name: 'Наша семья' } };
+  env.app.openSettings('family');
+  const formNode = {
+    elements: { member_name: { value: '  Анечка ' }, household_name: { value: ' Семья 2 ' } },
+    querySelector: selector => selector === '[type="submit"]' ? { disabled: false } : null,
+  };
+  env.app.submitProfile(formNode);
+  assert.equal(env.st.member.name, 'Анечка');
+  assert.equal(env.st.member.households.name, 'Семья 2');
+  await settled();
+  assert.ok(env.apiCalls.some(call => call.action === 'save_profile' && call.payload.member_name === 'Анечка'));
+  assert.match(env.nodes.get('#toast').textContent, /Сохранено/);
+
+  fail = true;
+  const failing = {
+    elements: { member_name: { value: 'Имя 2' }, household_name: { value: 'Семья 3' } },
+    querySelector: () => ({ disabled: false }),
+  };
+  env.app.submitProfile(failing);
+  assert.equal(env.st.member.name, 'Имя 2');
+  await settled();
+  assert.equal(env.st.member.name, 'Анечка');
+  assert.equal(env.st.member.households.name, 'Семья 2');
+});
+
+test('home edit reorders blocks, persists on save, resets and cancels', () => {
+  const env = setup();
+  const defaults = ['balance', 'categories', 'forecast', 'plans', 'partners'];
+  env.app.startHomeEdit();
+  assert.equal(env.st.homeEdit, true);
+  assert.match(env.nodes.get('#screen').innerHTML, /data-action="home-edit-save"/);
+
+  env.app.moveHomeBlock('categories', 'up');
+  assert.deepEqual(Array.from(env.st.homeDraft), ['categories', 'balance', 'forecast', 'plans', 'partners']);
+  assert.deepEqual(Array.from(env.st.homeOrder), defaults);
+
+  env.app.saveHomeEdit();
+  assert.equal(env.st.homeEdit, false);
+  assert.equal(env.st.homeDraft, null);
+  assert.deepEqual(Array.from(env.st.homeOrder), ['categories', 'balance', 'forecast', 'plans', 'partners']);
+  assert.equal(JSON.parse(env.storage.get('budget.homeOrder.' + (env.st.member && env.st.member.id)))[0], 'categories');
+
+  const reloaded = setup(undefined, { storage: env.storage });
+  assert.deepEqual(Array.from(reloaded.context.State.homeOrder()), ['categories', 'balance', 'forecast', 'plans', 'partners']);
+
+  env.app.startHomeEdit();
+  env.app.moveHomeBlock('plans', 'up');
+  env.app.cancelHomeEdit();
+  assert.deepEqual(Array.from(env.st.homeOrder), ['categories', 'balance', 'forecast', 'plans', 'partners']);
+  assert.equal(JSON.parse(env.storage.get('budget.homeOrder.' + (env.st.member && env.st.member.id)))[0], 'categories');
+
+  env.app.startHomeEdit();
+  env.app.moveHomeBlock('partners', 'up');
+  env.app.resetHomeEdit();
+  assert.deepEqual(Array.from(env.st.homeDraft), defaults);
+  assert.match(env.nodes.get('#toast').textContent, /Порядок сброшен/);
+  env.app.saveHomeEdit();
+  assert.deepEqual(Array.from(env.st.homeOrder), defaults);
+  assert.deepEqual(JSON.parse(env.storage.get('budget.homeOrder.' + (env.st.member && env.st.member.id))), defaults);
+});
+
+test('solo add form forces is_shared false even without the toggle', () => {
+  const env = setup();
+  const formNode = fakeNode();
+  formNode.elements = {
+    amount: { value: '12' },
+    note: { value: '' },
+    occurred_on: { value: '2026-10-01' },
+  };
+  const screen = env.nodes.get('#screen');
+  screen.querySelector = selector => selector === '[data-form="add"]' ? formNode : null;
+  env.st.member = { id: 'me', name: 'Me', households: { mode: 'solo' } };
+  assert.equal(env.app.formValues().is_shared, false);
+  env.st.member = { id: 'me', name: 'Me', households: { mode: 'pair' } };
+  formNode.elements.is_shared = { checked: true };
+  assert.equal(env.app.formValues().is_shared, true);
+});
+
+
+test('custom cover selection and reset update appearance without server calls', async () => {
+  let selected = 'custom';
+  let cleared = 0;
+  const custom = { id: 'custom', name: 'Своё фото', file: 'blob:cover', tone: 'dark', custom: true };
+  const covers = {
+    list: [{ id: 'default', name: 'Стандартная' }, { id: 'blue', name: 'Синий', file: 'covers/blue.webp', tone: 'dark' }],
+    id: () => selected,
+    current: () => selected === 'custom' ? custom : null,
+    custom: () => custom,
+    set(id) { selected = id; return true; },
+    clearCustom() { cleared++; selected = 'default'; return Promise.resolve(true); },
+    loadCustom() { return Promise.resolve(custom); },
+  };
+  const env = setup(undefined, { covers });
+  env.app.openSettings('appearance');
+  assert.match(env.nodes.get('#screen').innerHTML, /data-cover="custom"/);
+  env.app.setCover('blue');
+  assert.equal(selected, 'blue');
+  assert.match(env.nodes.get('#toast').textContent, /Обложка обновлена/);
+  selected = 'custom';
+  env.app.resetCustomCover();
+  await settled();
+  assert.equal(cleared, 1);
+  assert.equal(selected, 'default');
+  assert.match(env.nodes.get('#toast').textContent, /Свой фон убран/);
+  assert.equal(env.apiCalls.length, 0);
+});
+
+test('cover crop keeps the card ratio and respects zoom and offsets', () => {
+  const env = setup();
+  const calls = [];
+  const canvas = {
+    width: 1500,
+    height: 600,
+    getContext: () => ({
+      clearRect() {},
+      drawImage() { calls.push(Array.from(arguments).slice(1)); },
+    }),
+  };
+  const image = { naturalWidth: 3000, naturalHeight: 3000 };
+  assert.equal(env.app.drawCoverCrop(canvas, image, 1, 50, 50), true);
+  assert.deepEqual(calls[0], [0, 900, 3000, 1200, 0, 0, 1500, 600]);
+  calls.length = 0;
+  assert.equal(env.app.drawCoverCrop(canvas, image, 2, 25, 50), true);
+  assert.deepEqual(calls[0], [375, 1200, 1500, 600, 0, 0, 1500, 600]);
+  calls.length = 0;
+  assert.equal(env.app.drawCoverCrop(canvas, image, 0.2, -20, 120), true);
+  assert.deepEqual(calls[0], [0, 1800, 3000, 1200, 0, 0, 1500, 600]);
+  assert.equal(env.app.drawCoverCrop({ getContext: () => null }, image, 1, 0, 0), false);
+  assert.equal(env.app.drawCoverCrop(canvas, { naturalWidth: 0, naturalHeight: 1 }, 1, 0, 0), false);
+
+  const draft = { image, zoom: 1, x: 50, y: 50 };
+  env.app.setCoverDraftForTest(draft);
+  env.app.updateCoverDraft({ matches: selector => selector === '[data-cover-zoom]', value: '250' });
+  assert.equal(draft.zoom, 2.5);
+  env.app.updateCoverDraft({ matches: selector => selector === '[data-cover-x]', value: '10' });
+  assert.equal(draft.x, 10);
+  env.app.updateCoverDraft({ matches: selector => selector === '[data-cover-y]', value: '90' });
+  assert.equal(draft.y, 90);
+});
+
+test('cover upload validates image type and size before reading', () => {
+  const env = setup();
+  env.app.readCoverFile({ type: 'application/pdf', size: 20 });
+  assert.match(env.nodes.get('#toast').textContent, /Выберите изображение/);
+  env.app.readCoverFile({ type: 'image/jpeg', size: 13 * 1024 * 1024 });
+  assert.match(env.nodes.get('#toast').textContent, /Файл слишком большой/);
+});
+
+test('home category sort dropdown updates and persists the preference', () => {
+  const env = setup();
+  env.st.homeShowEmpty = true;
+  env.app.setHomeCategorySort('amount');
+  assert.equal(env.st.homeCategorySort, 'amount');
+  assert.equal(env.st.homeShowEmpty, false);
+  assert.equal(env.storage.get('budget.homeCategorySort'), 'amount');
+  env.app.setHomeCategorySort('unknown');
+  assert.equal(env.st.homeCategorySort, 'default');
+  assert.equal(env.storage.get('budget.homeCategorySort'), 'default');
+});
+
+test('theme preference is saved and passed to the Telegram theme layer', () => {
+  const env = setup();
+  env.app.setThemePreference('dark');
+  assert.equal(env.context.themeMode, 'dark');
+  assert.equal(env.storage.get('budget.theme'), 'dark');
+  env.app.setThemePreference('system');
+  assert.equal(env.context.themeMode, 'system');
+  assert.equal(env.storage.get('budget.theme'), 'system');
+});
+
+test('page swipe follows main tabs, skips add and ignores interactive targets', () => {
+  const env = setup();
+  env.st.member = { id: 'me', household_id: 'home' };
+  assert.equal(env.app.swipeTarget('summary', 1), 'tx');
+  assert.equal(env.app.swipeTarget('tx', 1), 'plans');
+  assert.equal(env.app.swipeTarget('plans', 1), 'settings');
+  assert.equal(env.app.swipeTarget('settings', 1), null);
+  assert.equal(env.app.swipeTarget('summary', -1), null);
+  assert.equal(env.app.swipeTarget('add', 1), null);
+  assert.equal(env.app.swipeTarget('limits', -1), null);
+
+  assert.equal(env.app.pageSwipeAllowed({ closest: () => null }), true);
+  assert.equal(env.app.pageSwipeAllowed({ closest: () => ({}) }), false);
+
+  env.context.window.routeReloaded = null;
+  assert.equal(env.app.navigateBySwipe(1), true);
+  assert.equal(env.context.window.routeReloaded, 'tx');
+  env.context.window.routeReloaded = null;
+  assert.equal(env.app.navigateBySwipe(-1), false);
+  assert.equal(env.context.window.routeReloaded, null);
+});
+
+test('page swipe peeks at the neighbouring page rendered from cached data', () => {
+  const env = setup();
+  env.st.member = { id: 'me', household_id: 'home' };
+  env.app.cached('summaryCache:2026-09', {
+    expense: 20,
+    categories: [{ id: 'food', name: 'cached-name', fact: 20, kind: 'expense' }],
+  });
+  assert.match(env.app.pagePreviewHtml('summary'), /cached-name/);
+  assert.match(env.app.pagePreviewHtml('tx'), /old note/);
+  assert.match(env.app.pagePreviewHtml('settings'), /profile-page/);
+  assert.equal(env.app.pagePreviewHtml('add'), '');
+
+  // Соседняя страница есть — тянем на четверть ширины; на краю список не листается.
+  assert.equal(env.app.pageSwipeFlip({ dx: -90, width: 320, dir: -1 }), true);
+  assert.equal(env.app.pageSwipeFlip({ dx: -40, width: 320, dir: -1 }), false);
+  assert.equal(env.app.pageSwipeFlip({ dx: -40, width: 320, dir: -1, fast: true }), true);
+  assert.equal(env.app.pageSwipeFlip({ dx: 30, width: 320, dir: -1 }), false);
+  assert.equal(env.app.pageSwipeFlip({ dx: -30, width: 320, dir: -1, edge: true, fast: true }), false);
+});
+
+test('a new swipe finishes the previous transition instead of fighting it', () => {
+  const env = setup();
+  env.st.member = { id: 'me', household_id: 'home' };
+  env.app.settlePageSwipe({ dx: -200, width: 320, dir: -1, from: 'summary', target: 'tx', peek: null }, true);
+  assert.ok(env.app.getPageSettle());
+  env.app.flushPageSettle();
+  assert.equal(env.context.window.routeReloaded, 'tx');
+  assert.equal(env.app.getPageSettle(), null);
+
+  // Таймер завершённого перехода уже снят и не перелистнёт страницу ещё раз.
+  env.context.window.routeReloaded = null;
+  env.flushTimers();
+  assert.equal(env.context.window.routeReloaded, null);
+});
+
+test('changing tabs drops a half-finished swipe without navigating', () => {
+  const env = setup();
+  env.st.member = { id: 'me', household_id: 'home' };
+  env.app.settlePageSwipe({ dx: -200, width: 320, dir: -1, from: 'summary', target: 'tx', peek: null }, true);
+  env.app.dropPageSettle();
+  assert.equal(env.app.getPageSettle(), null);
+  env.flushTimers();
+  assert.equal(env.context.window.routeReloaded, undefined);
+
+});
+
+test('profile opens the shared home editor and returns after saving or cancelling', () => {
+ const env=setup(undefined,{stubReload:false}); env.st.member={id:'me'};
+ env.app.openSettings('interface'); env.app.startHomeEdit();
+ assert.equal(env.st.homeEdit,true); assert.equal(env.app.getRoute().name,'summary');
+ env.app.moveHomeBlock('categories','up'); env.app.saveHomeEdit();
+ assert.equal(env.app.getRoute().name,'settings'); assert.equal(env.app.getRoute().section,'interface');
+ assert.equal(env.context.State.homeOrder()[0],'categories');
+ env.app.startHomeEdit(); env.app.cancelHomeEdit();
+ assert.equal(env.app.getRoute().section,'interface'); assert.equal(env.st.homeEdit,false);
 });

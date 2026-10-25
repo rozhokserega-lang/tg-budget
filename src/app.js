@@ -8,6 +8,7 @@
   var $ = function (sel) { return document.querySelector(sel); };
   var el = {
     header: $('#screen-header'),
+    viewport: $('#screen-viewport'),
     screen: $('#screen'),
     tabs: $('#tabs'),
     loader: $('#loader'),
@@ -33,6 +34,7 @@
   var editGeneration = 0;
   st.homeCategorySort = 'default';
   st.homeShowEmpty = false;
+  st.homeScreenStatus = null;
   try { if (root.localStorage.getItem('budget.homeCategorySort') === 'amount') st.homeCategorySort = 'amount'; } catch (e) {}
   // Раскрытая категория на сводке: { id, rows } или null.
   var expandedCat = null;
@@ -43,11 +45,22 @@
     if (savedCategoryView === 'grid' || savedCategoryView === 'list') categoryView = savedCategoryView;
   } catch (e) {}
   var quickActionsPage = 0;
-  var QUICK_PAGES = 2;
+  var QUICK_PAGES = 3;
   // Палец на странице быстрых действий: { x, y, dx, axis } или null.
   var qaSwipe = null;
+  // Горизонтальный свайп между основными страницами.
+  var pageSwipe = null;
+  var pageSwipeClickUntil = 0;
+  // Доезжающая страница: пока идёт анимация, новый жест её не ждёт.
+  var pageSettle = null;
+  // Первое появление нижней панели: кнопка «Добавить» падает в вырез.
+  var tabsIntroDone = false;
   // Категория, из которой открыли форму: после сохранения вернёмся к ней.
   var pendingFromCategory = null;
+  var homeScreenCheckSeq = 0;
+  var homeScreenAttemptSeq = 0;
+  var homeScreenAttemptTimer = null;
+  var homeScreenFallbackOpen = false;
 
   var ICON = function (d) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + d + '</svg>'; };
   var TABS = [
@@ -58,8 +71,22 @@
     { id: 'settings', icon: ICON('<circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/>'), label: 'Профиль' },
   ];
   var plansTab = 'goals';
+  // Порядок основных страниц для горизонтального свайпа. «Добавить» —
+  // действие, а не страница, поэтому в навигации не участвует.
+  var MAIN_TABS = ['summary', 'tx', 'plans', 'settings'];
 
   // --- UI-помощники ---
+
+  function themeLabel(mode) {
+    return mode === 'light' ? 'Светлая' : mode === 'dark' ? 'Тёмная' : 'Система';
+  }
+
+  function setThemePreference(mode) {
+    var next = State.setThemeMode(mode);
+    if (root.Tg && typeof root.Tg.setThemeMode === 'function') root.Tg.setThemeMode(next);
+    root.Tg.haptic('light');
+    toast(T('Тема: {name}', { name: T(themeLabel(next)) }));
+  }
 
   var toastTimer = null;
   function toast(text) {
@@ -78,13 +105,24 @@
       dialogResolve = resolve;
       el.dialogText.textContent = text;
       el.dialogOk.textContent = okLabel || T('Удалить');
-      if (el.dialogCancel) el.dialogCancel.textContent = T('Отмена');
+      if (el.dialogCancel) {
+        el.dialogCancel.textContent = T('Отмена');
+        el.dialogCancel.hidden = false;
+      }
       el.dialog.hidden = false;
     });
   }
 
+  function infoDialog(text) {
+    el.dialogText.textContent = text;
+    el.dialogOk.textContent = T('Понятно');
+    if (el.dialogCancel) el.dialogCancel.hidden = true;
+    el.dialog.hidden = false;
+  }
+
   function closeDialog(result) {
     el.dialog.hidden = true;
+    homeScreenFallbackOpen = false;
     if (dialogResolve) dialogResolve(result);
     dialogResolve = null;
   }
@@ -234,6 +272,7 @@
   // Системная «Назад» ведёт из формы добавления на сводку, из остальных мест — недоступна.
   function syncBackButton() {
     if (editingTx) return root.Tg.backButton(function () {});
+    if (st.homeEdit) return root.Tg.backButton(cancelHomeEdit);
     if (route.name === 'add') return root.Tg.backButton(goHome);
     // Лимиты — подэкран настроек: «Назад» возвращает к ним.
     if (route.name === 'limits') return root.Tg.backButton(function () { openSettings('budget'); });
@@ -241,8 +280,7 @@
     root.Tg.backButton(null);
   }
 
-  var primaryVisible = null;
-  function applyRouteUi() {
+function applyRouteUi() {
     var inApp = !!st.member;
     if (pageRefresh && refreshPageKey !== screenKey()) { el.screen.classList.remove('screen--refreshing'); el.screen.removeAttribute('aria-busy'); }
     el.header.hidden = true;
@@ -250,6 +288,8 @@
     document.body.classList.toggle('app--has-tabs', inApp);
     if (!inApp) {
       el.tabs.innerHTML = '';
+      el.tabs.classList.remove('tabs--intro');
+      tabsIntroDone = false;
       return;
     }
     // «Добавить» — не место, а действие: подсвечиваем вкладку, с которой пришли.
@@ -257,27 +297,35 @@
       : route.name === 'limits' ? 'settings'
       : route.name;
     // Меню создаём один раз: перерисовка на каждом переходе вызывала мигание иконок.
-    if (el.tabs.children.length !== TABS.length) {
+    if (!el.tabs.querySelector('.tabs__notch-fill')) {
       el.tabs.innerHTML = TABS.map(function (t) {
         return '<button type="button" class="tab' + (t.primary ? ' tab--primary' : '') + '" data-tab="' + t.id + '" aria-label="' + Fmt.escapeHtml(T(t.label)) + '">' +
           '<span class="tab__icon">' + t.icon + '</span><span>' + T(t.label) + '</span></button>';
-      }).join('');
-    }
-    var showPrimary = route.name === 'summary' || route.name === 'add';
-    if (showPrimary !== primaryVisible) {
-      primaryVisible = showPrimary;
-      el.tabs.classList.toggle('tabs--no-primary', !showPrimary);
-      el.tabs.classList.toggle('tabs--drop-enter', showPrimary);
+      }).join('') + '<span class="tabs__notch-fill" aria-hidden="true"></span>';
     }
     var activeIdx = 0;
     Array.prototype.forEach.call(el.tabs.children, function (b, i) {
-      var primary = b.getAttribute('data-tab') === 'add';
-      if (primary) { b.setAttribute('aria-hidden', String(!showPrimary)); b.tabIndex = showPrimary ? 0 : -1; }
       var on = b.getAttribute('data-tab') === active;
       b.classList.toggle('tab--active', on);
       if (on) activeIdx = i;
     });
     el.tabs.style.setProperty('--tab-i', activeIdx);
+
+    // Зелёная кнопка видна на всех вкладках: «+» открывает быстрые действия
+    // из любого места, вырез дока не заполняется.
+    var primaryTab = el.tabs.querySelector('[data-tab="add"]');
+    if (primaryTab) {
+      primaryTab.setAttribute('aria-hidden', 'false');
+      primaryTab.tabIndex = 0;
+    }
+    // Интро с падением кнопки — один раз, при первом входе.
+    if (!tabsIntroDone) {
+      tabsIntroDone = true;
+      el.tabs.classList.remove('tabs--intro');
+      void el.tabs.offsetWidth;
+      el.tabs.classList.add('tabs--intro');
+      setTimeout(function () { el.tabs.classList.remove('tabs--intro'); }, 950);
+    }
     syncBackButton();
   }
 
@@ -285,6 +333,11 @@
   var enterTimer = null;
   var fadeTimer = null;
   var renderToken = 0;
+  // Переход свайпом уже отыгран руками — новую страницу показываем без
+  // повторного затухания и каскада появления.
+  var instantRender = false;
+  // Асинхронные дорисовки сразу после свайпа тоже не перезапускают анимации.
+  var instantUntil = 0;
   function screenKey() {
     return route.name + (route.name === 'settings' ? ':' + (route.section || 'home') : route.name === 'plans' ? ':' + plansTab : '');
   }
@@ -293,7 +346,7 @@
     // Мгновенная подмена DOM и анимация только нового и давала «рывок».
     var token = ++renderToken;
     clearTimeout(fadeTimer);
-    var switching = screenKey() !== lastScreen && lastScreen !== null && el.screen.firstChild;
+    var switching = !instantRender && screenKey() !== lastScreen && lastScreen !== null && el.screen.firstChild;
     if (switching) {
       el.screen.classList.add('screen--fading');
       // Панель вкладок и «назад» переключаем сразу — отклик не ждёт анимации.
@@ -310,16 +363,22 @@
   function renderContent(html) {
     el.screen.innerHTML = html;
     el.screen.scrollTop = 0;
+    el.screen.classList.remove('screen--fading');
+    var instant = instantRender || Date.now() < instantUntil;
+    el.screen.classList.toggle('screen--instant', instant);
     // Каскад появления — только при смене экрана, не при каждом обновлении данных.
     if (screenKey() !== lastScreen) {
       lastScreen = screenKey();
       el.screen.classList.remove('screen--in');
-      void el.screen.offsetWidth;
-      el.screen.classList.add('screen--in');
-      clearTimeout(enterTimer);
-      enterTimer = setTimeout(function () { el.screen.classList.remove('screen--in'); }, 900);
+      if (!instant) {
+        void el.screen.offsetWidth;
+        el.screen.classList.add('screen--in');
+        clearTimeout(enterTimer);
+        enterTimer = setTimeout(function () { el.screen.classList.remove('screen--in'); }, 900);
+      }
     }
     applyRouteUi();
+    pendingScrollTxFilter();
   }
 
   // Предупреждение сверху экрана (подписка и т. п.).
@@ -394,13 +453,16 @@
       clearCache();
       st.categories = null;
       st.plans = null;
-      st.txFilter = { category_id: null, member_id: null, q: '' };
+      st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
+      st.txChart = 'expense';
       pendingAdds = {};
       deletingTx = {};
       expandedCat = null;
       editingTx = null;
       editSaving = false;
       editGeneration++;
+      st.homeEdit = false;
+      st.homeDraft = null;
       el.screen.inert = false;
       el.tabs.inert = false;
       closeSheet();
@@ -579,23 +641,57 @@
 
   // categoryId — показать только записи этой категории (переход со сводки).
   // Любой явный переход сбрасывает поиск и фильтры участника.
-  function openTx(categoryId, force) {
+  function openTx(categoryId, force, scrollToFilter) {
     route = { name: 'tx' };
-    if (categoryId !== undefined) st.txFilter = { category_id: categoryId || null, member_id: null, q: '' };
-    if (!st.txFilter) st.txFilter = { category_id: null, member_id: null, q: '' };
+    if (categoryId !== undefined) st.txFilter = { kind: null, category_id: categoryId || null, member_id: null, q: '' };
+    if (!st.txFilter) st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
+    if (st.txChart !== 'income' && st.txChart !== 'expense' && st.txChart !== 'balance') st.txChart = 'expense';
+    if (categoryId) {
+      var category = (st.categories || []).filter(function (c) { return c.id === categoryId; })[0];
+      if (!category && st.lastSummary) {
+        category = (st.lastSummary.categories || []).filter(function (c) { return c.id === categoryId; })[0];
+      }
+      if (category && category.kind === 'income') st.txChart = 'income';
+      else if (category) st.txChart = 'expense';
+    }
     var seq = ++reqSeq;
     var month = st.month;
     var previous = cached('txCache:' + month);
-    if (previous) render(Views.renderTxList(previous, st.txFilter)); else render(Views.skeletonList());
+    if (scrollToFilter) txFilterScrollPending = true;
+    if (previous) render(Views.renderTxList(previous, st.txFilter, st.txChart)); else render(Views.skeletonList());
+    pendingScrollTxFilter();
     loadTx(month, force).then(function (all) {
       if (seq !== reqSeq || route.name !== 'tx' || month !== st.month) return;
-      render(Views.renderTxList(all, st.txFilter));
+      render(Views.renderTxList(all, st.txFilter, st.txChart));
+      pendingScrollTxFilter();
       if (State.isExpired()) banner(T('Пробный период закончился — новые записи недоступны.'));
     }).catch(function (err) {
+      txFilterScrollPending = false;
       if (seq !== reqSeq || err.code === 'stale_response') return;
       if (cached('txCache:' + month)) toast(T('Не удалось обновить — показываем сохранённое'));
       else fail(err);
     });
+  }
+
+  // Прокрутка к фильтру категории после перехода «Посмотреть все» с главной.
+  // Экран финансов может отрисоваться отложенно (анимация смены экрана),
+  // поэтому флаг сбрасывается только когда фильтр уже оказался в DOM.
+  var txFilterScrollPending = false;
+  function pendingScrollTxFilter() {
+    if (!txFilterScrollPending) return;
+    var node = el.screen.querySelector('.tx-filter');
+    if (!node) return;
+    txFilterScrollPending = false;
+    if (typeof node.scrollIntoView === 'function') {
+      node.scrollIntoView({ behavior: 'auto', block: 'start' });
+    }
+  }
+
+  // Переход с главной по карточке доходов или расходов.
+  function openTxKind(kind) {
+    st.txChart = kind === 'income' ? 'income' : 'expense';
+    st.txFilter = { kind: kind === 'income' ? 'income' : 'expense', category_id: null, member_id: null, q: '' };
+    openTx();
   }
 
   // params: { category_id, kind } — подставляем категорию, если форма открыта из раздела.
@@ -608,25 +704,135 @@
     route = { name: 'add' };
     // Открытие из раздела: категория уже выбрана, поля формы начинаем с чистого листа.
     var preset = params && params.category_id;
-    var kind = params && (params.kind === 'income' || params.kind === 'expense') ? params.kind : (saved.kind || 'expense');
+    // «Повторить последнюю»: форма предзаполняется копией прошлой записи.
+    var clone = params && params.clone;
+    var kind = params && (params.kind === 'income' || params.kind === 'expense') ? params.kind
+      : clone ? (clone.categories && clone.categories.kind === 'income' ? 'income' : 'expense')
+      : (saved.kind || 'expense');
     form = {
-      category_id: preset || (kind === saved.kind ? saved.category_id : null),
+      category_id: preset || (clone ? clone.category_id : (kind === saved.kind ? saved.category_id : null)),
       kind: kind,
-      amount: preset ? '' : saved.amount,
-      note: preset ? '' : saved.note,
-      date: preset ? Fmt.todayIso() : saved.date,
-      is_shared: preset ? true : saved.is_shared,
+      amount: clone ? String(clone.amount) : (preset ? '' : saved.amount),
+      note: clone ? (clone.note || '') : (preset ? '' : saved.note),
+      date: preset || clone ? Fmt.todayIso() : saved.date,
+      is_shared: State.isSolo() ? false : (clone ? !!clone.is_shared : (preset ? true : saved.is_shared)),
+      receipt: null,
     };
     var seq = ++reqSeq;
     render(Views.skeletonList());
     loadCategories().then(function () {
       if (seq !== reqSeq || route.name !== 'add') return;
       pendingFromCategory = preset || null;
+      // Категорию могли удалить или архивировать после прошлой записи —
+      // тогда оставляем выбор пустым, а не сохраняем невалидный id.
+      var exists = (st.categories || []).some(function (c) { return c.id === form.category_id && c.kind === kind && !c.archived; });
+      if (form.category_id && !exists) form.category_id = null;
       render(Views.renderForm(form));
       if (State.isExpired()) banner(T('Пробный период закончился — добавлять записи нельзя.'));
     }).catch(function (err) {
       if (seq !== reqSeq || route.name !== 'add') return;
       fail(err);
+    });
+  }
+
+  // «Повторить последнюю»: берём самую свежую запись из кэша трат,
+  // при необходимости догружаем список месяца.
+  // --- Экспорт данных в CSV ---
+
+  var exportCsv = '';
+
+  function csvField(v) {
+    var s = String(v == null ? '' : v).replace(/"/g, '""');
+    return /[";\n\r]/.test(s) ? '"' + s + '"' : s;
+  }
+
+  function buildCsv(months) {
+    // Точка с запятой и BOM — чтобы файл сразу открывался в Excel с русскими региональными настройками.
+    var header = '\uFEFFДата;Тип;Категория;Сумма;Общий;Автор;Заметка';
+    var rows = [];
+    months.forEach(function (list) {
+      (Array.isArray(list) ? list : []).forEach(function (t) {
+        rows.push([
+          t.occurred_on,
+          (t.categories && t.categories.kind) === 'income' ? 'income' : 'expense',
+          (t.categories && t.categories.name) || '',
+          t.amount,
+          t.is_shared ? 1 : 0,
+          (t.members && t.members.name) || '',
+          t.note || '',
+        ].map(csvField).join(';'));
+      });
+    });
+    rows.sort(function (a, b) { return a < b ? -1 : a > b ? 1 : 0; });
+    return { csv: [header].concat(rows).join('\r\n'), count: rows.length };
+  }
+
+  function openExportCsv() {
+    if (st.exporting) return;
+    st.exporting = true;
+    if (route.name === 'settings') render(Views.renderSettings(route.section));
+    var current = Fmt.currentMonth();
+    var months = [];
+    var year = Number(current.slice(0, 4)), month = Number(current.slice(5, 7));
+    for (var i = 11; i >= 0; i--) {
+      var m = month - i, y = year;
+      while (m <= 0) { m += 12; y--; }
+      months.push(y + '-' + String(m).padStart(2, '0'));
+    }
+    Promise.all(months.map(function (m) { return loadTx(m); }))
+      .then(function (lists) {
+        st.exporting = false;
+        var built = buildCsv(lists);
+        exportCsv = built.csv;
+        if (!built.count) return toast(T('Нет записей за этот период'));
+        if (route.name === 'settings' && route.section === 'about') render(Views.renderSettings(route.section));
+        openSheet(Views.renderExportSheet(built.csv, built.count));
+      })
+      .catch(function (err) {
+        st.exporting = false;
+        if (route.name === 'settings') render(Views.renderSettings(route.section));
+        fail(err);
+      });
+  }
+
+  function fallbackCopyCsv() {
+    root.Tg.copy(exportCsv.length > 10000 ? exportCsv.slice(0, 10000) : exportCsv)
+      .then(function (ok) { toast(ok ? T('Скопировано') : T('Не удалось скопировать')); });
+  }
+
+  function downloadCsv() {
+    try {
+      var blob = new Blob([exportCsv], { type: 'text/csv;charset=utf-8' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'budget-' + Fmt.currentMonth() + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+    } catch (e) {
+      toast(T('Не удалось скачать — используйте копирование'));
+    }
+  }
+
+  function repeatLastTx() {
+    var list = cached('txCache:' + st.month);
+    var pick = function (rows) {
+      return (Array.isArray(rows) ? rows : []).filter(function (t) { return !deletingTx[t.id]; })[0];
+    };
+    var last = pick(list);
+    if (last) {
+      closeSheet();
+      openAdd({ clone: last });
+      return;
+    }
+    loadTx(st.month).then(function (rows) {
+      var tx = pick(rows);
+      if (!tx) return toast(T('Нет записей для повтора'));
+      closeSheet();
+      openAdd({ clone: tx });
+    }).catch(function () {
+      toast(T('Нет записей для повтора'));
     });
   }
 
@@ -640,14 +846,108 @@
       date: f.elements.occurred_on ? f.elements.occurred_on.value : Fmt.todayIso(),
       kind: form.kind,
       category_id: form.category_id,
-      is_shared: shared ? shared.checked : true,
+      is_shared: State.isSolo() ? false : (shared ? shared.checked : true),
+      receipt: form.receipt || null,
     };
   }
 
+  function isAndroidHomeScreen() {
+    var platform = root.Tg && root.Tg.platform ? root.Tg.platform() : '';
+    return platform === 'android' || platform === 'android_x';
+  }
+
+  function clearHomeScreenAttempt() {
+    homeScreenAttemptSeq++;
+    if (homeScreenAttemptTimer) {
+      clearTimeout(homeScreenAttemptTimer);
+      homeScreenAttemptTimer = null;
+    }
+  }
+
+  function showHomeScreenFallback() {
+    homeScreenFallbackOpen = true;
+    infoDialog(T('Системное окно не появилось. Откройте чат с ботом, нажмите ⋮ и выберите «Добавить на главный экран». Если ярлык уже есть, удалите старый и добавьте заново.'));
+  }
+
+  // Android не присылает homeScreenFailed, если лаунчер не умеет закреплять
+  // ярлыки. Поэтому после вызова проверяем статус и подсказываем ручной путь.
+  function watchHomeScreenAttempt() {
+    if (!isAndroidHomeScreen()) return;
+    var seq = ++homeScreenAttemptSeq;
+    clearTimeout(homeScreenAttemptTimer);
+    homeScreenAttemptTimer = setTimeout(function () {
+      if (seq !== homeScreenAttemptSeq || st.homeScreenStatus === 'added') return;
+      if (document.visibilityState && document.visibilityState !== 'visible') return;
+      var check = root.Tg && root.Tg.checkHomeScreenStatus;
+      if (typeof check !== 'function') {
+        showHomeScreenFallback();
+        return;
+      }
+      check(function (status) {
+        if (seq !== homeScreenAttemptSeq) return;
+        if (status === 'added') {
+          st.homeScreenStatus = 'added';
+          if (route.name === 'settings' && !route.section) render(Views.renderSettings());
+          return;
+        }
+        showHomeScreenFallback();
+      });
+    }, 4000);
+  }
+
+  // Статус ярлыка на главном экране. На десктопе и в старых клиентах
+  // checkHomeScreenStatus вернёт unsupported — тогда строку в профиле не рисуем.
+  function refreshHomeScreenStatus() {
+    var check = root.Tg && root.Tg.checkHomeScreenStatus;
+    if (typeof check !== 'function') {
+      st.homeScreenStatus = 'unsupported';
+      return;
+    }
+    var seq = ++homeScreenCheckSeq;
+    check(function (status) {
+      if (seq !== homeScreenCheckSeq) return;
+      var next = status === 'added' || status === 'missed' || status === 'unknown' ? status : 'unsupported';
+      var changed = st.homeScreenStatus !== next;
+      st.homeScreenStatus = next;
+      if (next === 'added') {
+        clearHomeScreenAttempt();
+        if (homeScreenFallbackOpen) closeDialog(true);
+      }
+      if (changed && route.name === 'settings' && !route.section) render(Views.renderSettings());
+    });
+  }
+
+  function addHomeScreen() {
+    if (st.homeScreenStatus === 'added') {
+      root.Tg.haptic('light');
+      toast(T('Ярлык уже добавлен'));
+      return;
+    }
+    if (st.homeScreenStatus === 'unsupported' ||
+      (typeof root.Tg.canAddToHomeScreen === 'function' && !root.Tg.canAddToHomeScreen())) {
+      toast(T('Недоступно на этом устройстве'));
+      return;
+    }
+    root.Tg.haptic('light');
+    if (typeof root.Tg.addToHomeScreen !== 'function' || !root.Tg.addToHomeScreen()) {
+      toast(T('Не удалось добавить ярлык'));
+      return;
+    }
+    if (isAndroidHomeScreen()) {
+      toast(T('Подтвердите добавление в системном окне'));
+      watchHomeScreenAttempt();
+    }
+  }
+
   function openSettings(section) {
+    // Смена экрана отменяет ответы от предыдущей страницы (например, планов),
+    // иначе они дорисуются поверх настроек.
+    ++reqSeq;
     var allowed = ['family', 'budget', 'interface', 'appearance', 'notifications', 'subscription', 'about'];
+
     route = { name: 'settings', section: allowed.indexOf(section) !== -1 ? section : null };
     render(Views.renderSettings(route.section));
+    if (!route.section) refreshHomeScreenStatus();
     if (route.section === 'subscription') loadTariffs();
     if (route.section === 'budget') {
       loadCategories().then(function () {
@@ -712,11 +1012,11 @@
     if (st.plans) render(Views.renderPlans(st.plans, plansTab)); else render(Views.skeletonList());
     var seq = ++reqSeq;
     loadPlans(true).then(function (plans) {
-      if (seq !== reqSeq) return;
+      if (seq !== reqSeq || route.name !== 'plans') return;
       render(Views.renderPlans(plans, plansTab));
       if (State.isExpired()) banner(T('Пробный период закончился — изменения недоступны.'));
     }).catch(function (err) {
-      if (seq !== reqSeq || err.code === 'stale_response') return;
+      if (seq !== reqSeq || route.name !== 'plans' || err.code === 'stale_response') return;
       if (st.plans) toast(T('Не удалось обновить — показываем сохранённое')); else fail(err);
     });
   }
@@ -964,9 +1264,60 @@
     st.lastSummary = next;
   }
 
+  // Копия сводки для отката оптимистичного удаления: меняем только те массивы,
+  // которые пересчитываются на клиенте.
+  function cloneSummary(s) {
+    if (!s) return s;
+    return Object.assign({}, s, {
+      categories: (s.categories || []).map(function (c) { return Object.assign({}, c); }),
+      members: (s.members || []).map(function (m) { return Object.assign({}, m); }),
+    });
+  }
+
+  // Пересчёт сводки без запроса к серверу: убираем сумму записи из итогов,
+  // категории и личных/общих сумм участника.
+  function summaryAfterRemoval(s, tx) {
+    var isIncome = (tx.categories && tx.categories.kind) === 'income';
+    var amount = Number(tx.amount) || 0;
+    var next = Object.assign({}, s);
+    next.income = Math.max(0, Number(s.income || 0) - (isIncome ? amount : 0));
+    next.expense = Math.max(0, Number(s.expense || 0) - (isIncome ? 0 : amount));
+    next.balance = next.income - next.expense;
+    next.categories = (s.categories || []).map(function (c) {
+      return c.id === tx.category_id
+        ? Object.assign({}, c, { fact: Math.max(0, Number(c.fact || 0) - amount) })
+        : c;
+    });
+    next.members = (s.members || []).map(function (m) {
+      if (m.id !== tx.member_id) return m;
+      var paid = Number(m.paid_shared || 0) - (!isIncome && tx.is_shared ? amount : 0);
+      var personal = Number(m.personal || 0) - (!isIncome && !tx.is_shared ? amount : 0);
+      return Object.assign({}, m, {
+        income: Math.max(0, Number(m.income || 0) - (isIncome ? amount : 0)),
+        paid_shared: Math.max(0, paid),
+        personal: Math.max(0, personal),
+        balance: paid - Number(m.share || 0),
+      });
+    });
+    return next;
+  }
+
+  // Переключение графика и типа операций по карточкам на экране финансов.
+  // Режим графика хранится отдельно: «Остаток» не фильтрует историю.
+  function setTxKind(kind) {
+    if (!st.txFilter) st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
+    var mode = kind === 'income' || kind === 'expense' ? kind : 'balance';
+    st.txChart = mode;
+    st.txFilter.kind = mode === 'balance' ? null : mode;
+    if (route.name !== 'tx') return;
+    var scroll = el.screen.scrollTop;
+    render(Views.renderTxList(cached('txCache:' + st.month) || [], st.txFilter, st.txChart));
+    el.screen.scrollTop = scroll;
+  }
+
   // Сброс фильтров: кнопка «Сбросить» в списке.
   function clearTxFilter() {
-    st.txFilter = { category_id: null, member_id: null, q: '' };
+    st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
     openTx();
   }
 
@@ -1123,6 +1474,7 @@
 
   // focusId: сразу открыть редактор нужной категории (переход из списка трат).
   function openLimits(focusId) {
+    ++reqSeq;
     route = { name: 'limits' };
     render(Views.skeletonList());
     loadCategories().then(function () {
@@ -1130,6 +1482,7 @@
       render(Views.renderLimits());
       if (focusId) openCategoryForm(focusId);
     }).catch(function (err) {
+      if (route.name !== 'limits' || err.code === 'stale_response') return;
       fail(err);
     });
   }
@@ -1214,6 +1567,77 @@
     });
   }
 
+  // --- Деление общих трат ---
+
+  // Переключатель в профиле меняет режим с текущего месяца и на будущие.
+  // Прошлые месяцы сохраняют прежний режим: более позднее изменение на них не влияет.
+  function setSplitMode(mode) {
+    if (!st.member || !st.member.households) return;
+    if (mode !== 'equal' && mode !== 'proportional' && mode !== 'none') return;
+    var month = Fmt.currentMonth();
+    var current = st.member.households.month_split_mode || st.member.households.split_mode || 'proportional';
+    if (current === mode) return;
+    st.member.households = Object.assign({}, st.member.households, { month_split_mode: mode });
+    if (route.name === 'settings') render(Views.renderSettings(route.section));
+    mutate('set_split_mode', { month: month, mode: mode }).then(function (res) {
+      if (res && res.split_mode) {
+        st.member.households = Object.assign({}, st.member.households, { month_split_mode: res.split_mode });
+      }
+      root.Tg.haptic('success');
+      toast(T('Способ деления сохранён'));
+      if (route.name === 'settings') render(Views.renderSettings(route.section));
+    }).catch(function (err) {
+      st.member.households = Object.assign({}, st.member.households, { month_split_mode: current });
+      root.Tg.haptic('error');
+      toast(err.message || T('Не удалось сохранить'));
+      if (route.name === 'settings') render(Views.renderSettings(route.section));
+    });
+  }
+
+  // Имя участника и название семьи сохраняются отдельным действием API.
+  function submitProfile(formEl) {
+    if (!st.member) return;
+    var v = formEl.elements;
+    var memberName = String(v.member_name.value || '').trim();
+    var householdName = String(v.household_name.value || '').trim();
+    if (!memberName) return badInput(T('Введите имя'), v.member_name);
+    if (!householdName) return badInput(T('Введите название'), v.household_name);
+    var previous = {
+      name: st.member.name,
+      household: st.member.households && st.member.households.name,
+    };
+    if (memberName === previous.name && householdName === previous.household) {
+      root.Tg.haptic('light');
+      toast(T('Сохранено'));
+      return;
+    }
+    var btn = formEl.querySelector('[type="submit"]');
+    if (btn) btn.disabled = true;
+    // Оптимистично: имя сразу доступно главной и профилю, без ожидания сети.
+    st.member = Object.assign({}, st.member, {
+      name: memberName,
+      households: Object.assign({}, st.member.households, { name: householdName }),
+    });
+    mutate('save_profile', { member_name: memberName, household_name: householdName }).then(function (res) {
+      if (res && res.member_name) st.member = Object.assign({}, st.member, { name: res.member_name });
+      if (res && res.household_name && st.member.households) {
+        st.member.households = Object.assign({}, st.member.households, { name: res.household_name });
+      }
+      root.Tg.haptic('success');
+      toast(T('Сохранено'));
+      if (route.name === 'settings') render(Views.renderSettings(route.section));
+    }).catch(function (err) {
+      st.member = Object.assign({}, st.member, {
+        name: previous.name,
+        households: Object.assign({}, st.member.households, { name: previous.household }),
+      });
+      if (btn) btn.disabled = false;
+      root.Tg.haptic('error');
+      toast(err.message || T('Не удалось сохранить'));
+      if (route.name === 'settings') render(Views.renderSettings(route.section));
+    });
+  }
+
   // --- Промокод ---
 
   function redeemPromo(code) {
@@ -1235,16 +1659,192 @@
   }
 
   function openTab(tab) {
+    if (pageSwipe) abortPageSwipe();
     if (editingTx) return;
     if (!st.member) return;
+    // Переход по вкладке отменяет недоехавший свайп: пользователь выбрал другое.
+    if (!instantRender) dropPageSettle();
+    if (st.homeEdit) {
+      st.homeEdit = false;
+      st.homeDraft = null;
+    }
     if (tab === 'summary') openSummary();
     else if (tab === 'tx') openTx(null);
     else if (tab === 'plans') openPlans();
     else if (tab === 'add') {
+      root.Tg.haptic('light');
+      var primaryTab = el.tabs.querySelector('.tab--primary');
+      if (primaryTab) {
+        primaryTab.classList.remove('tab--jelly');
+        void primaryTab.offsetWidth;
+        primaryTab.classList.add('tab--jelly');
+        setTimeout(function () { primaryTab.classList.remove('tab--jelly'); }, 480);
+      }
       if (el.sheet.classList.contains('sheet--quick-actions') && !el.sheet.classList.contains('sheet--closing')) closeSheet();
       else openQuickActions(0);
     }
     else if (tab === 'settings') openSettings();
+  }
+
+  function swipeTarget(name, direction) {
+    var index = MAIN_TABS.indexOf(name);
+    if (index === -1) return null;
+    var next = index + (direction < 0 ? -1 : 1);
+    return next >= 0 && next < MAIN_TABS.length ? MAIN_TABS[next] : null;
+  }
+
+  function pageSwipeAllowed(target) {
+    if (!st.member || editingTx || st.homeEdit) return false;
+    if (route.name === 'add' || route.name === 'limits') return false;
+    if (route.name === 'settings' && route.section) return false;
+    if (MAIN_TABS.indexOf(route.name) === -1) return false;
+    if (el.sheet && !el.sheet.hidden) return false;
+    if (el.dialog && !el.dialog.hidden) return false;
+    if (target && target.closest &&
+        target.closest('input,textarea,select,button,a,label,[contenteditable],.tx,.cat-tx,.finance-operation,.sheet,.dialog,.quick-actions,details,[draggable="true"],[data-gesture-lock],.segments')) {
+      return false;
+    }
+    return true;
+  }
+
+  function navigateBySwipe(direction) {
+    if (!pageSwipeAllowed(null)) return false;
+    var target = swipeTarget(route.name, direction);
+    if (!target) return false;
+    closeSwipes();
+    root.Tg.haptic('light');
+    openTab(target);
+    return true;
+  }
+
+  // Превью соседней страницы для свайпа: собираем из уже загруженных данных,
+  // чтобы страница подъезжала под палец без запроса и ожидания.
+  function pagePreviewHtml(name) {
+    if (name === 'summary') {
+      var summary = cached('summaryCache:' + st.month) || st.lastSummary;
+      return summary
+        ? Views.renderSummary(summary, st.plans, expandedCat, cached('txCache:' + st.month), categoryView)
+        : Views.skeletonSummary();
+    }
+    if (name === 'tx') {
+      var rows = cached('txCache:' + st.month);
+      var filter = st.txFilter || { kind: null, category_id: null, member_id: null, q: '' };
+      return rows ? Views.renderTxList(rows, filter, st.txChart || 'expense') : Views.skeletonList();
+    }
+    if (name === 'plans') return st.plans ? Views.renderPlans(st.plans, plansTab) : Views.skeletonList();
+    if (name === 'settings') return Views.renderSettings(null);
+    return '';
+  }
+
+  function pageViewport() {
+    return el.viewport || (el.screen && el.screen.parentNode) || null;
+  }
+
+  function pageSwipeWidth() {
+    var viewport = pageViewport();
+    if (viewport && viewport.getBoundingClientRect) {
+      var width = viewport.getBoundingClientRect().width;
+      if (width) return width;
+    }
+    return el.screen.clientWidth || 320;
+  }
+
+  function buildPagePeek(name) {
+    var viewport = pageViewport();
+    if (!viewport || !document.createElement) return null;
+    var html = pagePreviewHtml(name);
+    if (!html) return null;
+    // На всякий случай убираем превью прошлого жеста, если оно не успело уехать.
+    if (viewport.querySelectorAll) {
+      Array.prototype.forEach.call(viewport.querySelectorAll('.screen--peek'), function (node) {
+        if (node.parentNode === viewport) viewport.removeChild(node);
+      });
+    }
+    var pane = document.createElement('div');
+    pane.className = 'screen screen--peek';
+    // Копия не должна спорить с настоящей страницей за id, фокус и жесты.
+    pane.setAttribute('aria-hidden', 'true');
+    pane.setAttribute('inert', '');
+    pane.innerHTML = html;
+    Array.prototype.forEach.call(pane.querySelectorAll('[id]'), function (node) { node.removeAttribute('id'); });
+    viewport.appendChild(pane);
+    return pane;
+  }
+
+  // Доля пути или быстрый рывок решают, доедет ли страница до соседней.
+  function pageSwipeFlip(gesture) {
+    if (!gesture || gesture.edge) return false;
+    // Развернули палец обратно — страница остаётся на месте.
+    if (gesture.dx && gesture.dir && Math.sign(gesture.dx) !== gesture.dir) return false;
+    var width = gesture.width || pageSwipeWidth();
+    var moved = Math.abs(gesture.shift === undefined ? gesture.dx : gesture.shift);
+    return moved > width / 4 || (!!gesture.fast && moved > 24);
+  }
+
+  function clearPageSwipeStyles(gesture) {
+    if (gesture && gesture.peek && gesture.peek.parentNode) gesture.peek.parentNode.removeChild(gesture.peek);
+    // Экран уже ведёт новый жест — старый не должен дёргать его назад.
+    if (pageSwipe && pageSwipe !== gesture) return;
+    el.screen.classList.remove('screen--dragging');
+    el.screen.style.transition = 'none';
+    el.screen.style.transform = '';
+    void el.screen.offsetWidth;
+    el.screen.style.transition = '';
+  }
+
+  // Страница ещё доезжает, а палец уже начал новый жест: доводим переход
+  // сразу, чтобы маршрут и превью не разошлись.
+  function flushPageSettle() {
+    var settle = pageSettle;
+    if (!settle) return;
+    pageSettle = null;
+    clearTimeout(settle.timer);
+    if (settle.flip) finishPageSwipe(settle.gesture);
+    else clearPageSwipeStyles(settle.gesture);
+  }
+
+  // Переход отменили извне (например, нажали другую вкладку) — просто убираем.
+  function dropPageSettle() {
+    var settle = pageSettle;
+    if (!settle) return;
+    pageSettle = null;
+    clearTimeout(settle.timer);
+    clearPageSwipeStyles(settle.gesture);
+  }
+
+  function finishPageSwipe(gesture) {
+    var canGo = gesture.target && route.name === gesture.from && pageSwipeAllowed(null);
+    if (!canGo) { clearPageSwipeStyles(gesture); return; }
+    root.Tg.haptic('light');
+    closeSwipes();
+    // Новую страницу уже показало превью: без повторного затухания и каскада.
+    instantRender = true;
+    instantUntil = Date.now() + 800;
+    try { openTab(gesture.target); } finally { instantRender = false; }
+    clearPageSwipeStyles(gesture);
+  }
+
+  function settlePageSwipe(gesture, flip) {
+    var width = gesture.width || pageSwipeWidth();
+    var duration = 240;
+    var dir = gesture.dir || (gesture.dx < 0 ? -1 : 1);
+    el.screen.style.transition = 'transform ' + duration + 'ms cubic-bezier(.22,.61,.36,1)';
+    if (gesture.peek) gesture.peek.style.transition = el.screen.style.transition;
+    if (!flip) {
+      el.screen.style.transform = 'translate3d(0,0,0)';
+      if (gesture.peek) gesture.peek.style.transform = 'translate3d(' + (-dir * width) + 'px,0,0)';
+    } else {
+      el.screen.style.transform = 'translate3d(' + (dir * width) + 'px,0,0)';
+      if (gesture.peek) gesture.peek.style.transform = 'translate3d(0,0,0)';
+    }
+    // Один незавершённый переход за раз: по таймеру проверяем, что он всё ещё актуален.
+    var timer = setTimeout(function () {
+      if (!pageSettle || pageSettle.timer !== timer) return;
+      pageSettle = null;
+      if (flip) finishPageSwipe(gesture);
+      else clearPageSwipeStyles(gesture);
+    }, duration + (flip ? 10 : 20));
+    pageSettle = { gesture: gesture, timer: timer, flip: flip };
   }
 
   function openQuickActions(page) {
@@ -1423,6 +2023,14 @@
         closeSheet();
         openAdd({ kind: 'income' });
         break;
+      case 'receipt-photo':
+        closeSheet();
+        openAdd({ kind: 'expense' });
+        pickReceiptPhoto({ fromQuick: true });
+        break;
+      case 'repeat-last':
+        repeatLastTx();
+        break;
       case 'recurring-new':
         loadCategories().then(function () {
           if (el.sheet.classList.contains('sheet--quick-actions')) openPlanForm('recurring');
@@ -1464,17 +2072,338 @@
     }
   }
 
-  // Обложка главной карточки: хранится на устройстве, как валюта и язык.
-  function setCover(id) {
-    if (!root.Covers || !Covers.set(id)) return;
-    root.Tg.haptic('light');
+  // Обложка главной карточки: выбор хранится на устройстве, как валюта и язык.
+  // Своё фото лежит в IndexedDB и никогда не отправляется на сервер.
+  var coverDraft = null;
+  var coverSaving = false;
+
+  function refreshCoverSettings() {
+    if (route.name !== 'settings' || route.section !== 'appearance') return;
     var scroll = el.screen.scrollTop;
     render(Views.renderSettings(route.section));
     el.screen.scrollTop = scroll;
+  }
+
+  function setCover(id) {
+    if (!root.Covers || !root.Covers.set(id)) return;
+    root.Tg.haptic('light');
+    refreshCoverSettings();
     toast(T('Обложка обновлена'));
   }
 
+  function coverStorageMessage(err) {
+    if (err && err.code === 'storage_full') return T('На устройстве не хватает места для фона. Освободите память и попробуйте снова.');
+    if (err && (err.code === 'storage_unsupported' || err.code === 'storage_blocked')) return T('Хранилище изображений недоступно. Проверьте настройки приватности.');
+    if (err && err.code === 'image_decode') return T('Не удалось открыть изображение. Выберите JPG или PNG.');
+    return T('Не удалось сохранить фон на устройстве');
+  }
+
+  function openCoverFilePicker() {
+    var input = el.screen.querySelector('[data-cover-file]');
+    if (input) input.click();
+  }
+
+  function readCoverFile(file) {
+    if (!file) return;
+    if (!/^image\//.test(String(file.type || ''))) return toast(T('Выберите изображение'));
+    if (Number(file.size) > 12 * 1024 * 1024) return toast(T('Файл слишком большой — до 12 МБ'));
+    if (!root.FileReader) return toast(T('Не удалось прочитать изображение'));
+    var reader = new root.FileReader();
+    reader.onload = function () { openCoverDraft(String(reader.result || '')); };
+    reader.onerror = function () { toast(T('Не удалось прочитать изображение')); };
+    reader.readAsDataURL(file);
+  }
+
+  function openCoverDraft(src) {
+    if (!src || !root.Image) return;
+    var image = new root.Image();
+    image.onload = function () {
+      coverDraft = { image: image, zoom: 1, x: 50, y: 50 };
+      coverSaving = false;
+      openSheet(Views.renderCoverEditor());
+      drawCoverPreview();
+    };
+    image.onerror = function () {
+      var err = new Error('Image decode failed');
+      err.code = 'image_decode';
+      toast(coverStorageMessage(err));
+    };
+    image.src = src;
+  }
+
+  // Кадр под пропорции карточки: заполняем по большей стороне и даём
+  // пользователю выбрать масштаб и положение. Тот же расчёт используется
+  // для превью и для финального сжатого изображения.
+  function drawCoverCrop(canvas, image, zoom, x, y) {
+    var ctx = canvas.getContext && canvas.getContext('2d');
+    if (!ctx) return false;
+    var tw = canvas.width, th = canvas.height;
+    var iw = Number(image.naturalWidth || image.width) || 0;
+    var ih = Number(image.naturalHeight || image.height) || 0;
+    if (!iw || !ih) return false;
+    var scale = Math.max(tw / iw, th / ih) * Math.max(1, Number(zoom) || 1);
+    var sw = Math.min(iw, tw / scale);
+    var sh = Math.min(ih, th / scale);
+    var sx = Math.max(0, iw - sw) * Math.max(0, Math.min(100, Number(x) || 0)) / 100;
+    var sy = Math.max(0, ih - sh) * Math.max(0, Math.min(100, Number(y) || 0)) / 100;
+    ctx.clearRect(0, 0, tw, th);
+    ctx.drawImage(image, sx, sy, sw, sh, 0, 0, tw, th);
+    return true;
+  }
+
+  function drawCoverPreview() {
+    if (!coverDraft) return;
+    var canvas = el.sheetBody.querySelector('[data-cover-preview]');
+    if (!canvas) return;
+    drawCoverCrop(canvas, coverDraft.image, coverDraft.zoom, coverDraft.x, coverDraft.y);
+  }
+
+  function updateCoverDraft(input) {
+    if (!coverDraft || !input || !input.matches) return;
+    if (input.matches('[data-cover-zoom]')) coverDraft.zoom = Math.max(1, Number(input.value) / 100);
+    else if (input.matches('[data-cover-x]')) coverDraft.x = Number(input.value);
+    else if (input.matches('[data-cover-y]')) coverDraft.y = Number(input.value);
+    drawCoverPreview();
+  }
+
+  function coverBlob(canvas, done) {
+    if (typeof canvas.toBlob === 'function') {
+      canvas.toBlob(done, 'image/jpeg', 0.82);
+      return;
+    }
+    try {
+      var data = canvas.toDataURL('image/jpeg', 0.82);
+      var binary = root.atob(data.split(',')[1] || '');
+      var bytes = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      done(new Blob([bytes], { type: 'image/jpeg' }));
+    } catch (e) {
+      done(null);
+    }
+  }
+
+  function applyCoverDraft() {
+    if (!coverDraft || coverSaving || !root.Covers || !root.Covers.saveCustom) return;
+    var canvas = document.createElement('canvas');
+    canvas.width = 1500;
+    canvas.height = 600;
+    if (!drawCoverCrop(canvas, coverDraft.image, coverDraft.zoom, coverDraft.x, coverDraft.y)) {
+      return toast(T('Не удалось подготовить изображение'));
+    }
+    var button = el.sheetBody.querySelector('[data-action="apply-cover"]');
+    var label = button ? button.textContent : '';
+    coverSaving = true;
+    if (button) {
+      button.disabled = true;
+      button.textContent = T('Сохраняем…');
+    }
+    function unlock() {
+      coverSaving = false;
+      if (button) {
+        button.disabled = false;
+        button.textContent = label;
+      }
+    }
+    coverBlob(canvas, function (blob) {
+      if (!blob) {
+        unlock();
+        return toast(T('Не удалось подготовить изображение'));
+      }
+      root.Covers.saveCustom(blob).then(function () {
+        coverSaving = false;
+        coverDraft = null;
+        closeSheet();
+        root.Tg.haptic('success');
+        if (route.name === 'summary') renderSummaryFromCache();
+        else refreshCoverSettings();
+        toast(T('Фон обновлён'));
+      }).catch(function (err) {
+        unlock();
+        root.Tg.haptic('error');
+        toast(coverStorageMessage(err));
+      });
+    });
+  }
+
+  function resetCustomCover() {
+    if (!root.Covers || !root.Covers.clearCustom) return;
+    root.Covers.clearCustom().then(function () {
+      root.Tg.haptic('success');
+      refreshCoverSettings();
+      toast(T('Свой фон убран'));
+    }).catch(function (err) {
+      root.Tg.haptic('error');
+      toast(coverStorageMessage(err));
+    });
+  }
+
   // --- Действия ---
+
+  // --- Сканер чека: QR кассового чека подставляет сумму, дату и тип операции ---
+  // Сервер принимает ключ чека после миграции receipt_key и деплоя supabase/functions/api/receipt.ts.
+  var SEND_RECEIPT_KEY = true;
+
+  function demoQr() {
+    var day = Fmt.todayIso().replace(/-/g, '');
+    return 't=' + day + 'T1200&s=187.98&fn=7380440700187177&i=83702&fp=1425956587&n=1';
+  }
+
+  function receiptScope() {
+    return memberScope(st.member);
+  }
+
+  function receiptStore() {
+    return root.ReceiptStore || null;
+  }
+
+  function receiptErrorMessage(reason) {
+    if (reason === 'not_receipt') return T('Это не QR-код чека');
+    if (reason === 'bad_date') return T('В чеке некорректная дата');
+    if (reason === 'bad_sum') return T('В чеке некорректная сумма');
+    if (reason === 'bad_fiscal') return T('В чеке нет реквизитов');
+    return T('Не удалось прочитать данные чека');
+  }
+
+  function receiptStillRelevant(scope) {
+    return route.name === 'add' && scope === receiptScope();
+  }
+
+  function receiptIsKnown(scope, key) {
+    return !!(key && receiptStore() && receiptStore().has(scope, key));
+  }
+
+  function acceptReceipt(text, state, scope) {
+    if (!receiptStillRelevant(scope)) {
+      state.got = true;
+      return true;
+    }
+    var result = root.Receipt ? root.Receipt.parse(text) : { ok: false, reason: 'not_receipt' };
+    state.reason = result.reason || null;
+    if (!result.ok) return false;
+    state.got = true;
+
+    if (!result.kind) {
+      root.Tg.haptic('error');
+      toast(T('Этот тип чека не поддерживается'));
+      return true;
+    }
+    if (result.date > Fmt.todayIso()) {
+      root.Tg.haptic('error');
+      toast(T('Дата чека в будущем. Проверьте дату.'));
+      return true;
+    }
+    if (result.sum > 1e9) {
+      root.Tg.haptic('error');
+      toast(T('Сумма чека слишком большая.'));
+      return true;
+    }
+    if (receiptIsKnown(scope, result.key)) {
+      root.Tg.haptic('error');
+      toast(T('Этот чек уже записан'));
+      return true;
+    }
+
+    var values = formValues();
+    form = Object.assign({}, values, {
+      kind: result.kind,
+      amount: String(result.sum),
+      date: result.date,
+      receipt: {
+        key: result.key, date: result.date, sum: result.sum, kind: result.kind,
+        fn: result.fn, i: result.i, fp: result.fp,
+      },
+      category_id: values.kind === result.kind ? values.category_id : '',
+    });
+    render(Views.renderForm(form));
+    root.Tg.haptic('success');
+    toast(T('Чек распознан'));
+    return true;
+  }
+
+  function scanReceipt() {
+    if (route.name !== 'add' || !root.Receipt) return;
+    var scope = receiptScope();
+    var state = { got: false, reason: null };
+    function finish() {
+      if (state.got || !receiptStillRelevant(scope)) return;
+      toast(receiptErrorMessage(state.reason));
+    }
+
+    if (root.Tg && typeof root.Tg.canScanQr === 'function' && root.Tg.canScanQr()) {
+      var opened = typeof root.Tg.scanQr === 'function' && root.Tg.scanQr(
+        T('Наведите камеру на QR-код чека'),
+        function (text) { return acceptReceipt(text, state, scope); },
+        finish
+      );
+      if (opened) return;
+    }
+    if (root.Tg && typeof root.Tg.isInsideTelegram === 'function' && root.Tg.isInsideTelegram()) {
+      toast(T('Сканер QR недоступен. Обновите Telegram или распознайте QR с фото.'));
+      return;
+    }
+
+    // В браузере сканера Telegram нет — подставляем демонстрационный чек.
+    setTimeout(function () {
+      if (!receiptStillRelevant(scope)) return;
+      if (!acceptReceipt(demoQr(), state, scope)) toast(receiptErrorMessage(state.reason));
+    }, 120);
+  }
+
+  function pickReceiptPhoto(opts) {
+    if (route.name !== 'add' || !root.ReceiptPhoto || !root.document) return;
+    var scope = receiptScope();
+    var input = root.document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.setAttribute('aria-hidden', 'true');
+    input.style.position = 'fixed';
+    input.style.left = '-9999px';
+    input.style.opacity = '0';
+
+    function cleanup() {
+      if (input.parentNode) input.parentNode.removeChild(input);
+    }
+
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      cleanup();
+      if (!file || !receiptStillRelevant(scope)) return;
+      toast(T('Ищем QR-код на фото…'));
+      var state = { got: false, reason: null };
+      root.ReceiptPhoto.decode(file).then(function (text) {
+        if (!receiptStillRelevant(scope)) return;
+        if (!text) {
+          toast(T('QR-код на фото не найден. Сфотографируйте чек целиком.'));
+          return;
+        }
+        if (!acceptReceipt(text, state, scope)) toast(receiptErrorMessage(state.reason));
+      }).catch(function (err) {
+        if (!receiptStillRelevant(scope)) return;
+        root.Tg.haptic('error');
+        toast(err && err.message === 'jsqr_load'
+          ? T('Не удалось загрузить сканер QR. Проверьте связь.')
+          : T('Не удалось открыть фото. Попробуйте другое.'));
+      });
+    });
+    input.addEventListener('cancel', function () {
+      cleanup();
+      // Из быстрого меню отмена выбора фото возвращает на главную, а не оставляет
+      // пользователя в пустой форме. В самой форме отмена просто закрывает выбор.
+      if (opts && opts.fromQuick && receiptStillRelevant(scope)) openSummary();
+    });
+    (root.document.body || root.document.documentElement).appendChild(input);
+    input.click();
+  }
+
+  // Если add_tx ушёл из очереди после перезагрузки, привязываем локальный id к серверному.
+  root.addEventListener('queue-sent', function (ev) {
+    var detail = ev.detail || {};
+    var op = detail.op;
+    var tx = detail.result;
+    if (!op || op.action !== 'add_tx' || !tx || !tx.id || !receiptStore()) return;
+    var localId = op.payload && op.payload.local_id;
+    if (localId) receiptStore().link(receiptScope(), localId, tx.id, null);
+  });
 
   function openEditTx(id) {
     if (editingTx || State.isExpired()) return;
@@ -1562,6 +2491,13 @@
       toast(T('Выберите категорию'));
       return;
     }
+    var receipt = values.receipt;
+    var receiptKey = receipt && receipt.key;
+    if (receiptKey && receiptIsKnown(scope, receiptKey)) {
+      root.Tg.haptic('error');
+      toast(T('Этот чек уже записан'));
+      return;
+    }
     var occurred = values.date || Fmt.todayIso();
     var fromCategory = pendingFromCategory || null;
     pendingFromCategory = null;
@@ -1572,8 +2508,13 @@
       occurred_on: occurred,
       is_shared: values.kind === 'expense' ? values.is_shared : false,
     };
+    if (SEND_RECEIPT_KEY && receipt) payload.receipt = { fn: receipt.fn, i: receipt.i, fp: receipt.fp };
     // Оптимистично: форма закрывается сразу, запись уже на экране.
     var local = optimisticTx(payload);
+    if (receiptKey) {
+      local._receiptKey = receiptKey;
+      if (receiptStore()) receiptStore().remember(scope, receiptKey, { txId: local.id, date: occurred, sum: amount });
+    }
     applyLocalTx(local);
     st.month = occurred.slice(0, 7);
     if (fromCategory && fromCategory === values.category_id) expandedCat = { id: fromCategory, rows: null };
@@ -1593,6 +2534,12 @@
       delete pendingAdds[op.id];
       var tx = ev.detail.result;
       if (tx && tx.id) local._serverId = tx.id;
+      if (receiptKey && tx && tx.id && receiptStore()) {
+        receiptStore().link(scope, local.id, tx.id, receiptKey);
+      }
+      if (tx && tx.receipt_key && receiptStore()) {
+        receiptStore().remember(scope, tx.receipt_key, { txId: tx.id, date: occurred, sum: amount });
+      }
       clearCache();
       // Сервер подтвердил — перерисовываем, чтобы убрать «отправляется».
       if (route.name === 'summary') openSummary();
@@ -1608,7 +2555,10 @@
       var code = ev.detail.error && ev.detail.error.code;
       // Откатываем локальную запись: сервер её не принял.
       removeOptimisticTx(local);
+      // Дубль на сервере — чек уже есть, отметку оставляем. Остальные ошибки снимают блокировку.
+      if (receiptKey && code !== 'duplicate_receipt' && receiptStore()) receiptStore().forget(scope, receiptKey);
       if (code === 'subscription_expired') fail(ev.detail.error);
+      else if (code === 'duplicate_receipt') toast(T('Этот чек уже записан'));
       else toast(T('Не сохранилось: {error}', { error: (ev.detail.error && ev.detail.error.message) || T('ошибка') }));
       if (route.name === 'summary') openSummary();
       if (route.name === 'tx') openTx();
@@ -1637,40 +2587,89 @@
     var scope = memberScope(st.member);
     dialog(T('Удалить эту запись?'), T('Удалить')).then(function (ok) {
       if (!ok || scope !== memberScope(st.member)) return;
-      // Оптимистично: убираем из кэшей сразу, сервер догонит.
+      // Оптимистично: убираем запись из локальных кэшей и сразу пересчитываем
+      // сводку, не дожидаясь ответа сервера и не показывая скелетон.
       var removed = null;
+      var positions = [];
       Object.keys(st).forEach(function (k) {
         if (k.indexOf('txCache:') !== 0) return;
-        ((st[k] || {}).data || []).forEach(function (t) { if (t.id === id) removed = t; });
+        var list = (st[k] && st[k].data) || [];
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].id !== id) continue;
+          removed = removed || list[i];
+          positions.push({ key: k, index: i, tx: list[i] });
+          cached(k, list.slice(0, i).concat(list.slice(i + 1)));
+          break;
+        }
       });
-      // Кэш месяца инвалидируем в любом случае (removeLocalTx) — список перерисуется
-      // с сервера с учётом отправленной операции.
-      if (removed) removeOptimisticTx(removed);
-      removeLocalTx(id);
+      var pendingRestore = [];
+      Object.keys(pendingAdds).forEach(function (opId) {
+        var t = pendingAdds[opId];
+        if (!t || (t.id !== id && t._serverId !== id)) return;
+        pendingRestore.push({ opId: opId, tx: t });
+        delete pendingAdds[opId];
+      });
+
+      var month = removed && removed.occurred_on ? String(removed.occurred_on).slice(0, 7) : st.month;
+      var summarySnapshot = removed ? cloneSummary(cached('summaryCache:' + month)) : null;
+      var expandedSnapshot = expandedCat
+        ? { id: expandedCat.id, rows: expandedCat.rows ? expandedCat.rows.slice() : null }
+        : null;
+      deletingTx[id] = true;
+
+      if (removed) {
+        var summary = cached('summaryCache:' + month);
+        if (summary) {
+          var nextSummary = summaryAfterRemoval(summary, removed);
+          cached('summaryCache:' + month, nextSummary);
+          if (month === st.month) st.lastSummary = nextSummary;
+        }
+        if (expandedCat && expandedCat.rows) {
+          expandedCat = {
+            id: expandedCat.id,
+            rows: expandedCat.rows.filter(function (t) { return t.id !== id; }),
+          };
+        }
+      }
+
+      // Ставим операцию в очередь до перерисовки: пока она не отправлена,
+      // fetchSummary отдаёт локальную сводку и не успевает вернуть удалённую запись.
+      var op = Queue.push('delete_tx', { id: id });
       root.Tg.haptic('success');
       toast(T('Удалено'));
       closeSwipes();
       if (route.name === 'tx') openTx();
-      else openSummary(true);
+      else if (route.name === 'summary') openSummary();
 
-      var op = Queue.push('delete_tx', { id: id });
       root.addEventListener('queue-sent', function onSent(ev) {
         if (ev.detail.id !== op.id) return;
         root.removeEventListener('queue-sent', onSent);
         if (scope !== memberScope(st.member)) return;
         delete deletingTx[id];
-        clearCache();
-        if (route.name === 'tx') openTx(); else if (route.name === 'summary') openSummary();
+        // Только после подтверждения сервера освобождаем чек: при ошибке
+        // запись вернётся, и защита от повторного добавления должна остаться.
+        if (removed && receiptStore()) receiptStore().forgetForTx(scope, removed);
       });
       root.addEventListener('queue-failed', function onFailed(ev) {
         if (ev.detail.op.id !== op.id) return;
         root.removeEventListener('queue-failed', onFailed);
         if (scope !== memberScope(st.member)) return;
         delete deletingTx[id];
+        positions.forEach(function (pos) {
+          var current = (cached(pos.key) || []).slice();
+          current.splice(Math.min(pos.index, current.length), 0, pos.tx);
+          cached(pos.key, current);
+        });
+        pendingRestore.forEach(function (item) { pendingAdds[item.opId] = item.tx; });
+        if (summarySnapshot) {
+          cached('summaryCache:' + month, summarySnapshot);
+          if (month === st.month) st.lastSummary = summarySnapshot;
+        }
+        expandedCat = expandedSnapshot;
         root.Tg.haptic('error');
         toast(T('Не удалилось: {error}', { error: (ev.detail.error && ev.detail.error.message) || T('ошибка') }));
-        clearCache();
         if (route.name === 'tx') openTx();
+        else if (route.name === 'summary') openSummary();
       });
     });
   }
@@ -1686,7 +2685,9 @@
 
   function pickKind(kind) {
     var values = formValues();
-    form = Object.assign({}, values, { kind: kind, category_id: '' });
+    // Чек прихода нельзя записать как расход и наоборот: при смене типа убираем отметку.
+    var receipt = values.receipt && values.receipt.kind === kind ? values.receipt : null;
+    form = Object.assign({}, values, { kind: kind, category_id: '', receipt: receipt });
     form._fromCategory = null;   // сменили тип — возвращаемся на общую сводку
     render(Views.renderForm(form));
   }
@@ -1759,7 +2760,22 @@ document.addEventListener('click', function (ev) {
       if (!picker.contains(ev.target)) closeCategoryPicker(picker);
     });
   });
-// Перерисовка сводки из кэша без запроса — нужна для раскрытия/сворачивания.
+  el.screen.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Escape') return;
+    var picker = ev.target.closest('.category-picker');
+    if (picker) { closeCategoryPicker(picker); picker.querySelector('summary').focus(); }
+  });
+
+
+  function setHomeCategorySort(value) {
+    st.homeCategorySort = value === 'amount' ? 'amount' : 'default';
+    st.homeShowEmpty = false;
+    try { root.localStorage.setItem('budget.homeCategorySort', st.homeCategorySort); } catch (e) {}
+    if (route.name === 'settings') openSettings('interface'); else renderSummaryFromCache();
+  }
+
+  // Перерисовка сводки из кэша без запроса — нужна для раскрытия/сворачивания.
+
   // render() сбрасывает прокрутку вверх, поэтому запоминаем позицию и
   // держим раскрытую строку на том же месте экрана.
   function renderSummaryFromCache() {
@@ -1779,6 +2795,71 @@ document.addEventListener('click', function (ev) {
     render(Views.renderSummary(s, st.plans, expandedCat, cached('txCache:' + st.month), categoryView));
     if (State.isExpired()) banner(T('Пробный период закончился — новые записи недоступны.'));
     el.screen.scrollTop = Math.max(0, scroll - hiddenAbove);
+  }
+
+  // Режим редактирования главной: меняем только черновик, сохраняем явно.
+  // Порядок блоков локальный и не синхронизируется между устройствами.
+  var homeEditFromProfile = false;
+  function startHomeEdit() {
+    if (st.homeEdit) return;
+    homeEditFromProfile = route.name === 'settings' && route.section === 'interface';
+    if (homeEditFromProfile) openSummary();
+    if (route.name !== 'summary') return;
+    st.homeEdit = true;
+    st.homeDraft = State.homeOrder();
+    expandedCat = null;
+    root.Tg.haptic('light');
+    renderSummaryFromCache();
+  }
+
+  function saveHomeEdit() {
+    if (!st.homeEdit) return;
+    State.setHomeOrder(st.homeDraft || State.homeOrder());
+    st.homeEdit = false;
+    st.homeDraft = null;
+    root.Tg.haptic('success');
+    renderSummaryFromCache();
+    if (homeEditFromProfile) { homeEditFromProfile = false; openSettings('interface'); }
+    toast(T('Порядок сохранён'));
+  }
+
+  function resetHomeEdit() {
+    if (!st.homeEdit) return;
+    st.homeDraft = State.defaultHomeOrder();
+    root.Tg.haptic('light');
+    renderSummaryFromCache();
+    toast(T('Порядок сброшен — сохраните изменения'));
+  }
+
+  function cancelHomeEdit() {
+    if (!st.homeEdit) return;
+    st.homeEdit = false;
+    st.homeDraft = null;
+    renderSummaryFromCache();
+    if (homeEditFromProfile) { homeEditFromProfile = false; openSettings('interface'); }
+  }
+
+  function moveHomeBlock(id, direction) {
+    if (!st.homeEdit) return;
+    var order = (st.homeDraft || State.homeOrder()).slice();
+    var from = order.indexOf(id);
+    var to = from + (direction === 'down' ? 1 : -1);
+    if (from < 0 || to < 0 || to >= order.length) return;
+    var moved = order.splice(from, 1)[0];
+    order.splice(to, 0, moved);
+    st.homeDraft = order;
+    root.Tg.haptic('light');
+    renderSummaryFromCache();
+    // После перерисовки возвращаем фокус на ту же кнопку — управление с клавиатуры.
+    setTimeout(function () {
+      var dir = direction === 'down' ? 'down' : 'up';
+      var next = el.screen.querySelector('[data-action="home-move"][data-id="' + id + '"][data-dir="' + dir + '"]');
+      if (!next || next.disabled) {
+        dir = dir === 'up' ? 'down' : 'up';
+        next = el.screen.querySelector('[data-action="home-move"][data-id="' + id + '"][data-dir="' + dir + '"]');
+      }
+      if (next && !next.disabled && next.focus) next.focus({ preventScroll: true });
+    }, 0);
   }
 
   function changeCategoryView(button) {
@@ -1877,6 +2958,10 @@ document.addEventListener('click', function (ev) {
   document.addEventListener('click', function (ev) {
     var tabBtn = ev.target.closest('[data-tab]');
     if (tabBtn) {
+      if (st.homeEdit) {
+        st.homeEdit = false;
+        st.homeDraft = null;
+      }
       openTab(tabBtn.getAttribute('data-tab'));
       return;
     }
@@ -1885,27 +2970,40 @@ document.addEventListener('click', function (ev) {
     if (!actionBtn) return;
     var action = actionBtn.getAttribute('data-action');
 
+    // В режиме редактирования главной работают только его собственные кнопки:
+    // карточки, месяц и баннеры не должны уводить со страницы.
+    if (st.homeEdit && route.name === 'summary' && !actionBtn.hasAttribute('data-home-edit')) return;
+
     // Раскрытие категории не должно срабатывать на скролле.
     var scrolled = isScrollGesture();
     scrollAtTouch = null;
     if (action === 'toggle-cat' && scrolled) return;
 
     switch (action) {
-      case 'move-home-block':
-        try { State.moveHomeBlock(actionBtn.getAttribute('data-block'), Number(actionBtn.getAttribute('data-direction'))); openSettings('interface'); } catch (err) { toast(T('Не удалось сохранить настройки')); }
-        break;
+      case 'home-edit': startHomeEdit(); break;
+      case 'home-edit-save': saveHomeEdit(); break;
+      case 'home-edit-reset': resetHomeEdit(); break;
+      case 'home-edit-cancel': cancelHomeEdit(); break;
+      case 'home-move': moveHomeBlock(actionBtn.getAttribute('data-id'), actionBtn.getAttribute('data-dir')); break;
+
       case 'edit-tx': openEditTx(actionBtn.getAttribute('data-id')); break;
       case 'cancel-edit-tx': cancelEditTx(); break;
-      case 'home-category-sort':
-        st.homeCategorySort = actionBtn.getAttribute('data-sort') === 'amount' ? 'amount' : 'default';
-        st.homeShowEmpty = false;
-        try { root.localStorage.setItem('budget.homeCategorySort', st.homeCategorySort); } catch (e) {}
-        renderSummaryFromCache();
-        break;
       case 'home-empty-toggle': st.homeShowEmpty = !st.homeShowEmpty; renderSummaryFromCache(); break;
       case 'month-prev': changeMonth(-1); break;
       case 'month-next': changeMonth(1); break;
       case 'go-tx': openTx(null); break;
+      case 'go-tx-kind':
+        root.Tg.haptic('light');
+        openTxKind(actionBtn.getAttribute('data-kind'));
+        break;
+      case 'go-add-kind':
+        root.Tg.haptic('light');
+        openAdd({ kind: actionBtn.getAttribute('data-kind') });
+        break;
+      case 'tx-kind':
+        root.Tg.haptic('light');
+        setTxKind(actionBtn.getAttribute('data-kind'));
+        break;
       case 'toggle-category-view':
         changeCategoryView(actionBtn);
         break;
@@ -1921,7 +3019,7 @@ document.addEventListener('click', function (ev) {
       case 'toggle-cat': toggleCategory(actionBtn.getAttribute('data-id')); break;
       case 'add-in-cat': openAdd({ category_id: actionBtn.getAttribute('data-id'), kind: 'expense' }); break;
       case 'open-cat-tx':
-        openTx(actionBtn.getAttribute('data-id'));
+        openTx(actionBtn.getAttribute('data-id'), undefined, true);
         break;
       case 'go-add': openAdd(); break;
       case 'refresh':
@@ -1942,6 +3040,7 @@ document.addEventListener('click', function (ev) {
       case 'go-settings': openSettings('subscription'); break;
       case 'open-profile-section': openSettings(actionBtn.getAttribute('data-section')); break;
       case 'profile-home': openSettings(); break;
+      case 'add-home-screen': addHomeScreen(); break;
       case 'buy': buyTariff(actionBtn.getAttribute('data-buy')); break;
       case 'delete-account': deleteAccount(); break;
       case 'edit-cat': openCategoryForm(actionBtn.getAttribute('data-id')); break;
@@ -1949,6 +3048,10 @@ document.addEventListener('click', function (ev) {
       case 'add-cat': openCategoryForm(null, actionBtn.getAttribute('data-kind')); break;
       case 'go-limits': openLimits(); break;
       case 'pick-cover': setCover(actionBtn.getAttribute('data-cover')); break;
+      case 'pick-cover-file': openCoverFilePicker(); break;
+      case 'clear-custom-cover': resetCustomCover(); break;
+      case 'apply-cover': applyCoverDraft(); break;
+      case 'split-mode': setSplitMode(actionBtn.getAttribute('data-mode')); break;
       case 'cat-kind':
         catKind = actionBtn.getAttribute('data-kind');
         el.sheetBody.querySelectorAll('[data-action="cat-kind"]').forEach(function (b) {
@@ -1979,6 +3082,14 @@ document.addEventListener('click', function (ev) {
         break;
       case 'pick-cat': pickCategory(actionBtn.getAttribute('data-id'), actionBtn); break;
       case 'pick-kind': pickKind(actionBtn.getAttribute('data-kind')); break;
+      case 'scan-receipt': scanReceipt(); break;
+      case 'scan-receipt-home':
+        root.Tg.haptic('light');
+        openAdd({ kind: 'expense' });
+        scanReceipt();
+        break;
+      case 'pick-receipt-photo': pickReceiptPhoto(); break;
+      case 'clear-receipt': form = formValues(); form.receipt = null; render(Views.renderForm(form)); break;
       case 'copy-invite':
         root.Tg.copy((st.member && st.member.households && st.member.households.invite_code) || '');
         break;
@@ -1996,6 +3107,13 @@ document.addEventListener('click', function (ev) {
         toast(T('Демо-данные сброшены'));
         goHome();
         break;
+      case 'export-csv': openExportCsv(); break;
+      case 'export-copy':
+        if (exportCsv && navigator.clipboard && root.isSecureContext) {
+          navigator.clipboard.writeText(exportCsv).then(function () { toast(T('Скопировано')); }, function () { fallbackCopyCsv(); });
+        } else fallbackCopyCsv();
+        break;
+      case 'export-download': downloadCsv(); break;
     }
   });
 
@@ -2023,6 +3141,7 @@ document.addEventListener('click', function (ev) {
     else if (kind === 'plan') submitPlan(f);
     else if (kind === 'category') submitCategory(f);
     else if (kind === 'promo') redeemPromo(f.elements.code.value);
+    else if (kind === 'profile') submitProfile(f);
     else if (kind === 'create' || kind === 'join') submitOnboarding(f, kind);
   });
 
@@ -2111,7 +3230,7 @@ document.addEventListener('click', function (ev) {
       if (route.name !== 'tx') return;
       var current = el.screen.querySelector('#tx-search');
       if (!current || current.value !== value) return;
-      if (!st.txFilter) st.txFilter = { category_id: null, member_id: null, q: '' };
+      if (!st.txFilter) st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
       st.txFilter.q = value;
       var clear = el.screen.querySelector('[data-action="tx-search-clear"]');
       if (clear) clear.hidden = !value;
@@ -2122,12 +3241,26 @@ document.addEventListener('click', function (ev) {
   el.screen.addEventListener('change', function (ev) {
     var t = ev.target;
     if (!t || !t.matches) return;
+    if (t.matches('[data-cover-file]')) {
+      var file = t.files && t.files[0];
+      t.value = '';
+      readCoverFile(file);
+      return;
+    }
     if (t.matches('[data-notif]')) {
       toggleNotification(t);
       return;
     }
     if (t.matches('[data-notif-time]')) {
       saveNotificationTime(t);
+      return;
+    }
+    if (t.matches('[data-theme-pref]')) {
+      setThemePreference(t.value);
+      return;
+    }
+    if (t.matches('[data-home-category-sort]')) {
+      setHomeCategorySort(t.value);
       return;
     }
     if (t.matches('[data-locale]')) {
@@ -2162,6 +3295,12 @@ document.addEventListener('click', function (ev) {
 
   el.sheet.addEventListener('click', function (ev) {
     if (ev.target.closest('[data-sheet-close]')) closeSheet();
+  });
+
+  el.sheet.addEventListener('input', function (ev) {
+    var t = ev.target;
+    if (!t || !t.matches) return;
+    if (t.matches('[data-cover-zoom], [data-cover-x], [data-cover-y]')) updateCoverDraft(t);
   });
 
   // Карточки планов: «···» → удалить, «+ Пополнить» / «− 1000» → сумма и API.
@@ -2339,6 +3478,133 @@ document.addEventListener('click', function (ev) {
     if (ev.key === 'ArrowRight' || ev.key === 'Escape') { ev.preventDefault(); closeSwipes(); row.focus(); }
   });
 
+  // Горизонтальный свайп по основным страницам: экран едет за пальцем, а сбоку
+  // подъезжает превью соседней вкладки. Стартуем только на неинтерактивных
+  // участках экрана: строки трат, кнопки, поля и открытые шторки имеют
+  // собственные жесты и не должны переключать страницу.
+  //
+  // Жест ведём pointer-событиями с захватом на viewport: он не перерисовывается,
+  // поэтому быстрый второй свайп не теряется, даже если первую страницу уже
+  // успели заменить.
+  var pageSurface = pageViewport() || el.screen;
+
+  function releasePagePointer(gesture) {
+    if (!gesture || gesture.id === undefined) return;
+    try {
+      if (pageSurface.releasePointerCapture) pageSurface.releasePointerCapture(gesture.id);
+    } catch (e) {}
+  }
+
+  function capturePagePointer(gesture) {
+    if (!gesture || gesture.captured) return;
+    try {
+      if (pageSurface.setPointerCapture) pageSurface.setPointerCapture(gesture.id);
+      gesture.captured = true;
+    } catch (e) {}
+  }
+
+  function abortPageSwipe() {
+    var gesture = pageSwipe;
+    if (!gesture) return;
+    pageSwipe = null;
+    releasePagePointer(gesture);
+    if (gesture.axis === 'x') clearPageSwipeStyles(gesture);
+  }
+
+  pageSurface.addEventListener('pointerdown', function (ev) {
+    if (ev.isPrimary === false) return;
+    if (pageSwipe) abortPageSwipe();
+    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+    if (!pageSwipeAllowed(ev.target)) return;
+    if (ev.pointerType !== 'mouse' && (ev.clientX < 24 || ev.clientX > root.innerWidth - 24)) return;
+    // Если предыдущая страница ещё доезжает — сначала захватываем указатель,
+    // затем доводим её: перерисовка не должна оборвать новый жест.
+    var resuming = !!pageSettle;
+    var next = {
+      id: ev.pointerId,
+      x: ev.clientX, y: ev.clientY,
+      lastX: ev.clientX, lastT: performance.now(),
+      dx: 0, axis: '', from: route.name, target: null, peek: null, edge: false, fast: false, armed: false,
+      captured: false,
+    };
+    if (resuming) {
+      capturePagePointer(next);
+      flushPageSettle();
+      next.from = route.name;
+    }
+    pageSwipe = next;
+  });
+
+  document.addEventListener('pointermove', function (ev) {
+    var gesture = pageSwipe;
+    if (!gesture || ev.pointerId !== gesture.id) return;
+    var dx = ev.clientX - gesture.x;
+    var dy = ev.clientY - gesture.y;
+    if (!gesture.axis) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      if (Math.abs(dy) >= Math.abs(dx) || Math.abs(dx) < Math.abs(dy) * 1.2) {
+        abortPageSwipe();
+        return;
+      }
+      gesture.axis = 'x';
+      capturePagePointer(gesture);
+      gesture.dir = dx < 0 ? -1 : 1;
+      gesture.width = pageSwipeWidth();
+      gesture.target = swipeTarget(route.name, -gesture.dir);
+      gesture.edge = !gesture.target;
+      if (gesture.target) gesture.peek = buildPagePeek(gesture.target);
+      el.screen.classList.add('screen--dragging');
+    }
+    gesture.dx = dx;
+    if (ev.cancelable) ev.preventDefault();
+    // Скорость пальца к отпусканию: короткий рывок тоже перелистывает.
+    var now = performance.now();
+    if (now - gesture.lastT > 0) {
+      gesture.fast = Math.abs(ev.clientX - gesture.lastX) / (now - gesture.lastT) > 0.55;
+      gesture.lastX = ev.clientX;
+      gesture.lastT = now;
+    }
+    // На краю списка страниц экран тянется с сопротивлением, без соседа.
+    // В обратную сторону экран не уезжает: иначе между страницами появлялся бы зазор.
+    var shift = gesture.edge ? dx * 0.24 : dx;
+    if (!gesture.edge) shift = gesture.dir < 0 ? Math.min(0, shift) : Math.max(0, shift);
+    var limit = gesture.edge ? gesture.width * 0.24 : gesture.width;
+    shift = Math.max(-limit, Math.min(limit, shift));
+    gesture.shift = shift;
+    el.screen.style.transform = 'translate3d(' + shift.toFixed(1) + 'px,0,0)';
+    if (gesture.peek) {
+      var base = -gesture.dir * gesture.width;
+      gesture.peek.style.transform = 'translate3d(' + (base + shift).toFixed(1) + 'px,0,0)';
+    }
+    if (!gesture.edge && !gesture.armed && Math.abs(shift) > gesture.width / 4) {
+      gesture.armed = true;
+      root.Tg.haptic('light');
+    }
+  });
+
+  function pagePointerEnd(ev) {
+    var gesture = pageSwipe;
+    if (!gesture || ev.pointerId !== gesture.id) return;
+    pageSwipe = null;
+    releasePagePointer(gesture);
+    if (ev.type === 'pointercancel' || gesture.axis !== 'x') {
+      if (gesture.axis === 'x') clearPageSwipeStyles(gesture);
+      return;
+    }
+    if (ev.cancelable) ev.preventDefault();
+    if (Math.abs(gesture.dx) > 8) pageSwipeClickUntil = Date.now() + 350;
+    settlePageSwipe(gesture, pageSwipeFlip(gesture));
+  }
+  document.addEventListener('pointerup', pagePointerEnd);
+  document.addEventListener('pointercancel', pagePointerEnd);
+  window.addEventListener('blur', function () { abortPageSwipe(); });
+
+  pageSurface.addEventListener('click', function (ev) {
+    if (Date.now() < pageSwipeClickUntil) {
+      ev.preventDefault(); ev.stopImmediatePropagation();
+    }
+  }, true);
+
   // Долгое нажатие на строке — путь удаления для мыши (на таче — свайп).
   // Слушаем document: перерисовка экрана не теряет состояние удержания.
   var hold = null;
@@ -2492,7 +3758,7 @@ document.addEventListener('click', function (ev) {
     return pageRefresh;
   }
   function pageGestureBlocked(target) {
-    if (!el.sheet.hidden || !el.dialog.hidden || !st.member || route.name === 'add' || route.name === 'limits') return true;
+    if (!el.sheet.hidden || !el.dialog.hidden || !st.member || route.name === 'add' || route.name === 'limits' || st.homeEdit) return true;
     if (target.closest('input,textarea,select,button,a,[contenteditable],.tx,.finance-operation,.category-picker,[draggable="true"],[data-gesture-lock],.segments')) return true;
     for (var node = target; node && node !== el.screen; node = node.parentElement) {
       var css = root.getComputedStyle(node);
@@ -2530,12 +3796,7 @@ document.addEventListener('click', function (ev) {
     var g = pageGesture; cancelPageGesture();
     if (!g || !el.sheet.hidden || !el.dialog.hidden || g.key !== screenKey() || g.seq !== reqSeq) return;
     if (g.axis === 'y' && g.dy > Math.abs(g.dx) * 1.5 && g.top && g.dy >= 140 && el.screen.scrollTop <= 0) { refreshCurrentPage(); return; }
-    // Matches expense direction lock (10px/1.5); travel requires a quarter screen, bounded for tablets.
-    if (g.axis !== 'x' || Math.abs(g.dx) <= Math.abs(g.dy) * 1.5 || Math.abs(g.dx) < Math.min(100, Math.max(56, el.screen.clientWidth * .25)) || Date.now() < pageSwipeUntil) return;
-    var tabs = ['summary', 'tx', 'plans', 'settings'], index = tabs.indexOf(route.name) + (g.dx < 0 ? 1 : -1);
-    if (index < 0 || index >= tabs.length) return;
-    pageSwipeUntil = Date.now() + 240;
-    openTab(tabs[index]);
+
   }, { passive: true });
 
   // --- Сводка: раскрытие категории ---
@@ -2615,7 +3876,7 @@ document.addEventListener('click', function (ev) {
       // иначе каскад строк запустится повторно.
       var sameCount = rowsEl.getAttribute('data-count') === String(rows.length);
       if (sameCount && (rows.length > 0 || rowsEl.querySelector('.cat-tx__empty'))) return;
-      rowsEl.innerHTML = Views.categoryTxList(rows, true);
+      rowsEl.innerHTML = Views.categoryTxList(rows, true, id);
       rowsEl.setAttribute('data-count', String(rows.length));
     }).catch(function (err) {
       if (!current() || err.code === 'stale_response') return;
@@ -2655,17 +3916,32 @@ document.addEventListener('click', function (ev) {
 
   // --- Старт ---
 
+  function markHomeScreenAdded() {
+    clearHomeScreenAttempt();
+    st.homeScreenStatus = 'added';
+    if (homeScreenFallbackOpen) closeDialog(true);
+    if (route.name === 'settings' && !route.section) render(Views.renderSettings());
+    toast(T('Ярлык добавлен'));
+  }
+
   function boot() {
     document.documentElement.lang = I18n.locale();
     document.title = T('Бюджет пары');
     var loaderText = document.querySelector('.loader__text');
     if (loaderText) loaderText.textContent = T('Загружаем бюджет…');
+    if (typeof root.Tg.onHomeScreenAdded === 'function') root.Tg.onHomeScreenAdded(markHomeScreenAdded);
+    if (typeof root.Tg.setThemeMode === 'function') root.Tg.setThemeMode(State.themeMode());
+    var coversReady = root.Covers && typeof root.Covers.loadCustom === 'function'
+      ? root.Covers.loadCustom().catch(function () { return null; })
+      : Promise.resolve(null);
     root.Tg.init().then(function () {
+      refreshHomeScreenStatus();
       if (!root.Tg.isInsideTelegram()) {
         console.info(T('Mini App открыт вне Telegram — демо-режим.'));
       }
-      return loadMember();
-    }).then(function (me) {
+      return Promise.all([loadMember(), coversReady]);
+    }).then(function (result) {
+      var me = result[0];
       hideLoader();
       if (!me) render(Views.renderOnboarding(onboarding));
       else openSummary(true);

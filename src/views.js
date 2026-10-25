@@ -42,6 +42,14 @@
   }
   var money = Fmt.money;
 
+  var QR_ICON_PATHS = '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/>' +
+    '<rect x="5" y="5" width="3" height="3" rx=".5" fill="currentColor" stroke="none"/><rect x="16" y="5" width="3" height="3" rx=".5" fill="currentColor" stroke="none"/><rect x="5" y="16" width="3" height="3" rx=".5" fill="currentColor" stroke="none"/>' +
+    '<rect x="14" y="14" width="2" height="2" rx=".3" fill="currentColor" stroke="none"/><rect x="18" y="14" width="2" height="2" rx=".3" fill="currentColor" stroke="none"/><rect x="14" y="18" width="2" height="2" rx=".3" fill="currentColor" stroke="none"/><rect x="19" y="18" width="2" height="2" rx=".3" fill="currentColor" stroke="none"/>' +
+    '<path d="M11 3v2M11 7v2M3 11h2M7 11h2M11 11h2M11 14v2M11 18v3M14 11h2M18 11h3"/>';
+  var PHOTO_ICON_PATHS = '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="m21 15-5-5L5 21"/>';
+  var QR_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + QR_ICON_PATHS + '</svg>';
+  var PHOTO_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">' + PHOTO_ICON_PATHS + '</svg>';
+
   function initLetter(name) {
     var s = String(name || '').trim();
     return s ? e(s[0].toUpperCase()) : '?';
@@ -151,7 +159,7 @@
         : '<div class="cat__meta"><span>' + e(T('без лимита')) + '</span></div>') +
       '</button>' +
       '<div class="cat-tx"><div class="cat-tx__inner">' +
-      '<div class="cat-tx__rows" data-count="' + rows.length + '">' + categoryTxList(rows, open) + '</div>' +
+      '<div class="cat-tx__rows" data-count="' + rows.length + '">' + categoryTxList(rows, open, c.id) + '</div>' +
       '<button type="button" class="btn btn--sm btn--primary cat-tx__add" data-action="add-in-cat" data-id="' + e(c.id) + '">' +
       e(T('+ Добавить в «{name}»', { name: c.name })) + '</button>' +
       '</div></div>' +
@@ -161,10 +169,20 @@
 
   // Записи категории для раскрытого списка. Используется и при полной
   // перерисовке, и при точечном обновлении уже открытой категории.
-  function categoryTxList(rows, open) {
+  function categoryTxList(rows, open, categoryId) {
     rows = rows || [];
-    return rows.length
-      ? rows.slice(0, 50).map(function (t) { return categoryTxRow(t); }).join('')
+    var sorted = rows.map(function (t, index) { return { t: t, index: index }; }).sort(function (a, b) {
+      var day = String(b.t.occurred_on || '').slice(0, 10).localeCompare(String(a.t.occurred_on || '').slice(0, 10));
+      var created = String(b.t.created_at || '').localeCompare(String(a.t.created_at || ''));
+      return day || created || a.index - b.index;
+    }).map(function (item) { return item.t; });
+    var visible = sorted.slice(0, 5);
+    var id = categoryId || (rows[0] && rows[0].category_id) || '';
+    var all = rows.length > 5 && id
+      ? '<button type="button" class="btn btn--sm cat-tx__all" data-action="open-cat-tx" data-id="' + e(id) + '">' + e(T('Посмотреть все')) + ' →</button>'
+      : '';
+    return visible.length
+      ? visible.map(function (t) { return categoryTxRow(t); }).join('') + all
       : (open ? '<div class="cat-tx__empty">' + e(T('Записей за этот месяц нет')) + '</div>' : '');
   }
 
@@ -180,7 +198,10 @@
       '<span class="cat-tx__date">' + e(Fmt.dayLabel(t.occurred_on)) + '</span>' +
       '<span class="cat-tx__note">' + (meta.length ? meta.join(' · ') : '—') + '</span>' +
       '<span class="amount ' + (isIncome ? 'amount--pos' : '') + '">' + e(Fmt.signedMoney(t.amount, isIncome)) + '</span>' +
-      (!isIncome && !t._local ? '<button type="button" class="tx-edit" data-action="edit-tx" data-id="' + e(t.id) + '" aria-label="' + e(T('Редактировать расход')) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m15 4 5 5M4 20l4-1L20 7a2 2 0 0 0-4-4L4 15z"/></svg></button>' : '') +
+      (!isIncome && !t._local
+        ? '<button type="button" class="tx-edit" data-action="edit-tx" data-id="' + e(t.id) + '" aria-label="' + e(T('Редактировать расход')) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m15 4 5 5M4 20l4-1L20 7a2 2 0 0 0-4-4L4 15z"/></svg></button>' +
+          '<button type="button" class="tx-delete" data-tx-delete="' + e(t.id) + '" aria-label="' + e(T('Удалить расход')) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V5h6v2m-9 0 1 13h10l1-13M10 11v5m4-5v5"/></svg></button>'
+        : '') +
       '</div>';
   }
 
@@ -415,10 +436,10 @@
       [
         { id: 'expense', label: 'Расход', tone: 'red', icon: '<path d="M12 4v15m-6-6 6 6 6-6"/>' },
         { id: 'income', label: 'Доход', tone: 'mint', icon: '<path d="M12 20V5m-6 6 6-6 6 6"/>' },
+        { id: 'receipt-photo', label: 'Фото чека', tone: 'mint', icon: PHOTO_ICON_PATHS },
         { id: 'recurring-new', label: 'Новый платёж', tone: 'amber', icon: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M12 14v4m-2-2h4"/>' },
         { id: 'goal-new', label: 'Новая цель', tone: 'violet', icon: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="m15 9 5-5"/>' },
         { id: 'debt-new', label: 'Новый долг', tone: 'blue', icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/>' },
-        { id: 'wish-new', label: 'Новое желание', tone: 'pink', icon: '<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>' },
       ],
       [
         { id: 'transactions', label: 'Финансы', tone: 'blue', icon: '<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>' },
@@ -426,6 +447,10 @@
         { id: 'recurring-list', label: 'Платежи', tone: 'amber', icon: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9a7 7 0 0 1 11.6-2L20 12M4 12l2.8 5a7 7 0 0 0 11.6-2"/>' },
         { id: 'expense-category', label: 'Категория расхода', tone: 'green', icon: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' },
         { id: 'income-category', label: 'Категория дохода', tone: 'mint', icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v10m-5-5h10"/>' },
+        { id: 'wish-new', label: 'Новое желание', tone: 'pink', icon: '<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>' },
+      ],
+      [
+        { id: 'repeat-last', label: 'Повторить последнюю', tone: 'green', icon: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M16.5 9a5 5 0 0 0-8.6-1.6L4 11M4 13l3.9 3.6A5 5 0 0 0 16.5 15"/>' },
         { id: 'settings', label: 'Ещё', tone: 'pink', icon: '<path d="M4 7h10m4 0h2M4 17h2m4 0h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>' },
       ],
     ];
@@ -455,6 +480,21 @@
       }).join('') + '</div></div>';
   }
 
+  // Шит экспорта: превью CSV, копирование и попытка скачать файл (в браузере).
+  function renderExportSheet(csv, count) {
+    // Показываем начало файла: копировать гигантский текст в буфер бессмысленно.
+    var PREVIEW_LIMIT = 4000;
+    var truncated = csv.length > PREVIEW_LIMIT;
+    return '<div class="export-sheet">' +
+      '<div class="sheet__title">' + e(T('CSV готов')) + '</div>' +
+      '<p class="small muted">' + e(T('Записей: {n}', { n: count })) + (truncated ? ' · ' + e(T('Файл слишком большой для копирования — показан частично.')) : '') + '</p>' +
+      '<pre class="export-sheet__preview">' + e(csv.slice(0, PREVIEW_LIMIT)) + '</pre>' +
+      '<div class="actions">' +
+      '<button type="button" class="btn btn--primary btn--full" data-action="export-copy">' + e(T('Скопировать CSV')) + '</button>' +
+      '<button type="button" class="btn btn--full" data-action="export-download">' + e(T('Скачать')) + '</button>' +
+      '</div></div>';
+  }
+
   // expandedCat: { id, rows } — раскрытая категория и её записи за месяц.
   function renderSummary(s, plans, expandedCat, transactions, categoryView) {
     var st = State.get();
@@ -467,9 +507,9 @@
       : '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>';
     var balance = Number(s.balance) || 0;
     var solo = State.isSolo();
-    var partners = !solo && s.members && s.members.length
+    var partners = !solo && s.split_mode !== 'none' && s.members && s.members.length
       ? '<div class="card">' + s.members.map(partnerRow).join('') +
-        '<div class="small muted mt-8">' + e(T('Как делим: {mode}', { mode: T(State.splitModeLabel()) })) + '</div></div>'
+        '<div class="small muted mt-8">' + e(T('Как делим: {mode}', { mode: T(State.splitModeLabel(s.split_mode)) })) + '</div></div>'
       : '';
     var categorySort = st.homeCategorySort === 'amount' ? 'amount' : 'default';
     var originalCategories = s.categories || [];
@@ -488,32 +528,84 @@
           return categoryRow(c, expandedCat && expandedCat.id === c.id ? expandedCat : null, index);
         }).join('')
       : '<div class="empty">' + e(T(originalCategories.length ? 'Расходов за этот месяц нет' : 'Категорий пока нет')) + '</div>';
+    var sortOptions = ['default', 'amount'].map(function (mode) {
+      return '<option value="' + mode + '"' + (categorySort === mode ? ' selected' : '') + '>' +
+        e(T(mode === 'amount' ? 'По сумме' : 'По умолчанию')) + '</option>';
+    }).join('');
+    var sortControls = '<div class="home-category-sort">' +
+      '<span class="home-category-sort__label">' + e(T('Сортировка')) + '</span>' +
+      '<select class="currency-row__select home-category-sort__select" data-home-category-sort aria-label="' + e(T('Сортировка категорий')) + '">' +
+      sortOptions + '</select></div>';
     var emptyControl = categorySort === 'amount' && zeroCategories.length
       ? '<button type="button" class="btn btn--sm home-empty-toggle" data-action="home-empty-toggle">' + e(T(st.homeShowEmpty ? 'Скрыть пустые категории' : 'Показать пустые категории')) + ' (' + zeroCategories.length + ')</button>' : '';
-    var cover = root.Covers ? Covers.current() : null;
-    var blocks = [
-      '<div class="hero' + (cover ? ' hero--cover' + (cover.tone === 'light' ? ' hero--cover--light' : '') : '') + '"' +
+    var cover = root.Covers ? root.Covers.current() : null;
+    var edit = !!st.homeEdit;
+    var heroBlock =
+      '<div class="hero' + (cover ? ' hero--cover' + (cover.tone === 'light' ? ' hero--cover--light' : '') + (cover.custom ? ' hero--custom' : '') : '') + '"' +
+
       (cover ? ' style="background-image:url(\'' + e(cover.file) + '\')"' : '') + '>' +
       balanceTrendSvg(transactions, st.month) +
       '<button type="button" class="hero__link" data-action="go-tx">' + e(T('Финансы →')) + '</button>' +
       '<div class="hero__label">' + e(T('Остаток за месяц')) + '</div>' +
       '<div class="hero__balance' + (balance < 0 ? ' hero__balance--negative' : '') + '">' + e(money(balance)) + '</div>' +
       '<div class="hero__row">' +
-      '<div class="hero__item"><span class="hero__item-label"><svg class="hero__direction hero__direction--income" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>' + e(T('Доходы')) + '</span><span class="hero__item-value">+' + e(money(s.income)) + '</span></div>' +
-      '<div class="hero__item"><span class="hero__item-label"><svg class="hero__direction hero__direction--expense" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>' + e(T('Расходы')) + '</span><span class="hero__item-value">−' + e(money(s.expense)) + '</span></div>' +
+      '<button type="button" class="hero__item" data-action="go-add-kind" data-kind="income"><span class="hero__item-label"><svg class="hero__direction hero__direction--income" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>' + e(T('Доходы')) + '</span><span class="hero__item-value">+' + e(money(s.income)) + '</span></button>' +
+      '<button type="button" class="hero__item" data-action="go-add-kind" data-kind="expense"><span class="hero__item-label"><svg class="hero__direction hero__direction--expense" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>' + e(T('Расходы')) + '</span><span class="hero__item-value">−' + e(money(s.expense)) + '</span></button>' +
       '</div>' +
-      '</div>',
-      '<div class="section categories-section"><div class="section__head categories-section__head"><span class="section__title">' + e(T('Категории')) + '</span>' +
+      '</div>';
+    var categoriesBlock = '<div class="section categories-section"><div class="section__head categories-section__head"><h2 class="categories-title">' + e(T('Категории')) + '</h2>' +
+      '<div class="categories-actions">' +
+      '<button type="button" class="home-scan-btn" data-action="scan-receipt-home" aria-label="' + e(T('Сканировать чек')) + '" title="' + e(T('Сканировать чек')) + '">' + QR_ICON + '</button>' +
       '<button type="button" class="categories-view-toggle" data-action="toggle-category-view" data-view="' + (viewMode === 'grid' ? 'list' : 'grid') +
       '" aria-label="' + e(viewLabel) + '" aria-pressed="' + (viewMode === 'list') + '" title="' + e(viewLabel) + '">' +
-      '<svg viewBox="0 0 24 24" aria-hidden="true">' + viewIcon + '</svg></button></div>' +
-      '<div class="card categories--' + viewMode + '">' + cats + '</div>' + emptyControl + '</div>',
-      forecastCard(s, plans),
-      plansTeaser(plans),
-      (partners ? '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Между партнёрами')) + '</span></div>' + partners + '</div>' : '')
-    ];
-    var ids = ['balance', 'categories', 'forecast', 'plans', 'partners'];
-    return dueBanner(plans) + monthNav(st.month) + State.homeOrder().map(function (id) { return blocks[ids.indexOf(id)]; }).join('');
+      '<svg viewBox="0 0 24 24" aria-hidden="true">' + viewIcon + '</svg></button></div></div>' +
+      '<div class="card categories--' + viewMode + '">' + cats + '</div>' + emptyControl + '</div>';
+    var partnersBlock = partners ? '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Между партнёрами')) + '</span></div>' + partners + '</div>' : '';
+    var blockMap = {
+      balance: heroBlock,
+      categories: categoriesBlock,
+      forecast: forecastCard(s, plans),
+      plans: plansTeaser(plans),
+      partners: partnersBlock,
+    };
+    var blockLabels = {
+      balance: 'Карточка бюджета',
+      categories: 'Категории',
+      forecast: 'Прогноз',
+      plans: 'Планы',
+      partners: 'Между партнёрами',
+    };
+    var order = State.homeOrder ? State.homeOrder() : ['balance', 'categories', 'forecast', 'plans', 'partners'];
+    function editBlock(id, content, index) {
+      var label = T(blockLabels[id]);
+      var emptyText = T('Нет данных для этого блока');
+      return '<section class="home-block" data-home-block="' + e(id) + '" aria-label="' + e(label) + '">' +
+        '<div class="home-block__head"><span class="home-block__title">' + e(label) + '</span>' +
+        '<div class="home-block__actions">' +
+        '<button type="button" class="home-block__move" data-action="home-move" data-home-edit data-id="' + e(id) + '" data-dir="up"' +
+        ' aria-label="' + e(T('Переместить «{name}» выше', { name: label })) + '"' + (index === 0 ? ' disabled' : '') + '>' +
+        '<span aria-hidden="true">↑</span></button>' +
+        '<button type="button" class="home-block__move" data-action="home-move" data-home-edit data-id="' + e(id) + '" data-dir="down"' +
+        ' aria-label="' + e(T('Переместить «{name}» ниже', { name: label })) + '"' + (index === order.length - 1 ? ' disabled' : '') + '>' +
+        '<span aria-hidden="true">↓</span></button>' +
+        '</div></div>' +
+        '<div class="home-block__content" inert>' + (content || '<div class="empty home-block__empty">' + e(emptyText) + '</div>') + '</div>' +
+        '</section>';
+    }
+    var toolbar = edit
+      ? '<div class="home-toolbar home-toolbar--edit"><span class="home-toolbar__title">' + e(T('Порядок блоков')) + '</span>' +
+        '<div class="home-toolbar__actions">' +
+        '<button type="button" class="btn btn--sm" data-action="home-edit-reset" data-home-edit>' + e(T('Сбросить')) + '</button>' +
+        '<button type="button" class="btn btn--sm" data-action="home-edit-cancel" data-home-edit>' + e(T('Отмена')) + '</button>' +
+        '<button type="button" class="btn btn--sm btn--primary" data-action="home-edit-save" data-home-edit>' + e(T('Сохранить')) + '</button>' +
+        '</div></div>'
+      : '';
+    var body = order.map(function (id, index) {
+      var content = blockMap[id] || '';
+      return edit ? editBlock(id, content, index) : content;
+    }).join('');
+    return dueBanner(plans) + monthNav(st.month) + toolbar + body;
+
   }
 
   // --- Траты ---
@@ -569,6 +661,7 @@
     var q = String(f.q || '').trim().toLowerCase();
     var parts = q ? q.split(/\s+/) : [];
     return (list || []).filter(function (t) {
+      if (f.kind && ((t.categories && t.categories.kind) || 'expense') !== f.kind) return false;
       if (f.category_id && t.category_id !== f.category_id) return false;
       if (f.member_id && t.member_id !== f.member_id) return false;
       if (!parts.length) return true;
@@ -581,7 +674,7 @@
 
   function txFilterActive(filter) {
     var f = filter || {};
-    return !!(f.category_id || f.member_id || String(f.q || '').trim());
+    return !!(f.kind || f.category_id || f.member_id || String(f.q || '').trim());
   }
 
   // Участники и категории для фильтров берутся из загруженного месяца,
@@ -676,7 +769,9 @@
         : empty('🧾', T('Записей нет'), T('За {month} пока ничего не записано.', { month: Fmt.monthTitle(st.month) }),
             '<button type="button" class="btn btn--primary" data-action="go-add">' + e(T('Добавить запись')) + '</button>');
     }
-    var count = '<div class="tx-count"><span>' + e(T('Найдено: {records}', { records: P('records', list.length) })) + '</span>' +
+    var kindLabel = f.kind === 'income' ? T('Доходы') : f.kind === 'expense' ? T('Расходы') : '';
+    var found = T('Найдено: {records}', { records: P('records', list.length) });
+    var count = '<div class="tx-count"><span>' + (kindLabel ? e(kindLabel) + ' · ' : '') + e(found) + '</span>' +
       '<button type="button" class="tx-count__reset" data-action="tx-clear-filter">' + e(T('Сбросить')) + '</button></div>';
     return (active ? count : '') +
       groupByDay(list).map(function (g) {
@@ -684,11 +779,11 @@
       }).join('');
   }
 
-  function renderTxList(all, filter) {
+  function renderTxList(all, filter, chartMode) {
     var st = State.get();
     var pending = (root.Queue && Queue.size()) ? '<div class="sync-note">' + e(T('Изменения отправятся, когда появится связь')) + '</div>' : '';
-    return '<div class="finance-page"><div class="finance-heading"><h1>' + e(T('Финансы')) + '</h1></div>' +
-      monthNav(st.month) + pending + financeOverview(all) +
+    return '<div class="finance-page">' +
+      monthNav(st.month) + pending + financeOverview(all, filter, chartMode) +
       '<div class="finance-ledger">' + txControls(all, filter) +
       '<h2 class="finance-history-title">' + e(T('История')) + '</h2>' +
       '<div id="tx-results">' + txResults(all, filter) + '</div></div></div>';
@@ -709,13 +804,19 @@
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7"/></svg>' + e(T('Удалить')) + '</button></div>';
   }
 
-  function financeOverview(all) {
-    var income = 0, expense = 0, groups = {};
+  function financeOverview(all, filter, chartMode) {
+    var income = 0, expense = 0, incomeGroups = {}, expenseGroups = {};
+    // Режим графика не зависит от фильтра списка: «Остаток» показывает все
+    // операции, а «Доходы»/«Расходы» дополнительно фильтруют историю.
+    var mode = chartMode === 'income' || chartMode === 'expense' || chartMode === 'balance'
+      ? chartMode
+      : ((filter && (filter.kind === 'income' || filter.kind === 'expense')) ? filter.kind : 'expense');
     reconcileList(all || []).forEach(function (tx) {
       if (root.AppState && root.AppState.isDeleting(tx.id)) return;
       var amount = Number(tx.amount) || 0;
-      if (tx.categories && tx.categories.kind === 'income') { income += amount; return; }
-      expense += amount;
+      var isIncome = tx.categories && tx.categories.kind === 'income';
+      var groups = isIncome ? incomeGroups : expenseGroups;
+      if (isIncome) income += amount; else expense += amount;
       var key = tx.category_id || 'other';
       if (!groups[key]) groups[key] = { name: (tx.categories && tx.categories.name) || T('Прочее'), amount: 0 };
       groups[key].amount += amount;
@@ -725,27 +826,71 @@
       ['expense', T('Расходы'), '−' + money(expense), '<path d="m6 6 12 12M6 18h12V6"/>'],
       ['balance', T('Остаток'), money(income - expense), '<rect x="3" y="6" width="18" height="15" rx="3"/><path d="M3 10h18M16 14h5v4h-5zM6 6V3h12"/>'],
     ].map(function (item) {
-      return '<div class="finance-stat finance-stat--' + item[0] + '"><span class="finance-stat__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + item[3] +
-        '</svg></span><span class="finance-stat__label">' + e(item[1]) + '</span><strong>' + e(item[2]) + '</strong></div>';
+      var active = mode === item[0];
+      return '<button type="button" data-action="tx-kind" data-kind="' + item[0] + '" aria-pressed="' + active + '" class="finance-stat finance-stat--' + item[0] + (active ? ' finance-stat--active' : '') + '"><span class="finance-stat__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + item[3] +
+        '</svg></span><span class="finance-stat__label">' + e(item[1]) + '</span><strong>' + e(item[2]) + '</strong></button>';
     }).join('');
-    var cats = Object.keys(groups).map(function (key) { return groups[key]; }).sort(function (a, b) { return b.amount - a.amount; });
-    if (cats.length > 5) cats = cats.slice(0, 4).concat([{ name: T('Прочее'), amount: cats.slice(4).reduce(function (sum, c) { return sum + c.amount; }, 0) }]);
-    var colors = ['#54ef9c', '#ff637c', '#7989ff', '#eb62e4', '#b984ff'];
+
+    function topCategories(groups) {
+      var list = Object.keys(groups).map(function (key) { return groups[key]; }).sort(function (a, b) { return b.amount - a.amount; });
+      if (list.length > 5) list = list.slice(0, 4).concat([{ name: T('Прочее'), amount: list.slice(4).reduce(function (sum, c) { return sum + c.amount; }, 0) }]);
+      return list;
+    }
+
+    var cats;
+    if (mode === 'balance') {
+      cats = [];
+      if (income > 0) cats.push({ name: T('Доходы'), amount: income, color: '#54ef9c' });
+      if (expense > 0) cats.push({ name: T('Расходы'), amount: expense, color: '#ff637c' });
+    } else {
+      cats = topCategories(mode === 'income' ? incomeGroups : expenseGroups);
+    }
+
+    var total = mode === 'income' ? income : mode === 'balance' ? income + expense : expense;
+    // Расходный график сохраняет прежнюю палитру; доходный — зелёно-голубую,
+    // чтобы доходные сегменты не выглядели как расходные.
+    var colors = mode === 'income'
+      ? ['#54ef9c', '#6cb8ff', '#b984ff', '#b8f27c', '#ffd166']
+      : ['#54ef9c', '#ff637c', '#7989ff', '#eb62e4', '#b984ff'];
     var offset = 0, circumference = 2 * Math.PI * 70;
-    var segments = cats.map(function (c, i) {
-      var length = expense ? c.amount / expense * circumference : 0;
+    var segments = total > 0 ? cats.map(function (c, i) {
+      var length = c.amount / total * circumference;
       var gap = Math.min(8, length * .2);
-      var segment = '<circle cx="100" cy="100" r="70" stroke="' + colors[i] + '" stroke-dasharray="' + Math.max(0, length - gap) + ' ' + (circumference - Math.max(0, length - gap)) + '" stroke-dashoffset="' + (-offset) + '"/>';
+      var dash = Math.max(0, length - gap);
+      var rest = circumference - dash;
+      // Кольцо «заполняется» после переключения графика: CSS анимирует
+      // stroke-dasharray от пустого сегмента до его доли. Небольшая задержка
+      // по индексу даёт последовательное заполнение по часовой стрелке.
+      var segment = '<circle class="finance-ring__segment" cx="100" cy="100" r="70" stroke="' + (c.color || colors[i]) + '" stroke-dasharray="' + dash + ' ' + rest + '" stroke-dashoffset="' + (-offset) + '" style="--circ:' + circumference.toFixed(2) + ';--len:' + dash.toFixed(2) + ';--rest:' + rest.toFixed(2) + ';--segment-delay:' + (i * 80) + 'ms"/>';
       offset += length;
       return segment;
-    }).join('');
-    var legend = cats.map(function (c, i) {
-      return '<div class="finance-legend__item" style="--segment:' + colors[i] + '"><span>' + e(c.name) + '</span><small>' + Math.round(c.amount / expense * 100) + '%</small></div>';
-    });
+    }).join('') : '';
+    var legend = total > 0 ? cats.map(function (c, i) {
+      return '<div class="finance-legend__item" style="--segment:' + (c.color || colors[i]) + '"><span>' + e(c.name) + '</span><small>' + Math.round(c.amount / total * 100) + '%</small></div>';
+    }) : [];
+    var centerValue, centerLabel, ariaLabel;
+    if (total <= 0) {
+      centerValue = money(0);
+      centerLabel = mode === 'income' ? T('Доходов за этот месяц нет')
+        : mode === 'expense' ? T('Расходов за этот месяц нет')
+        : T('Пока нет данных');
+    } else if (mode === 'income') {
+      centerValue = '+' + money(income);
+      centerLabel = T('Доходы за месяц');
+    } else if (mode === 'balance') {
+      centerValue = money(income - expense);
+      centerLabel = T('Остаток');
+    } else {
+      centerValue = '−' + money(expense);
+      centerLabel = T('Траты за месяц');
+    }
+    ariaLabel = mode === 'income' ? T('Доходы по категориям')
+      : mode === 'balance' ? T('Доходы и расходы')
+      : T('Расходы по категориям');
     return '<div class="finance-stats">' + cards + '</div><div class="finance-breakdown">' +
       '<div class="finance-legend finance-legend--left">' + legend.filter(function (_, i) { return i % 2 === 1; }).join('') + '</div>' +
-      '<div class="finance-ring"><svg viewBox="0 0 200 200" role="img" aria-label="' + e(T('Расходы по категориям')) + '"><circle class="finance-ring__track" cx="100" cy="100" r="70"/><g transform="rotate(-90 100 100)">' + segments + '</g></svg>' +
-      '<div class="finance-ring__center"><strong>' + e('−' + money(expense)) + '</strong><span>' + e(T('Траты за месяц')) + '</span></div></div>' +
+      '<div class="finance-ring"><svg viewBox="0 0 200 200" role="img" aria-label="' + e(ariaLabel) + '"><circle class="finance-ring__track" cx="100" cy="100" r="70"/><g transform="rotate(-90 100 100)">' + segments + '</g></svg>' +
+      '<div class="finance-ring__center"><strong>' + e(centerValue) + '</strong><span>' + e(centerLabel) + '</span></div></div>' +
       '<div class="finance-legend finance-legend--right">' + legend.filter(function (_, i) { return i % 2 === 0; }).join('') + '</div></div>';
   }
 
@@ -771,7 +916,8 @@
     var note = opts.note || '';
     var date = opts.date || Fmt.todayIso();
     var kind = opts.kind || 'expense';
-    var isShared = opts.is_shared !== false;
+    var solo = State.isSolo();
+    var isShared = !solo && opts.is_shared !== false;
     var cid = opts.category_id || '';
     var list = (st.categories || []).filter(function (c) { return c.kind === kind; });
     var chips = list.length
@@ -780,13 +926,31 @@
             '<span class="cat-chip__icon">' + categoryIcon(c) + '</span><span>' + e(c.name) + '</span></button>';
         }).join('')
       : '<div class="muted small">' + e(T('Нет категорий — обновите приложение')) + '</div>';
+    var scanBlock = '';
+    if (opts.receipt) {
+      var receiptDate = String(opts.receipt.date || '');
+      var shownDate = /^\d{4}-\d{2}-\d{2}$/.test(receiptDate)
+        ? receiptDate.slice(8, 10) + '.' + receiptDate.slice(5, 7) + '.' + receiptDate.slice(0, 4)
+        : receiptDate;
+      scanBlock = '<div class="receipt-chip" role="status"><span class="receipt-chip__icon" aria-hidden="true">🧾</span>' +
+        '<span class="receipt-chip__text">' + e(T('Чек от {date} · {sum}', { date: shownDate, sum: Fmt.money(opts.receipt.sum) })) + '</span>' +
+        '<button type="button" class="receipt-chip__x" data-action="clear-receipt" aria-label="' + e(T('Убрать чек')) + '">×</button></div>';
+    } else {
+      var tg = root.Tg;
+      var canScan = !!(tg && ((typeof tg.canScanQr === 'function' && tg.canScanQr()) ||
+        (typeof tg.isInsideTelegram === 'function' && !tg.isInsideTelegram())));
+      scanBlock = '<div class="scan-row">' +
+        (canScan ? '<button type="button" class="scan-btn scan-btn--primary" data-action="scan-receipt">' + QR_ICON + '<span>' + e(T('Сканировать чек')) + '</span></button>' : '') +
+        '<button type="button" class="scan-btn" data-action="pick-receipt-photo">' + PHOTO_ICON + '<span>' + e(T('Распознать QR с фото')) + '</span></button>' +
+        '</div>';
+    }
     return (
       '<form class="entry-form entry-form--' + kind + '" data-form="add" novalidate>' +
       '<div class="entry-heading"><button type="button" class="profile-back" data-action="start" aria-label="' + e(T('Назад')) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button><div><h1>' + e(T(kind === 'income' ? 'Новый доход' : 'Новый расход')) + '</h1><p>' + e(T('Добавьте запись в свой бюджет')) + '</p></div></div>' +
       '<div class="segments entry-kind" role="group" aria-label="' + e(T('Тип записи')) + '">' +
       '<button type="button" class="segment' + (kind === 'expense' ? ' segment--active' : '') + '" aria-pressed="' + (kind === 'expense') + '" data-action="pick-kind" data-kind="expense"><span aria-hidden="true">↘</span>' + e(T('Расход')) + '</button>' +
       '<button type="button" class="segment' + (kind === 'income' ? ' segment--active' : '') + '" aria-pressed="' + (kind === 'income') + '" data-action="pick-kind" data-kind="income"><span aria-hidden="true">↗</span>' + e(T('Доход')) + '</button>' +
-      '</div>' +
+      '</div>' + scanBlock +
       '<label class="field entry-amount"><span class="field__label">' + e(T(kind === 'income' ? 'Сумма дохода' : 'Сумма расхода')) + '</span>' +
       '<span class="entry-amount__line"><span class="entry-amount__sign" aria-hidden="true">' + (kind === 'income' ? '+' : '−') + '</span><input class="input input--amount" name="amount" inputmode="decimal" autocomplete="off" placeholder="0" value="' + e(amount) + '" required><span class="entry-amount__currency">' + e(Fmt.currencySymbol()) + '</span></span></label>' +
       '<div class="entry-section-heading"><h2>' + e(T('Категория')) + '</h2><span>' + e(T('Выберите одну')) + '</span></div>' +
@@ -794,7 +958,7 @@
       '<div class="entry-section-heading"><h2>' + e(T('Детали')) + '</h2></div><div class="entry-details">' +
       '<label class="field"><span class="field__label">' + e(T('Заметка')) + '</span>' +
       '<input class="input" name="note" maxlength="200" autocomplete="off" placeholder="' + e(T('Например: пятерочка')) + '" value="' + e(note) + '"></label>' +
-      (kind === 'expense'
+      (kind === 'expense' && !solo
         ? '<label class="switch-row"><span class="switch-row__text"><span class="switch-row__title">' + e(T('Общий расход')) + '</span>' +
           '<span class="switch-row__hint">' + e(T('Делим между партнёрами')) + '</span></span>' +
           '<span class="switch"><input type="checkbox" name="is_shared"' + (isShared ? ' checked' : '') + '><span class="switch__track"></span></span></label>'
@@ -947,7 +1111,8 @@
     var labels = { goals: ['Накоплено на цели', 'Двигайтесь к тому, что важно'], debts: ['Осталось погасить', 'Держите обязательства под контролем'], wishes: ['На будущие покупки', 'Всё, что хочется осуществить'], recurring: ['Регулярные платежи в месяц', 'Запланированные расходы без сюрпризов'] };
     var addLabels = { goals: 'Новая цель', debts: 'Новый долг', wishes: 'Новое желание', recurring: 'Новый платёж' };
     return (
-      '<div class="plans-page plans-page--' + tab + '"><div class="plans-heading"><h1>' + e(T('Планы')) + '</h1></div>' +
+      '<div class="plans-page plans-page--' + tab + '">' +
+
       '<div class="segments plans-segments" role="group" aria-label="' + e(T('Разделы планов')) + '">' +
       PLANS_TABS.map(function (t) {
         return '<button type="button" class="segment' + (t.id === tab ? ' segment--active' : '') + '" aria-pressed="' + (t.id === tab) + '" data-action="plans-tab" data-plans="' + t.id + '">' + e(T(t.label)) + '</button>';
@@ -1139,9 +1304,24 @@
       '</div></div>';
   }
 
+  function themeCard() {
+    var current = State.themeMode ? State.themeMode() : 'system';
+    var labels = { system: 'Система', light: 'Светлая', dark: 'Тёмная' };
+    var options = ['system', 'light', 'dark'].map(function (mode) {
+      return '<option value="' + mode + '"' + (mode === current ? ' selected' : '') + '>' +
+        e(T(labels[mode])) + '</option>';
+    }).join('');
+    return '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Тема')) + '</span></div>' +
+      '<div class="card">' +
+      '<label class="currency-row"><span class="currency-row__label">' + e(T('Тема интерфейса')) + '</span>' +
+      '<select class="currency-row__select" data-theme-pref>' + options + '</select></label>' +
+      '<p class="small muted mt-8">' + e(T('Выбор сохраняется на этом устройстве.')) + '</p>' +
+      '</div></div>';
+  }
+
   function coverCard() {
-    var current = root.Covers ? Covers.id() : 'default';
-    var options = (root.Covers ? Covers.list : []).map(function (c) {
+    var current = root.Covers ? root.Covers.id() : 'default';
+    var options = (root.Covers ? root.Covers.list : []).map(function (c) {
       var bg = c.file ? ' style="background-image:url(\'' + e(c.file) + '\')"' : '';
       var active = c.id === current;
       return '<button type="button" class="cover-option' + (active ? ' cover-option--active' : '') + '"' +
@@ -1151,12 +1331,46 @@
         (active ? '<span class="cover-option__check">✓</span>' : '') +
         '</button>';
     }).join('');
+    var custom = root.Covers && root.Covers.custom ? root.Covers.custom() : null;
+    if (custom) {
+      var customActive = current === 'custom';
+      options += '<button type="button" class="cover-option cover-option--custom' + (customActive ? ' cover-option--active' : '') + '"' +
+        ' data-action="pick-cover" data-cover="custom"' +
+        ' aria-label="' + e(T('Своё фото')) + '" aria-pressed="' + (customActive ? 'true' : 'false') + '"' +
+        ' style="background-image:url(\'' + e(custom.file) + '\')">' +
+        '<span class="cover-option__name">' + e(T('Своё фото')) + '</span>' +
+        (customActive ? '<span class="cover-option__check">✓</span>' : '') +
+        '</button>';
+    }
     return '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Оформление')) + '</span></div>' +
       '<div class="card">' +
       '<div class="cover-label">' + e(T('Обложка главной карты')) + '</div>' +
       '<div class="cover-grid">' + options + '</div>' +
+      '<input type="file" class="cover-upload__input" accept="image/*" data-cover-file aria-label="' + e(T('Выбрать изображение')) + '">' +
+      '<div class="cover-upload">' +
+      '<button type="button" class="btn btn--sm" data-action="pick-cover-file">' + e(T(custom ? 'Заменить фото' : 'Загрузить фото')) + '</button>' +
+      (custom ? '<button type="button" class="btn btn--sm btn--ghost" data-action="clear-custom-cover">' + e(T('Убрать своё фото')) + '</button>' : '') +
+      '</div>' +
+      '<p class="small muted mt-8">' + e(T('Своё фото хранится только на этом устройстве, не отправляется на сервер и не синхронизируется.')) + '</p>' +
       '<p class="small muted mt-8">' + e(T('Применяется к карточке остатка на главной. Выбор сохраняется на этом устройстве.')) + '</p>' +
       '</div></div>';
+  }
+
+  // Редактор своего фона: кадр под размер карточки, масштаб и положение.
+  function renderCoverEditor() {
+    return '<div class="sheet__title">' + e(T('Свой фон')) + '</div>' +
+      '<p class="small muted">' + e(T('Выберите кадр — он сохранится только на этом устройстве.')) + '</p>' +
+      '<div class="cover-crop"><canvas data-cover-preview width="750" height="300" aria-label="' + e(T('Предпросмотр фона')) + '"></canvas></div>' +
+      '<label class="cover-control"><span class="cover-control__label">' + e(T('Масштаб')) + '</span>' +
+      '<input type="range" min="100" max="300" value="100" data-cover-zoom aria-label="' + e(T('Масштаб')) + '"></label>' +
+      '<label class="cover-control"><span class="cover-control__label">' + e(T('Сдвиг по горизонтали')) + '</span>' +
+      '<input type="range" min="0" max="100" value="50" data-cover-x aria-label="' + e(T('Сдвиг по горизонтали')) + '"></label>' +
+      '<label class="cover-control"><span class="cover-control__label">' + e(T('Сдвиг по вертикали')) + '</span>' +
+      '<input type="range" min="0" max="100" value="50" data-cover-y aria-label="' + e(T('Сдвиг по вертикали')) + '"></label>' +
+      '<div class="actions actions--row">' +
+      '<button type="button" class="btn btn--ghost" data-sheet-close>' + e(T('Отмена')) + '</button>' +
+      '<button type="button" class="btn btn--primary" data-action="apply-cover">' + e(T('Применить')) + '</button>' +
+      '</div>';
   }
 
   // Уведомления в Telegram: платежи, лимиты, недельная сводка и ежедневный отчёт.
@@ -1239,6 +1453,22 @@
       '</div></div>';
   }
 
+  // Ярлык Telegram Mini App на главном экране. Строку показываем только когда
+  // клиент подтвердил поддержку; на десктопе checkHomeScreenStatus = unsupported.
+  function homeScreenRow(status) {
+    var added = status === 'added';
+    if (!added && status !== 'missed' && status !== 'unknown') return '';
+    var platform = root.Tg && root.Tg.platform ? root.Tg.platform() : '';
+    var android = platform === 'android' || platform === 'android_x';
+    var hint = added ? 'Ярлык уже добавлен' : android ? 'Подтвердите в системном окне Android' : 'Открывайте бюджет в один тап';
+    return '<div class="profile-menu profile-menu--shortcut">' +
+      '<button type="button" class="profile-menu__item profile-menu__item--shortcut' + (added ? ' profile-menu__item--done' : '') + '" data-action="add-home-screen"' + (added ? ' aria-disabled="true"' : '') + '>' +
+      '<span class="profile-menu__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="3"/><path d="M12 7v6m-3-3h6M10 18h4"/></svg></span>' +
+      '<span class="profile-menu__text"><strong>' + e(T(added ? 'Приложение на главном экране' : 'Добавить на главный экран')) + '</strong>' +
+      '<small>' + e(T(hint)) + '</small></span>' +
+      '<span class="profile-menu__arrow" aria-hidden="true">' + (added ? '✓' : '›') + '</span></button></div>';
+  }
+
   function renderSettings(section) {
     var st = State.get();
     var m = st.member;
@@ -1255,7 +1485,8 @@
       ['family', 'Семья и участники', 'Участники, общие траты и приглашение', '<circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3m1-16a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 5v2"/>'],
       ['budget', 'Бюджет и лимиты', 'Категории, лимиты и баланс карты', '<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 9h18m-5 5h5v3h-5z"/>'],
       ['interface', 'Настройки интерфейса', 'Настройка главной страницы', '<path d="M4 6h16M4 12h16M4 18h16"/>'],
-      ['appearance', 'Оформление и язык', 'Обложка, язык и обозначение валюты', '<path d="M12 3a9 9 0 0 0 0 18h2a2 2 0 0 0 1-4 2 2 0 0 1 1-4h2a3 3 0 0 0 3-3 9 9 0 0 0-9-7z"/><path d="M7 10h.01M10 6h.01M15 7h.01"/>'],
+      ['appearance', 'Оформление и язык', 'Тема, обложка, язык и валюта', '<path d="M12 3a9 9 0 0 0 0 18h2a2 2 0 0 0 1-4 2 2 0 0 1 1-4h2a3 3 0 0 0 3-3 9 9 0 0 0-9-7z"/><path d="M7 10h.01M10 6h.01M15 7h.01"/>'],
+
       ['notifications', 'Уведомления', 'Напоминания, лимиты и отчёты в Telegram', '<path d="M5 17h14l-2-4V9a5 5 0 0 0-10 0v4zM10 21h4M12 2v2"/>'],
       ['subscription', 'Подписка и промокоды', 'Срок доступа, продление и промокоды', '<path d="m12 3 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/>'],
       ['about', 'О приложении и данные', 'Документы, обновление и управление данными', '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/>'],
@@ -1265,6 +1496,7 @@
       return '<div class="profile-page"><h1 class="profile-title">' + e(T('Профиль')) + '</h1>' +
         '<div class="profile-identity"><span class="profile-avatar">' + initLetter(m && m.name) + '</span><div><strong>' + e(m && m.name || T('Участник')) + '</strong>' +
         '<span>' + e(h.name || T('Наша семья')) + '</span></div></div>' +
+        homeScreenRow(st.homeScreenStatus) +
         '<div class="profile-menu">' + sections.map(function (item) {
           return '<button type="button" class="profile-menu__item" data-action="open-profile-section" data-section="' + item[0] + '">' +
             '<span class="profile-menu__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + item[3] + '</svg></span>' +
@@ -1272,35 +1504,48 @@
         }).join('') + '</div></div>';
     }
     var content = '';
-    if (section === 'family') content = '<div class="card family-details">' +
-      '<div class="settings-row"><span class="settings-row__label">' + e(T('Семья')) + '</span><span class="settings-row__value">' + e(h.name || '—') + '</span></div>' +
-      '<div class="settings-row"><span class="settings-row__label">' + e(T('Вы')) + '</span><span class="settings-row__value">' + e(m ? m.name : '—') + '</span></div>' +
-      '<div class="settings-row"><span class="settings-row__label">' + e(T('Деление общих трат')) + '</span><span class="settings-row__value">' + e(State.splitModeLabel()) + '</span></div>' +
-      '</div>' +
-      (State.isSolo()
-        ? '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Режим')) + '</span></div>' +
-          '<div class="card"><p class="small muted">' + e(T('Личный бюджет: партнёр не подключён, расчёт между участниками не показывается.')) + '</p></div></div>'
-        : '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Приглашение')) + '</span></div>' +
-          '<div class="card"><p class="small muted">' + e(T('Передайте код партнёру — в приложении он выберет «Подключиться» и введёт его.')) + '</p>' +
-          '<div class="invite"><span class="invite__code">' + e(h.invite_code || '—') + '</span>' +
-          '<button type="button" class="btn btn--sm btn--primary" data-action="copy-invite">' + e(T('Копировать')) + '</button></div>' +
-          '</div></div>');
-    if (section === 'budget') content = limitsCard();
-    if (section === 'interface') {
-      var names = { balance: 'Баланс', categories: 'Категории', forecast: 'Прогноз', plans: 'Планы', partners: 'Между партнёрами' };
-      content = '<h2>' + e(T('Настройка главной страницы')) + '</h2><div class="home-editor">' + State.homeOrder().map(function (id, i, all) {
-        return '<div class="settings-row"><span>' + e(T(names[id])) + '</span><div>' + [-1, 1].map(function (direction) {
-          return '<button type="button" class="btn btn--sm" data-action="move-home-block" data-block="' + id + '" data-direction="' + direction + '" aria-label="' + e(T(direction < 0 ? 'Выше' : 'Ниже')) + ' ' + e(T(names[id])) + '"' + ((i === 0 && direction < 0 || i === all.length - 1 && direction > 0) ? ' disabled' : '') + '>' + (direction < 0 ? '↑' : '↓') + '</button>';
-        }).join('') + '</div></div>';
-      }).join('') + '</div><div class="home-category-sort">' + ['default', 'amount'].map(function (mode) {
-        return '<button type="button" class="btn btn--sm" data-action="home-category-sort" data-sort="' + mode + '" aria-pressed="' + ((st.homeCategorySort || 'default') === mode) + '">' + e(T(mode === 'amount' ? 'По сумме' : 'По умолчанию')) + '</button>';
-      }).join('') + '</div>';
+    if (section === 'family') {
+      var effectiveSplit = h.month_split_mode || h.split_mode || 'proportional';
+      var splitSegment = function (mode, label) {
+        var active = effectiveSplit === mode;
+        return '<button type="button" class="segment' + (active ? ' segment--active' : '') +
+          '" data-action="split-mode" data-mode="' + e(mode) + '" aria-pressed="' + active + '">' + e(T(label)) + '</button>';
+      };
+      var splitSection = State.isSolo() ? '' :
+        '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Деление общих трат')) + '</span></div>' +
+        '<div class="card"><div class="segments">' + splitSegment('proportional', 'По доходу') + splitSegment('equal', 'Поровну') + splitSegment('none', 'Не делить') + '</div>' +
+        '<p class="small muted">' + e(T('Действует с текущего месяца и на будущие. Прошлые месяцы не меняются.')) + '</p></div></div>';
+      content = '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Имена')) + '</span></div>' +
+        '<form class="card" data-form="profile" novalidate>' +
+        '<label class="field"><span class="field__label">' + e(T('Ваше имя')) + '</span>' +
+        '<input class="input" name="member_name" maxlength="40" autocomplete="name" placeholder="' + e(T('Как вас звать?')) + '" value="' + e(m ? m.name : '') + '"></label>' +
+        '<label class="field"><span class="field__label">' + e(T('Название семьи')) + '</span>' +
+        '<input class="input" name="household_name" maxlength="60" placeholder="' + e(T('Наша семья')) + '" value="' + e(h.name || '') + '"></label>' +
+        '<div class="actions"><button type="submit" class="btn btn--primary btn--full">' + e(T('Сохранить')) + '</button></div>' +
+        '</form></div>' +
+        '<div class="card family-details"><div class="settings-row"><span class="settings-row__label">' + e(T('Деление общих трат')) + '</span><span class="settings-row__value">' + e(State.splitModeLabel(effectiveSplit)) + '</span></div></div>' +
+        splitSection +
+        (State.isSolo()
+          ? '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Режим')) + '</span></div>' +
+            '<div class="card"><p class="small muted">' + e(T('Личный бюджет: партнёр не подключён, расчёт между участниками не показывается.')) + '</p></div></div>'
+          : '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Приглашение')) + '</span></div>' +
+            '<div class="card"><p class="small muted">' + e(T('Передайте код партнёру — в приложении он выберет «Подключиться» и введёт его.')) + '</p>' +
+            '<div class="invite"><span class="invite__code">' + e(h.invite_code || '—') + '</span>' +
+            '<button type="button" class="btn btn--sm btn--primary" data-action="copy-invite">' + e(T('Копировать')) + '</button></div>' +
+            '</div></div>');
     }
-    if (section === 'appearance') content = coverCard() + languageCard() + currencyCard();
+    if (section === 'budget') content = limitsCard();
+    if (section === 'interface') content = '<h2>' + e(T('Настройка главной страницы')) + '</h2><button type="button" class="btn btn--primary" data-action="home-edit">' + e(T('Порядок блоков')) + '</button><div class="home-category-sort"><span class="home-category-sort__label">' + e(T('Сортировка')) + '</span><select class="currency-row__select home-category-sort__select" data-home-category-sort aria-label="' + e(T('Сортировка категорий')) + '">' + ['default', 'amount'].map(function (mode) { return '<option value="' + mode + '"' + ((st.homeCategorySort || 'default') === mode ? ' selected' : '') + '>' + e(T(mode === 'amount' ? 'По сумме' : 'По умолчанию')) + '</option>'; }).join('') + '</select></div>';
+    if (section === 'appearance') content = themeCard() + coverCard() + languageCard() + currencyCard();
+
     if (section === 'notifications') content = notificationsCard(notif);
     if (section === 'subscription') content = '<div class="card subscription-access"><div class="settings-row"><span class="settings-row__label">' + e(T('Доступ')) + '</span><span class="settings-row__value' + (left !== null && left < 0 ? ' amount--neg' : '') + '">' + e(planText) +
       (untilText ? e(T(' · до {date}', { date: untilText })) : '') + '</span></div></div>' + starsCard(st.tariffs, st.buying) + promoCard(st.promo);
-    if (section === 'about') content = '<div class="section"><div class="section__head"><span class="section__title">' + e(T('О приложении')) + '</span></div>' +
+    if (section === 'about') content = '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Экспорт данных')) + '</span></div>' +
+      '<div class="card"><div class="settings-row"><span class="settings-row__label">' + e(T('Скачать всё в CSV')) + '</span>' +
+      '<button type="button" class="btn btn--sm btn--primary" data-action="export-csv"' + (st.exporting ? ' disabled' : '') + '>' + e(st.exporting ? T('Готовлю файл…') : T('Скачать')) + '</button></div>' +
+      '<p class="small muted mt-8">' + e(T('Траты и доходы за последние 12 месяцев в одном файле.')) + '</p></div></div>' +
+      '<div class="section"><div class="section__head"><span class="section__title">' + e(T('О приложении')) + '</span></div>' +
       '<div class="card small muted">' + e(T('Данные видят только участники семьи. Telegram-бот принимает записи сообщением: «кофе 350», «+15000 подработка».')) + '</div></div>' +
       legalCard(st.deleting) +
       (Api.isDemo()
@@ -1374,6 +1619,7 @@
     categoryTxList: categoryTxList,
     renderSummary: renderSummary,
     renderQuickActions: renderQuickActions,
+    renderExportSheet: renderExportSheet,
     renderPlans: renderPlans,
     renderPlanForm: renderPlanForm,
     renderCategoryForm: renderCategoryForm,
@@ -1384,6 +1630,7 @@
     txResults: txResults,
     renderForm: renderForm,
     renderEditForm: renderEditForm,
+    renderCoverEditor: renderCoverEditor,
     renderSettings: renderSettings,
     starsCard: starsCard,
     legalCard: legalCard,

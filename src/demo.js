@@ -92,6 +92,7 @@
       wishes: wishes,
       promo: [],
       promoUsed: {},
+      monthSplit: {},
       member: { id: 'm1', household_id: 'h1', name: 'Аня', telegram_id: 1,
         households: { id: 'h1', name: 'Наша семья', mode: new URLSearchParams(root.location.search).has('solo') ? 'solo' : 'pair', split_mode: 'proportional', invite_code: 'demo1234',
           plan_until: new Date(Date.now() + (new URLSearchParams(root.location.search).has('expired') ? -86400000 : 12 * 86400000)).toISOString() } },
@@ -105,8 +106,281 @@
     return { id: id(), name: name, kind: kind, plan_monthly: plan, icon: icon, sort: sort, archived: false };
   }
 
+  // --- Тестовая семья на месяц: два аккаунта, 30 дней операций ---
+  // ?test-month&as=anya|igor — одна и та же семья с разным текущим участником.
+  // run_test_month в DEMO_API прогоняет сценарий и проверяет итоги после каждого дня.
+
+  var TEST_MONTH = '2026-10';
+
+  function pad2(n) { return n < 10 ? '0' + n : String(n); }
+  function near(a, b, eps) { return Math.abs(Number(a) - Number(b)) <= (eps == null ? 0.011 : eps); }
+  function memberById(memberId) {
+    var m = state.members.find(function (x) { return x.id === memberId; });
+    if (!m) throw new Error('not_found');
+    return m;
+  }
+  function categoryByName(name) {
+    var c = state.categories.find(function (x) { return x.name === name; });
+    if (!c) throw new Error('bad_category');
+    return c;
+  }
+  function setActor(memberId) {
+    var m = memberById(memberId);
+    state.member = Object.assign({}, state.member, {
+      id: m.id, name: m.name, telegram_id: m.telegram_id,
+    });
+    return state.member;
+  }
+  function addFor(memberId, categoryName, amount, shared, note, date) {
+    setActor(memberId);
+    return handlers.add_tx({
+      category_id: categoryByName(categoryName).id,
+      amount: amount,
+      is_shared: shared,
+      note: note,
+      occurred_on: date,
+    });
+  }
+
+  function resetTestFamily() {
+    state = fresh();
+    state.tx = [];
+    state.goals = [];
+    state.debts = [];
+    state.wishes = [];
+    state.recurring = [
+      { id: 'r1', household_id: 'h1', name: 'Аренда', amount: 35000, day_of_month: 5, active: true,
+        categories: { name: 'Жильё и коммуналка', icon: '🏠' } },
+      { id: 'r2', household_id: 'h1', name: 'Интернет', amount: 900, day_of_month: 12, active: true,
+        categories: { name: 'Подписки и связь', icon: '📱' } },
+      { id: 'r3', household_id: 'h1', name: 'Сервак', amount: 300, day_of_month: 21, active: true,
+        categories: { name: 'Подписки и связь', icon: '📱' } },
+    ];
+    state.members = [
+      { id: 'm1', name: 'Аня', telegram_id: 1 },
+      { id: 'm2', name: 'Игорь', telegram_id: 2 },
+    ];
+    state.member = Object.assign({}, state.member, {
+      id: 'm1', name: 'Аня', telegram_id: 1, household_id: 'h1',
+      households: { id: 'h1', name: 'Тестовая семья', mode: 'pair', split_mode: 'proportional',
+        invite_code: 'demo1234', plan_until: new Date(Date.now() + 12 * 86400000).toISOString() },
+    });
+    state.promo = [];
+    state.promoUsed = {};
+    return state;
+  }
+
+  function tx(actor, cat, amount, shared, note) {
+    return { type: 'tx', actor: actor, cat: cat, amount: amount, shared: shared, note: note };
+  }
+  function recurring(actor, recurringId) { return { type: 'recurring', actor: actor, id: recurringId }; }
+  function goal(name, target, saved, monthly) {
+    return { type: 'goal', name: name, target: target, saved: saved, monthly: monthly };
+  }
+  function goalAdd(name, amount) { return { type: 'goal-add', name: name, amount: amount }; }
+  function debt(name, creditor, total, remaining, monthly) {
+    return { type: 'debt', name: name, creditor: creditor, total: total, remaining: remaining, monthly: monthly };
+  }
+  function debtPay(name, amount) { return { type: 'debt-pay', name: name, amount: amount }; }
+  function wish(name, price, priority) { return { type: 'wish', name: name, price: price, priority: priority }; }
+  function wishBuy(name) { return { type: 'wish-buy', name: name }; }
+
+  var TEST_SCENARIO = [
+    { day: 1, actions: [
+      tx('m1', 'Зарплата', 120000, false, 'оклад'),
+      tx('m2', 'Зарплата', 90000, false, 'оклад'),
+      goal('Отпуск', 120000, 0, 10000),
+    ] },
+    { day: 2, actions: [tx('m1', 'Продукты', 3200.50, true, 'пятёрочка')] },
+    { day: 3, actions: [tx('m2', 'Кафе и рестораны', 350, false, 'кофе')] },
+    { day: 4, actions: [tx('m1', 'Транспорт', 420, true, 'такси')] },
+    { day: 5, actions: [tx('m1', 'Жильё и коммуналка', 35000, true, 'аренда')] },
+    { day: 6, actions: [tx('m2', 'Продукты', 2180, true, 'магнит')] },
+    { day: 7, actions: [tx('m1', 'Развлечения', 2400, true, 'кино')] },
+    { day: 8, actions: [tx('m2', 'Здоровье', 1250, false, 'аптека')] },
+    { day: 9, actions: [tx('m1', 'Продукты', 1450, true, 'лента')] },
+    { day: 10, actions: [tx('m2', 'Подписки и связь', 399, true, 'музыка'), goalAdd('Отпуск', 10000)] },
+    { day: 11, actions: [tx('m1', 'Кафе и рестораны', 890, false, 'обед')] },
+    { day: 12, actions: [tx('m2', 'Подписки и связь', 900, true, 'интернет')] },
+    { day: 13, actions: [tx('m1', 'Одежда', 2500, true, 'куртка')] },
+    { day: 14, actions: [tx('m2', 'Продукты', 3100, true, 'ашан')] },
+    { day: 15, actions: [tx('m1', 'Подарки', 1500, false, 'день рождения'),
+      debt('Кредитная карта', 'Тинькофф', 60000, 60000, 5000)] },
+    { day: 16, actions: [tx('m2', 'Транспорт', 600, true, 'метро')] },
+    { day: 17, actions: [tx('m1', 'Кафе и рестораны', 1250, false, 'ужин')] },
+    { day: 18, actions: [tx('m2', 'Дом и быт', 1800, true, 'чистящие')] },
+    { day: 19, actions: [tx('m1', 'Продукты', 2700, true, 'пятёрочка')] },
+    { day: 20, actions: [tx('m2', 'Подработка', 15000, false, 'фриланс'),
+      debtPay('Кредитная карта', 5000)] },
+    { day: 21, actions: [recurring('m1', 'r3')] },
+    { day: 22, actions: [tx('m2', 'Здоровье', 800, false, 'витамины')] },
+    { day: 23, actions: [tx('m1', 'Продукты', 2400, true, 'магнит')] },
+    { day: 24, actions: [tx('m2', 'Развлечения', 1200, true, 'боулинг')] },
+    { day: 25, actions: [tx('m1', 'Кафе и рестораны', 950, false, 'кофе с подругой'),
+      wish('Робот-пылесос', 35000, 'high'), wishBuy('Робот-пылесос')] },
+    { day: 26, actions: [tx('m2', 'Транспорт', 300, true, 'автобус')] },
+    { day: 27, actions: [tx('m1', 'Продукты', 3600, true, 'лента')] },
+    { day: 28, actions: [tx('m2', 'Одежда', 1900, false, 'кроссовки')] },
+    { day: 29, actions: [tx('m1', 'Подарки', 2000, true, 'подарок маме')] },
+    { day: 30, actions: [tx('m2', 'Кафе и рестораны', 1100, false, 'обед'),
+      tx('m1', 'Продукты', 1500, true, 'овощи')] },
+  ];
+
+  function checkDay(day, s, e) {
+    function fail(message) { throw new Error('day ' + day + ': ' + message); }
+    if (!near(s.income, e.income)) fail('income ' + s.income + ' != ' + e.income);
+    if (!near(s.expense, e.expense)) fail('expense ' + s.expense + ' != ' + e.expense);
+    if (!near(s.balance, e.income - e.expense)) fail('balance');
+    var catSum = s.categories.reduce(function (a, c) { return a + Number(c.fact || 0); }, 0);
+    if (!near(catSum, e.expense)) fail('category sum ' + catSum + ' != ' + e.expense);
+    var shareSum = s.members.reduce(function (a, m) { return a + Number(m.share || 0); }, 0);
+    if (!near(shareSum, e.shared, 0.02)) fail('share sum ' + shareSum + ' != ' + e.shared);
+    var balanceSum = s.members.reduce(function (a, m) { return a + Number(m.balance || 0); }, 0);
+    if (Math.abs(balanceSum) > 2) fail('balance sum ' + balanceSum);
+    ['m1', 'm2'].forEach(function (memberId) {
+      var m = s.members.find(function (x) { return x.id === memberId; });
+      var want = e.byMember[memberId];
+      if (!m) fail('member ' + memberId + ' missing');
+      if (!near(m.income, want.income)) fail(memberId + ' income');
+      if (!near(m.paid_shared, want.shared)) fail(memberId + ' shared');
+      if (!near(m.personal, want.personal)) fail(memberId + ' personal');
+      var expectedShare = e.income > 0 ? e.shared * want.income / e.income : e.shared / 2;
+      if (!near(m.share, expectedShare)) fail(memberId + ' share ' + m.share + ' != ' + expectedShare);
+      if (Math.abs(Number(m.balance) - Math.round(Number(m.paid_shared) - Number(m.share))) > 1) fail(memberId + ' balance');
+    });
+    var txCount = state.tx.filter(function (t) { return Fmt.sameMonth(t.occurred_on, TEST_MONTH); }).length;
+    if (txCount !== e.txCount) fail('tx count ' + txCount + ' != ' + e.txCount);
+    [s.income, s.expense, s.balance, catSum, shareSum, balanceSum].forEach(function (n) {
+      if (!Number.isFinite(Number(n))) fail('non-finite total');
+    });
+  }
+
+  function runTestMonth(viewer) {
+    resetTestFamily();
+    var goalRows = {};
+    var debtRows = {};
+    var wishRows = {};
+    var expected = {
+      income: 0, expense: 0, shared: 0, personal: 0, txCount: 0,
+      byMember: {
+        m1: { income: 0, shared: 0, personal: 0 },
+        m2: { income: 0, shared: 0, personal: 0 },
+      },
+    };
+    var log = [];
+
+    function expectTx(actor, categoryName, amount, shared) {
+      var category = categoryByName(categoryName);
+      var value = Number(amount);
+      if (category.kind === 'income') {
+        expected.income += value;
+        expected.byMember[actor].income += value;
+      } else {
+        expected.expense += value;
+        if (shared) {
+          expected.shared += value;
+          expected.byMember[actor].shared += value;
+        } else {
+          expected.personal += value;
+          expected.byMember[actor].personal += value;
+        }
+      }
+      expected.txCount++;
+    }
+
+    TEST_SCENARIO.forEach(function (day) {
+      var date = TEST_MONTH + '-' + pad2(day.day);
+      var operations = [];
+      day.actions.forEach(function (action) {
+        if (action.type === 'tx') {
+          addFor(action.actor, action.cat, action.amount, action.shared, action.note, date);
+          expectTx(action.actor, action.cat, action.amount, action.shared);
+          operations.push(action.actor + ': ' + action.cat + ' ' + action.amount + (action.shared ? ' (общая)' : ''));
+        } else if (action.type === 'recurring') {
+          var row = state.recurring.find(function (x) { return x.id === action.id; });
+          if (!row) throw new Error('bad_recurring');
+          setActor(action.actor);
+          handlers.pay_recurring({ id: action.id, occurred_on: date });
+          expected.expense += Number(row.amount);
+          expected.personal += Number(row.amount);
+          expected.byMember[action.actor].personal += Number(row.amount);
+          expected.txCount++;
+          operations.push(action.actor + ': платёж ' + row.name + ' ' + row.amount);
+        } else if (action.type === 'goal') {
+          goalRows[action.name] = handlers.save_goal({
+            name: action.name, target: action.target, saved: action.saved, monthly: action.monthly,
+          });
+          operations.push('цель «' + action.name + '»: ' + action.target);
+        } else if (action.type === 'goal-add') {
+          var goalRow = goalRows[action.name];
+          if (!goalRow) throw new Error('bad_goal');
+          handlers.add_to_goal({ id: goalRow.id, amount: action.amount });
+          operations.push('в цель «' + action.name + '»: +' + action.amount);
+        } else if (action.type === 'debt') {
+          debtRows[action.name] = handlers.save_debt({
+            name: action.name, creditor: action.creditor, total: action.total,
+            remaining: action.remaining, monthly: action.monthly,
+          });
+          operations.push('долг «' + action.name + '»: ' + action.total);
+        } else if (action.type === 'debt-pay') {
+          var debtRow = debtRows[action.name];
+          if (!debtRow) throw new Error('not_found');
+          handlers.pay_debt({ id: debtRow.id, amount: action.amount });
+          operations.push('платёж по долгу «' + action.name + '»: ' + action.amount);
+        } else if (action.type === 'wish') {
+          wishRows[action.name] = handlers.save_wish({
+            name: action.name, price: action.price, priority: action.priority,
+          });
+          operations.push('желание «' + action.name + '»: ' + action.price);
+        } else if (action.type === 'wish-buy') {
+          var wishRow = wishRows[action.name];
+          if (!wishRow) throw new Error('not_found');
+          handlers.buy_wish({ id: wishRow.id });
+          operations.push('куплено «' + action.name + '»');
+        }
+      });
+      var daySummary = summary(TEST_MONTH);
+      checkDay(day.day, daySummary, expected);
+      log.push({
+        day: day.day,
+        date: date,
+        operations: operations,
+        income: daySummary.income,
+        expense: daySummary.expense,
+        balance: daySummary.balance,
+        tx: expected.txCount,
+      });
+    });
+
+    var finalSummary = summary(TEST_MONTH);
+    setActor(viewer === 'igor' ? 'm2' : 'm1');
+    return {
+      month: TEST_MONTH,
+      days: log,
+      final: {
+        summary: finalSummary,
+        goals: state.goals,
+        debts: state.debts,
+        wishes: state.wishes,
+        recurring: state.recurring,
+        members: state.members,
+      },
+    };
+  }
+
+  // Режим деления общих трат: последнее изменение с месяцем <= выбранного,
+  // иначе значение семьи. Как в month_summary(): прошлые месяцы не зависят
+  // от более поздних изменений, а выбор действует на будущие месяцы.
+  function splitModeFor(month) {
+    var ym = String(month || Fmt.currentMonth()).slice(0, 7);
+    var keys = Object.keys(state.monthSplit || {}).filter(function (k) { return k <= ym; }).sort();
+    if (keys.length) return state.monthSplit[keys[keys.length - 1]];
+    return (state.member && state.member.households && state.member.households.split_mode) || 'proportional';
+  }
+
   function summary(month) {
     var ym = month || Fmt.currentMonth();
+    var splitMode = splitModeFor(ym);
     var inMonth = state.tx.filter(function (t) { return Fmt.sameMonth(t.occurred_on, ym); });
     var kindOf = function (t) { return state.categories.find(function (c) { return c.id === t.category_id; }).kind; };
     var income = sum(inMonth.filter(function (t) { return kindOf(t) === 'income'; }));
@@ -118,14 +392,15 @@
         return { id: c.id, name: c.name, icon: c.icon, plan: c.plan_monthly,
           fact: sum(inMonth.filter(function (t) { return t.category_id === c.id; })) };
       });
-    // Как в month_summary(): общие траты делятся пропорционально доходу участника,
-    // при нулевом суммарном доходе — поровну.
+    // Как в month_summary(): общие траты делятся поровну в режиме equal,
+    // иначе пропорционально доходу участника, при нулевом суммарном доходе — поровну.
     var totalShared = sum(inMonth.filter(function (t) { return kindOf(t) === 'expense' && t.is_shared; }));
     var totalIncome = sum(inMonth.filter(function (t) { return kindOf(t) === 'income'; }));
     var shareOf = function (m) {
-      return totalIncome > 0
-        ? totalShared * m.income / totalIncome
-        : totalShared / state.members.length;
+      if (splitMode === 'none') return 0;
+      return splitMode === 'equal' || totalIncome <= 0
+        ? totalShared / state.members.length
+        : totalShared * m.income / totalIncome;
     };
     var members = state.members.map(function (m) {
       var own = inMonth.filter(function (t) { return t.member_id === m.id; });
@@ -136,8 +411,8 @@
         personal_limit: 0, share: Math.round(shareOf({ income: mIncome }) * 100) / 100,
         balance: 0 };
     });
-    members.forEach(function (m) { m.balance = Math.round(m.paid_shared - m.share); });
-    return { income: income, expense: expense, balance: income - expense, categories: categories, members: members };
+    members.forEach(function (m) { m.balance = splitMode === 'none' ? 0 : Math.round(m.paid_shared - m.share); });
+    return { income: income, expense: expense, balance: income - expense, split_mode: splitMode, categories: categories, members: members };
   }
 
   function sum(list) {
@@ -147,15 +422,46 @@
   var handlers = {
     // API отвечает `{}`, пока пользователь не в семье.
     me: function () {
-      return state.member
-        ? { member: Object.assign({}, state.member, {
-            households: state.member.households,
-            notifications: state.member.notifications || { payments: true, limits: true, digest: false, daily: false, daily_time: '22:00', timezone: timezone() },
-          }), promo: state.promo || [] }
-        : {};
+      if (!state.member) return {};
+      var households = Object.assign({}, state.member.households, {
+        month_split_mode: splitModeFor(Fmt.currentMonth()),
+      });
+      return { member: Object.assign({}, state.member, {
+          households: households,
+          notifications: state.member.notifications || { payments: true, limits: true, digest: false, daily: false, daily_time: '22:00', timezone: timezone() },
+        }), promo: state.promo || [] };
     },
     summary: function (p) {
       return summary(p.month);
+    },
+    set_split_mode: function (p) {
+      var mode = p.mode === 'equal' || p.mode === 'proportional' || p.mode === 'none' ? p.mode : null;
+      if (!mode) throw new Error('bad_split_mode');
+      var month = typeof p.month === 'string' && /^\d{4}-\d{2}$/.test(p.month) ? p.month : null;
+      if (!month) throw new Error('bad_month');
+      state.monthSplit[month] = mode;
+      return { ok: true, month: month, split_mode: mode };
+    },
+    save_profile: function (p) {
+      var hasMember = Object.prototype.hasOwnProperty.call(p, 'member_name');
+      var hasHousehold = Object.prototype.hasOwnProperty.call(p, 'household_name');
+      if (!hasMember && !hasHousehold) throw new Error('bad_name');
+      var memberName = hasMember ? String(p.member_name || '').trim().slice(0, 40) : '';
+      var householdName = hasHousehold ? String(p.household_name || '').trim().slice(0, 60) : '';
+      if (hasMember && !memberName) throw new Error('bad_name');
+      if (hasHousehold && !householdName) throw new Error('bad_name');
+      if (hasMember) {
+        state.member = Object.assign({}, state.member, { name: memberName });
+        state.members = state.members.map(function (m) {
+          return m.id === state.member.id ? Object.assign({}, m, { name: memberName }) : m;
+        });
+      }
+      if (hasHousehold) {
+        state.member = Object.assign({}, state.member, {
+          households: Object.assign({}, state.member.households, { name: householdName }),
+        });
+      }
+      return { ok: true, member_name: state.member.name, household_name: state.member.households && state.member.households.name };
     },
     categories: function () {
       return state.categories.filter(function (c) { return !c.archived; }).sort(function (a, b) { return a.sort - b.sort; });
@@ -178,9 +484,19 @@
       var c = state.categories.find(function (x) { return x.id === p.category_id; });
       if (!c) throw new Error('bad_category');
       if (!(Number(p.amount) > 0)) throw new Error('bad_amount');
+      var receiptKey = null;
+      if (p.receipt) {
+        if (typeof p.receipt.fn !== 'string' || typeof p.receipt.i !== 'string' || typeof p.receipt.fp !== 'string'
+          || !/^\d{16}$/.test(p.receipt.fn) || !/^\d{1,10}$/.test(p.receipt.i) || !/^\d{1,10}$/.test(p.receipt.fp)) {
+          throw new Error('bad_receipt');
+        }
+        receiptKey = p.receipt.fn + ':' + p.receipt.i + ':' + p.receipt.fp;
+        if (state.tx.some(function (t) { return t.receipt_key === receiptKey; })) throw new Error('duplicate_receipt');
+      }
       var tx = { id: p.local_id || id(), member_id: state.member.id, category_id: c.id, amount: Number(p.amount),
         is_shared: !!p.is_shared, note: p.note || null,
         occurred_on: p.occurred_on || Fmt.todayIso(), created_at: new Date().toISOString() };
+      if (receiptKey) tx.receipt_key = receiptKey;
       state.tx.push(tx);
       return tx;
     },
@@ -219,6 +535,13 @@
     join: function (p) {
       state.member = joinDemo(p.member_name);
       return { ok: true };
+    },
+    switch_account: function (p) {
+      var member = setActor(p.member_id || p.id);
+      return { ok: true, member: member };
+    },
+    run_test_month: function (p) {
+      return runTestMonth(p && p.viewer === 'igor' ? 'igor' : 'anya');
     },
 
     // --- Планы ---
@@ -342,7 +665,8 @@
       if (!r) throw new Error('not_found');
       var cat = state.categories.find(function (c) { return c.name === (r.categories && r.categories.name); });
       var tx = { id: id(), member_id: state.member.id, category_id: cat.id, amount: r.amount,
-        is_shared: false, note: r.name, occurred_on: Fmt.todayIso(), created_at: new Date().toISOString() };
+        is_shared: false, note: r.name, occurred_on: p.occurred_on || Fmt.todayIso(),
+        created_at: new Date().toISOString() };
       state.tx.push(tx);
       return { ok: true, transaction: tx };
     },
@@ -429,6 +753,11 @@
 
   function reset() {
     state = fresh();
+  }
+
+  // ?test-month&as=anya|igor — два аккаунта одной тестовой семьи с 30 днями операций.
+  if (query.has('test-month')) {
+    runTestMonth(query.get('as') === 'igor' ? 'igor' : 'anya');
   }
 
   // Для отладки из консоли браузера: DEMO_API.state() показывает текущие данные.

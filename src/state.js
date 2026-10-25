@@ -11,10 +11,57 @@
     buying: false,
     deleting: false,
     month: Fmt.currentMonth(),
-    txFilter: { category_id: null, member_id: null, q: '' },
+    txFilter: { kind: null, category_id: null, member_id: null, q: '' },
+    txChart: 'expense',
     summaryCache: {},
     txCache: {},
+    homeEdit: false,
+    homeOrder: [],
+    homeDraft: null,
   };
+
+  // Порядок блоков главной. Хранится только на устройстве: у каждого
+  // участника может быть свой удобный экран.
+  var HOME_ORDER_KEY = 'budget.homeOrder';
+  var DEFAULT_HOME_ORDER = ['balance', 'categories', 'forecast', 'plans', 'partners'];
+
+  function normalizeHomeOrder(list) {
+    var seen = {};
+    var next = [];
+    (Array.isArray(list) ? list : []).forEach(function (id) {
+      if (DEFAULT_HOME_ORDER.indexOf(id) === -1 || seen[id]) return;
+      seen[id] = true;
+      next.push(id);
+    });
+    DEFAULT_HOME_ORDER.forEach(function (id) {
+      if (!seen[id]) next.push(id);
+    });
+    return next;
+  }
+
+  function readHomeOrder() {
+    try {
+      var saved = JSON.parse(root.localStorage.getItem(HOME_ORDER_KEY + '.' + (state.member && state.member.id)) || root.localStorage.getItem(HOME_ORDER_KEY) || '[]');
+      return normalizeHomeOrder(saved);
+    } catch (e) {
+      return DEFAULT_HOME_ORDER.slice();
+    }
+  }
+
+  var homeOrder = readHomeOrder();
+  state.homeOrder = homeOrder.slice();
+
+  // Тема оформления: системная (по умолчанию), светлая или тёмная.
+  // Выбор общий для всех участников на этом устройстве, поэтому не сбрасывается.
+  var THEME_KEY = 'budget.theme';
+  var THEME_MODES = ['system', 'light', 'dark'];
+
+  function normalizeThemeMode(mode) {
+    return THEME_MODES.indexOf(mode) !== -1 ? mode : 'system';
+  }
+
+  var themeMode = 'system';
+  try { themeMode = normalizeThemeMode(root.localStorage.getItem(THEME_KEY)); } catch (e) {}
 
   function displayName(m) {
     if (!m) return '';
@@ -39,9 +86,10 @@
     return !!(h && h.mode === 'solo');
   }
 
-  function splitModeLabel() {
-    var mode = state.member && state.member.households && state.member.households.split_mode;
-    var label = mode === 'equal' ? 'Поровну' : 'Пропорционально доходу';
+  function splitModeLabel(mode) {
+    var value = mode || (state.member && state.member.households &&
+      (state.member.households.month_split_mode || state.member.households.split_mode));
+    var label = value === 'none' ? 'Не делить' : value === 'equal' ? 'Поровну' : 'Пропорционально доходу';
     return root.I18n ? root.I18n.t(label) : label;
   }
 
@@ -69,24 +117,7 @@
     state.month = month ? month.slice(0, 7) : state.month;
   }
 
-  var HOME_BLOCKS = ['balance', 'categories', 'forecast', 'plans', 'partners'];
-  function homeOrder() {
-    var saved = [];
-    try { saved = JSON.parse(root.localStorage.getItem('budget.homeOrder.' + (state.member && state.member.id)) || '[]'); } catch (e) {}
-    if (!Array.isArray(saved)) saved = [];
-    return saved.filter(function (id, i) { return HOME_BLOCKS.indexOf(id) !== -1 && saved.indexOf(id) === i; })
-      .concat(HOME_BLOCKS.filter(function (id) { return saved.indexOf(id) === -1; }));
-  }
-  function moveHomeBlock(id, direction) {
-    var order = homeOrder(), from = order.indexOf(id), to = from + direction;
-    if (!state.member || from < 0 || to < 0 || to >= order.length || Math.abs(direction) !== 1) return;
-    order.splice(to, 0, order.splice(from, 1)[0]);
-    root.localStorage.setItem('budget.homeOrder.' + state.member.id, JSON.stringify(order));
-  }
-
   root.State = {
-    homeOrder: homeOrder,
-    moveHomeBlock: moveHomeBlock,
     get: function () { return state; },
     setMember: function (m) {
       state.member = m;
@@ -98,6 +129,12 @@
       return (state.categories || []).find(function (c) { return c.id === cid; }) || null;
     },
     displayName: displayName,
+    themeMode: function () { return themeMode; },
+    setThemeMode: function (mode) {
+      themeMode = normalizeThemeMode(mode);
+      try { root.localStorage.setItem(THEME_KEY, themeMode); } catch (e) {}
+      return themeMode;
+    },
     isSolo: isSolo,
     planDaysLeft: planDaysLeft,
     isExpired: isExpired,
@@ -105,13 +142,34 @@
     isDueDismissed: isDueDismissed,
     dismissDue: dismissDue,
     remember: remember,
+    homeOrder: function () {
+      var order = state.homeEdit && state.homeDraft ? state.homeDraft : readHomeOrder();
+      return normalizeHomeOrder(order);
+    },
+    defaultHomeOrder: function () {
+      return DEFAULT_HOME_ORDER.slice();
+    },
+    setHomeOrder: function (list) {
+      homeOrder = normalizeHomeOrder(list);
+      state.homeOrder = homeOrder.slice();
+      try { root.localStorage.setItem(HOME_ORDER_KEY + '.' + (state.member && state.member.id), JSON.stringify(homeOrder)); } catch (e) {}
+      return homeOrder.slice();
+    },
+    resetHomeOrder: function () {
+      homeOrder = DEFAULT_HOME_ORDER.slice();
+      state.homeOrder = homeOrder.slice();
+      try { root.localStorage.removeItem(HOME_ORDER_KEY + '.' + (state.member && state.member.id)); } catch (e) {}
+      return homeOrder.slice();
+    },
     reset: function () {
       state.member = null;
       state.categories = null;
       state.summaryCache = {};
       state.txCache = {};
-      state.txFilter = { category_id: null, member_id: null, q: '' };
+      state.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
       state.month = Fmt.currentMonth();
+      state.homeEdit = false;
+      state.homeDraft = null;
     },
   };
 })(window);
