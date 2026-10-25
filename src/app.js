@@ -705,14 +705,18 @@
     route = { name: 'add' };
     // Открытие из раздела: категория уже выбрана, поля формы начинаем с чистого листа.
     var preset = params && params.category_id;
-    var kind = params && (params.kind === 'income' || params.kind === 'expense') ? params.kind : (saved.kind || 'expense');
+    // «Повторить последнюю»: форма предзаполняется копией прошлой записи.
+    var clone = params && params.clone;
+    var kind = params && (params.kind === 'income' || params.kind === 'expense') ? params.kind
+      : clone ? (clone.categories && clone.categories.kind === 'income' ? 'income' : 'expense')
+      : (saved.kind || 'expense');
     form = {
-      category_id: preset || (kind === saved.kind ? saved.category_id : null),
+      category_id: preset || (clone ? clone.category_id : (kind === saved.kind ? saved.category_id : null)),
       kind: kind,
-      amount: preset ? '' : saved.amount,
-      note: preset ? '' : saved.note,
-      date: preset ? Fmt.todayIso() : saved.date,
-      is_shared: State.isSolo() ? false : (preset ? true : saved.is_shared),
+      amount: clone ? String(clone.amount) : (preset ? '' : saved.amount),
+      note: clone ? (clone.note || '') : (preset ? '' : saved.note),
+      date: preset || clone ? Fmt.todayIso() : saved.date,
+      is_shared: State.isSolo() ? false : (clone ? !!clone.is_shared : (preset ? true : saved.is_shared)),
       receipt: null,
     };
     var seq = ++reqSeq;
@@ -720,11 +724,116 @@
     loadCategories().then(function () {
       if (seq !== reqSeq || route.name !== 'add') return;
       pendingFromCategory = preset || null;
+      // Категорию могли удалить или архивировать после прошлой записи —
+      // тогда оставляем выбор пустым, а не сохраняем невалидный id.
+      var exists = (st.categories || []).some(function (c) { return c.id === form.category_id && c.kind === kind && !c.archived; });
+      if (form.category_id && !exists) form.category_id = null;
       render(Views.renderForm(form));
       if (State.isExpired()) banner(T('Пробный период закончился — добавлять записи нельзя.'));
     }).catch(function (err) {
       if (seq !== reqSeq || route.name !== 'add') return;
       fail(err);
+    });
+  }
+
+  // «Повторить последнюю»: берём самую свежую запись из кэша трат,
+  // при необходимости догружаем список месяца.
+  // --- Экспорт данных в CSV ---
+
+  var exportCsv = '';
+
+  function csvField(v) {
+    var s = String(v == null ? '' : v).replace(/"/g, '""');
+    return /[";\n\r]/.test(s) ? '"' + s + '"' : s;
+  }
+
+  function buildCsv(months) {
+    // Точка с запятой и BOM — чтобы файл сразу открывался в Excel с русскими региональными настройками.
+    var header = '\uFEFFДата;Тип;Категория;Сумма;Общий;Автор;Заметка';
+    var rows = [];
+    months.forEach(function (list) {
+      (Array.isArray(list) ? list : []).forEach(function (t) {
+        rows.push([
+          t.occurred_on,
+          (t.categories && t.categories.kind) === 'income' ? 'income' : 'expense',
+          (t.categories && t.categories.name) || '',
+          t.amount,
+          t.is_shared ? 1 : 0,
+          (t.members && t.members.name) || '',
+          t.note || '',
+        ].map(csvField).join(';'));
+      });
+    });
+    rows.sort(function (a, b) { return a < b ? -1 : a > b ? 1 : 0; });
+    return { csv: [header].concat(rows).join('\r\n'), count: rows.length };
+  }
+
+  function openExportCsv() {
+    if (st.exporting) return;
+    st.exporting = true;
+    if (route.name === 'settings') render(Views.renderSettings(route.section));
+    var current = Fmt.currentMonth();
+    var months = [];
+    var year = Number(current.slice(0, 4)), month = Number(current.slice(5, 7));
+    for (var i = 11; i >= 0; i--) {
+      var m = month - i, y = year;
+      while (m <= 0) { m += 12; y--; }
+      months.push(y + '-' + String(m).padStart(2, '0'));
+    }
+    Promise.all(months.map(function (m) { return loadTx(m); }))
+      .then(function (lists) {
+        st.exporting = false;
+        var built = buildCsv(lists);
+        exportCsv = built.csv;
+        if (!built.count) return toast(T('Нет записей за этот период'));
+        if (route.name === 'settings' && route.section === 'about') render(Views.renderSettings(route.section));
+        openSheet(Views.renderExportSheet(built.csv, built.count));
+      })
+      .catch(function (err) {
+        st.exporting = false;
+        if (route.name === 'settings') render(Views.renderSettings(route.section));
+        fail(err);
+      });
+  }
+
+  function fallbackCopyCsv() {
+    root.Tg.copy(exportCsv.length > 10000 ? exportCsv.slice(0, 10000) : exportCsv)
+      .then(function (ok) { toast(ok ? T('Скопировано') : T('Не удалось скопировать')); });
+  }
+
+  function downloadCsv() {
+    try {
+      var blob = new Blob([exportCsv], { type: 'text/csv;charset=utf-8' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'budget-' + Fmt.currentMonth() + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+    } catch (e) {
+      toast(T('Не удалось скачать — используйте копирование'));
+    }
+  }
+
+  function repeatLastTx() {
+    var list = cached('txCache:' + st.month);
+    var pick = function (rows) {
+      return (Array.isArray(rows) ? rows : []).filter(function (t) { return !deletingTx[t.id]; })[0];
+    };
+    var last = pick(list);
+    if (last) {
+      closeSheet();
+      openAdd({ clone: last });
+      return;
+    }
+    loadTx(st.month).then(function (rows) {
+      var tx = pick(rows);
+      if (!tx) return toast(T('Нет записей для повтора'));
+      closeSheet();
+      openAdd({ clone: tx });
+    }).catch(function () {
+      toast(T('Нет записей для повтора'));
     });
   }
 
@@ -1919,6 +2028,9 @@
         openAdd({ kind: 'expense' });
         pickReceiptPhoto({ fromQuick: true });
         break;
+      case 'repeat-last':
+        repeatLastTx();
+        break;
       case 'recurring-new':
         loadCategories().then(function () {
           if (el.sheet.classList.contains('sheet--quick-actions')) openPlanForm('recurring');
@@ -2984,6 +3096,13 @@
         toast(T('Демо-данные сброшены'));
         goHome();
         break;
+      case 'export-csv': openExportCsv(); break;
+      case 'export-copy':
+        if (exportCsv && navigator.clipboard && root.isSecureContext) {
+          navigator.clipboard.writeText(exportCsv).then(function () { toast(T('Скопировано')); }, function () { fallbackCopyCsv(); });
+        } else fallbackCopyCsv();
+        break;
+      case 'export-download': downloadCsv(); break;
     }
   });
 

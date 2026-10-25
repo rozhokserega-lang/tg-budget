@@ -77,9 +77,11 @@ test('home has a square receipt scanner next to the category view toggle', () =>
   assert.match(quick, /data-quick="receipt-photo"/);
   assert.match(quick, /Фото чека/);
   const pages = quick.split('<div class="quick-actions__page"').slice(1);
-  assert.deepEqual(pages.map(page => (page.match(/data-quick=/g) || []).length), [6, 6, 1]);
+  assert.deepEqual(pages.map(page => (page.match(/data-quick=/g) || []).length), [6, 6, 2]);
   assert.match(quick, /data-page="2"/);
   assert.match(quick, /data-quick="settings"/);
+  assert.match(quick, /data-quick="repeat-last"/);
+  assert.match(quick, /Повторить последнюю/);
 });
 test('solo expense form hides the shared-expense toggle', () => {
   const ctx = setup();

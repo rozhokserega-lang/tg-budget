@@ -450,6 +450,7 @@
         { id: 'wish-new', label: 'Новое желание', tone: 'pink', icon: '<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>' },
       ],
       [
+        { id: 'repeat-last', label: 'Повторить последнюю', tone: 'green', icon: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M16.5 9a5 5 0 0 0-8.6-1.6L4 11M4 13l3.9 3.6A5 5 0 0 0 16.5 15"/>' },
         { id: 'settings', label: 'Ещё', tone: 'pink', icon: '<path d="M4 7h10m4 0h2M4 17h2m4 0h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>' },
       ],
     ];
@@ -477,6 +478,21 @@
           '" data-action="quick-actions-page" data-page="' + index + '" role="tab" aria-selected="' + active +
           '" aria-label="' + e(T('Страница {n}', { n: index + 1 })) + '"><span></span></button>';
       }).join('') + '</div></div>';
+  }
+
+  // Шит экспорта: превью CSV, копирование и попытка скачать файл (в браузере).
+  function renderExportSheet(csv, count) {
+    // Показываем начало файла: копировать гигантский текст в буфер бессмысленно.
+    var PREVIEW_LIMIT = 4000;
+    var truncated = csv.length > PREVIEW_LIMIT;
+    return '<div class="export-sheet">' +
+      '<div class="sheet__title">' + e(T('CSV готов')) + '</div>' +
+      '<p class="small muted">' + e(T('Записей: {n}', { n: count })) + (truncated ? ' · ' + e(T('Файл слишком большой для копирования — показан частично.')) : '') + '</p>' +
+      '<pre class="export-sheet__preview">' + e(csv.slice(0, PREVIEW_LIMIT)) + '</pre>' +
+      '<div class="actions">' +
+      '<button type="button" class="btn btn--primary btn--full" data-action="export-copy">' + e(T('Скопировать CSV')) + '</button>' +
+      '<button type="button" class="btn btn--full" data-action="export-download">' + e(T('Скачать')) + '</button>' +
+      '</div></div>';
   }
 
   // expandedCat: { id, rows } — раскрытая категория и её записи за месяц.
@@ -1517,7 +1533,11 @@
     if (section === 'notifications') content = notificationsCard(notif);
     if (section === 'subscription') content = '<div class="card subscription-access"><div class="settings-row"><span class="settings-row__label">' + e(T('Доступ')) + '</span><span class="settings-row__value' + (left !== null && left < 0 ? ' amount--neg' : '') + '">' + e(planText) +
       (untilText ? e(T(' · до {date}', { date: untilText })) : '') + '</span></div></div>' + starsCard(st.tariffs, st.buying) + promoCard(st.promo);
-    if (section === 'about') content = '<div class="section"><div class="section__head"><span class="section__title">' + e(T('О приложении')) + '</span></div>' +
+    if (section === 'about') content = '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Экспорт данных')) + '</span></div>' +
+      '<div class="card"><div class="settings-row"><span class="settings-row__label">' + e(T('Скачать всё в CSV')) + '</span>' +
+      '<button type="button" class="btn btn--sm btn--primary" data-action="export-csv"' + (st.exporting ? ' disabled' : '') + '>' + e(st.exporting ? T('Готовлю файл…') : T('Скачать')) + '</button></div>' +
+      '<p class="small muted mt-8">' + e(T('Траты и доходы за последние 12 месяцев в одном файле.')) + '</p></div></div>' +
+      '<div class="section"><div class="section__head"><span class="section__title">' + e(T('О приложении')) + '</span></div>' +
       '<div class="card small muted">' + e(T('Данные видят только участники семьи. Telegram-бот принимает записи сообщением: «кофе 350», «+15000 подработка».')) + '</div></div>' +
       legalCard(st.deleting) +
       (Api.isDemo()
@@ -1591,6 +1611,7 @@
     categoryTxList: categoryTxList,
     renderSummary: renderSummary,
     renderQuickActions: renderQuickActions,
+    renderExportSheet: renderExportSheet,
     renderPlans: renderPlans,
     renderPlanForm: renderPlanForm,
     renderCategoryForm: renderCategoryForm,
