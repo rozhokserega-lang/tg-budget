@@ -54,3 +54,13 @@ E: все 60 тестов проходят (node --test tests/*.test.cjs), synta
 ## Исправление home-only dock, 2026-10-26
 
 Пользователь уточнил: плюс скрывать вне summary и показывать с drop при каждом возврате. Ветка fix/home-only-add-dock от b7bdae6. Изменены app.js (route visibility, inert/aria/tabIndex, transfer focus, cancel intro timer, stale add guard), finance.css (5→4 grid tracks, morph40→0, hide transform/opacity/visibility, reduced-motion), app tests, README/index asset versions. 134/134, syntax/diff чисты, Build1c9e4aab9d80. Browser375: четыре области84.25px; 320:70.5px; notch0 вне home/40 на home, no overflow, repeated add-drop, rapid tabs и quick actions, console[]. Светлая/тёмная проверены; theme system и viewport восстановлены. Скриншоты dock-home.png/dock-profile.png в visualizations/2026/10/25/01a174f7-5451-7950-8f12-0c2503bf0331. Изменения без коммита/push; прошлый push/merge уже выполнен, не считать его blanket-разрешением на новые публикации. Настоящие устройства/FPS и reduced-motion environment не проверены.
+
+## 2026-10-26: contact animation
+- Локальная ветка `fix/dock-contact-animation`, база main `3fb0b9e1c3049bb3285ecfaf89a35833f75c8671`.
+- `src/app.js`: одна RAF-модель, координата контакта -34px, сохранение позиции/скорости при прерывании, очистка при pagehide/скрытии/отсоединении DOM, reduced motion.
+- `styles/finance.css`: старые dock-drop/add-drop удалены; исходный SVG-контур масштабируется по глубине. Конечный вырез 96×40px сохранён, иконки панели не деформируются.
+- `tests/app.test.cjs`: управляемый RAF и регрессии контакта/отскока/отмены/reduced motion. `index.html`: обновлены версии ассетов.
+- Один полный прогон: 155 pass / 1 fail из-за неполной DOM-заглушки существующего focus-теста. Заглушка исправлена, адресный повтор этого теста: 1 pass. Syntax и diff-check прошли.
+- Browser smoke не выполнен: Chromium отсутствует; реальные Telegram/FPS/resize визуально не проверены.
+- GitHub create_branch вернул 403 Resource not accessible by integration. Remote не изменён; подготовлен ZIP-патч.
+- Следующий шаг: применить патч, визуально проверить в Telegram и сделать PR.

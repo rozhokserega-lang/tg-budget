@@ -55,7 +55,10 @@
   var pageSettle = null;
   // При возвращении на главную кнопка «Добавить» падает в вырез.
   var tabsPrimaryVisible = null;
-  var tabsIntroTimer = null;
+  var dockFrame = null;
+  var dockMotion = null;
+  var dockState = { y: -84, velocity: 0, opacity: 0 };
+  var dockReducedMotion = root.matchMedia ? root.matchMedia('(prefers-reduced-motion: reduce)') : null;
   // Категория, из которой открыли форму: после сохранения вернёмся к ней.
   var pendingFromCategory = null;
   var homeScreenCheckSeq = 0;
@@ -281,6 +284,94 @@
     root.Tg.backButton(null);
   }
 
+  // One clock and one contact coordinate drive both the button and the existing mask.
+  // The 54px button ends at y=34 relative to the dock; y=-34 is first contact.
+  function dockSample(motion, elapsed) {
+    var points = motion.points;
+    var time = Math.max(0, Math.min(elapsed, motion.duration));
+    var i = 1;
+    while (i < points.length - 1 && time > points[i].t) i++;
+    var a = points[i - 1], b = points[i], span = b.t - a.t;
+    var u = (time - a.t) / span, u2 = u * u, u3 = u2 * u;
+    var y = (2*u3-3*u2+1)*a.y + (u3-2*u2+u)*span*a.v +
+      (-2*u3+3*u2)*b.y + (u3-u2)*span*b.v;
+    var velocity = ((6*u2-6*u)*a.y + (3*u2-4*u+1)*span*a.v +
+      (-6*u2+6*u)*b.y + (3*u2-2*u)*span*b.v) / span;
+    var fade = motion.toOpacity ? Math.min(1, time / 80) :
+      Math.max(0, Math.min(1, (time - motion.duration + 80) / 80));
+    return { y: y, velocity: velocity,
+      opacity: motion.fromOpacity + (motion.toOpacity - motion.fromOpacity) * fade };
+  }
+
+  function paintDock(state) {
+    dockState = state;
+    var contact = Math.max(0, (state.y + 34) / 34);
+    var squash = Math.max(0, contact - 1) * .35;
+    el.tabs.style.setProperty('--dock-notch-height', (40 * contact) + 'px');
+    var icon = el.tabs.querySelector('.tab--primary .tab__icon');
+    if (icon) {
+      icon.style.transform = 'translateY(' + state.y + 'px) scale(' + (1 + squash) + ',' + (1 - squash) + ')';
+      icon.style.opacity = String(state.opacity);
+    }
+  }
+
+  function stopDock(settle) {
+    if (dockFrame !== null) cancelAnimationFrame(dockFrame);
+    dockFrame = null;
+    dockMotion = null;
+    el.tabs.classList.remove('tabs--intro', 'tabs--motion');
+    if (settle) {
+      var visible = tabsPrimaryVisible === true;
+      paintDock({ y: visible ? 0 : -84, velocity: 0, opacity: visible ? 1 : 0 });
+      el.tabs.style.removeProperty('--dock-notch-height');
+      var icon = el.tabs.querySelector('.tab--primary .tab__icon');
+      if (icon) { icon.style.removeProperty('transform'); icon.style.removeProperty('opacity'); }
+    }
+  }
+
+  function animateDock(show) {
+    var now = performance.now();
+    // Sample the interrupted trajectory before replacing it (including its velocity).
+    if (dockMotion) paintDock(dockSample(dockMotion, now - dockMotion.start));
+    stopDock(false);
+    if ((dockReducedMotion && dockReducedMotion.matches) || document.visibilityState === 'hidden') {
+      stopDock(true);
+      return;
+    }
+    var start = { t: 0, y: dockState.y, v: dockState.velocity };
+    var points;
+    if (!show) points = [start, { t: 300, y: -84, v: 0 }];
+    else if (start.y >= -34) points = [start, { t: 180, y: -3, v: 0 }, { t: 300, y: .6, v: 0 }, { t: 420, y: 0, v: 0 }];
+    else points = [start, { t: 160, y: -34, v: .625 }, { t: 280, y: 6, v: 0 },
+      { t: 400, y: -6, v: 0 }, { t: 500, y: 2, v: 0 },
+      { t: 620, y: -.5, v: 0 }, { t: 720, y: .12, v: 0 }, { t: 800, y: 0, v: 0 }];
+    dockMotion = { start: now, points: points, duration: points[points.length - 1].t,
+      fromOpacity: dockState.opacity, toOpacity: show ? 1 : 0 };
+    el.tabs.classList.add('tabs--motion');
+    if (show) el.tabs.classList.add('tabs--intro');
+    var primary = el.tabs.querySelector('.tab--primary');
+    if (primary) primary.classList.remove('tab--jelly');
+    paintDock(dockState);
+    function frame(timestamp) {
+      dockFrame = null;
+      if (!dockMotion) return;
+      if (el.tabs.isConnected === false) { stopDock(true); return; }
+      var elapsed = timestamp - dockMotion.start;
+      paintDock(dockSample(dockMotion, elapsed));
+      if (elapsed >= dockMotion.duration) stopDock(true);
+      else dockFrame = requestAnimationFrame(frame);
+    }
+    dockFrame = requestAnimationFrame(frame);
+  }
+
+  root.addEventListener('pagehide', function () { stopDock(true); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') stopDock(true);
+  });
+  if (dockReducedMotion && dockReducedMotion.addEventListener) {
+    dockReducedMotion.addEventListener('change', function () { if (dockReducedMotion.matches) stopDock(true); });
+  }
+
   function applyRouteUi() {
     var inApp = !!st.member;
     if (pageRefresh && refreshPageKey !== screenKey()) { el.screen.classList.remove('screen--refreshing'); el.screen.removeAttribute('aria-busy'); }
@@ -288,10 +379,10 @@
     el.tabs.hidden = !inApp;
     document.body.classList.toggle('app--has-tabs', inApp);
     if (!inApp) {
-      el.tabs.innerHTML = '';
-      clearTimeout(tabsIntroTimer);
-      el.tabs.classList.remove('tabs--intro', 'tabs--primary-hidden');
       tabsPrimaryVisible = null;
+      stopDock(true);
+      el.tabs.innerHTML = '';
+      el.tabs.classList.remove('tabs--primary-hidden');
       return;
     }
     // «Добавить» — не место, а действие: подсвечиваем вкладку, с которой пришли.
@@ -327,14 +418,8 @@
     }
     el.tabs.classList.toggle('tabs--primary-hidden', !showPrimary);
     if (showPrimary !== tabsPrimaryVisible) {
-      clearTimeout(tabsIntroTimer);
-      el.tabs.classList.remove('tabs--intro');
-      if (showPrimary) {
-        void el.tabs.offsetWidth;
-        el.tabs.classList.add('tabs--intro');
-        tabsIntroTimer = setTimeout(function () { el.tabs.classList.remove('tabs--intro'); }, 950);
-      }
       tabsPrimaryVisible = showPrimary;
+      animateDock(showPrimary);
     }
     syncBackButton();
   }

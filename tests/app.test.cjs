@@ -42,7 +42,9 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   const homeScreen = options.homeScreen || { supported: false, status: 'unsupported', added: false };
   const windowEvents = fakeNode();
   const storage = new Map(options.storage || []);
-  const context = { document, console, performance, setTimeout: fn => { timers.set(++timerId, fn); return timerId; }, clearTimeout: id => timers.delete(id), requestAnimationFrame: fn => fn() };
+  const frames = new Map();
+  let frameId = 0, frameTime = 0;
+  const context = { document, console, performance: { now: () => frameTime }, setTimeout: fn => { timers.set(++timerId, fn); return timerId; }, clearTimeout: id => timers.delete(id), requestAnimationFrame: fn => { frames.set(++frameId, fn); return frameId; }, cancelAnimationFrame: id => frames.delete(id) };
   if (options.clock) context.Date = class extends Date { static now() { return options.clock.now; } };
   context.window = {
     localStorage: {
@@ -73,6 +75,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     },
     Queue: { size: () => queueOps.length, push(action, payload) { const op = { id: 'op-' + (queueOps.length + 1), action, payload }; queueOps.push(op); return op; } },
   };
+  if (options.motionMedia) context.window.matchMedia = () => options.motionMedia;
   if (options.covers) context.window.Covers = options.covers;
   Object.assign(context, context.window);
   for (const file of ['recurring', 'format', 'state', 'views', 'cache']) {
@@ -84,6 +87,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   // Keep production event registration and implementations; omit network boot only.
   runInNewContext(source.replace(/\n  boot\(\);/, `
   root.TestApp = {
+    dockSample: dockSample, getDockState: function () { return dockState; }, getDockMotion: function () { return dockMotion; },
     applyRouteUi: applyRouteUi, setRoute: function (name) { route = {name:name}; },
     pageGestureAxis: pageGestureAxis, refreshCurrentPage: refreshCurrentPage,
     openEditTx: openEditTx, submitEditTx: submitEditTx, cancelEditTx: cancelEditTx,
@@ -139,6 +143,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   st['summaryCache:2026-10'] = { data: { expense: 0 }, at: Date.now() };
   if (options.stubReload !== false) context.window.TestApp.preventRouteReloadForTest();
   return { context, app: context.window.TestApp, st, tx, sheet, panel, nodes, calls, apiCalls, windowEvents, queueOps, homeScreen, alerts, storage,
+    frames, frame(time) { frameTime = time; const pending = [...frames.values()]; frames.clear(); pending.forEach(fn => fn(time)); },
     flushTimers() { const pending = [...timers.values()]; timers.clear(); pending.forEach(fn => fn()); } };
 }
 function form(overrides = {}) {
@@ -760,7 +765,7 @@ test('dock visibility, focusability and intro follow home across interrupted tra
    assert.equal(primary.inert,!shown);
    assert.equal(attrs.get('aria-hidden'),String(!shown));
  }
- env.flushTimers();
+ env.frame(800);
  assert.equal(tabs.classList.contains('tabs--intro'),false);
  env.app.applyRouteUi(); // cached repaint does not restart an already settled home intro
  assert.equal(tabs.classList.contains('tabs--intro'),false);
@@ -775,7 +780,7 @@ test('leaving home moves focus away from the central action before hiding it', (
  let focused=false;
  const primary=Object.assign(fakeNode(), {contains:node=>node===primary, setAttribute(name) { if(name==='aria-hidden') assert.equal(focused,true); }});
  const profile={focus(){focused=true;}};
- tabs.querySelector=selector=>selector==='[data-tab="add"]'?primary:selector==='[data-tab="settings"]'?profile:{};
+ tabs.querySelector=selector=>selector==='[data-tab="add"]'?primary:selector==='[data-tab="settings"]'?profile:selector==='.tabs__notch-fill'?{}:null;
  env.context.document.activeElement=primary;
  env.app.setRoute('settings'); env.app.applyRouteUi();
  assert.equal(focused,true); assert.equal(primary.inert,true);
@@ -1358,4 +1363,97 @@ test('search draft survives a background response before the debounce timer runs
   const refresh = env.app.refreshCurrentPage();
   next.resolve([{...env.tx,note:'pending text server'}]); await refresh;
   assert.match(env.nodes.get('#screen').innerHTML, /value="pending text"/);
+});
+
+test('dock stays flat through first contact, overshoots, rebounds and settles on one clock', () => {
+  const env = setup(), tabs = env.nodes.get('#tabs');
+  env.st.member = { id: 'me' };
+  const properties = new Map(), iconProperties = new Map();
+  tabs.style.setProperty = (k, v) => properties.set(k, v);
+  tabs.style.removeProperty = k => properties.delete(k);
+  const icon = { style: { setProperty() {}, removeProperty: k => iconProperties.delete(k),
+    set transform(v) { iconProperties.set('transform', v); }, set opacity(v) { iconProperties.set('opacity', v); } } };
+  const primary = Object.assign(fakeNode(), { contains: () => false });
+  tabs.querySelector = s => s === '.tab--primary .tab__icon' ? icon : s === '.tabs__notch-fill' ? {} : primary;
+  Object.defineProperty(tabs, 'offsetWidth', { get() { throw new Error('forced layout'); } });
+  env.app.setRoute('summary'); env.app.applyRouteUi();
+  const motion = env.app.getDockMotion();
+  for (const time of [0, 80, 159, 160]) {
+    env.frame(time);
+    assert.equal(parseFloat(properties.get('--dock-notch-height')), 0);
+  }
+  assert.equal(env.app.getDockState().y, -34);
+  env.frame(220); const pressing = parseFloat(properties.get('--dock-notch-height'));
+  assert.ok(pressing > 0 && pressing < 40);
+  env.frame(280); assert.ok(parseFloat(properties.get('--dock-notch-height')) > 40);
+  assert.equal(env.app.getDockState().y, 6);
+  env.frame(400); assert.ok(parseFloat(properties.get('--dock-notch-height')) < 40);
+  assert.equal(env.app.getDockState().y, -6);
+  for (const step of [8, 16, 33, 100]) {
+    let previous = env.app.dockSample(motion, 0);
+    for (let t = step; t <= 800; t += step) {
+      const next = env.app.dockSample(motion, t);
+      assert.ok(Number.isFinite(next.y) && Number.isFinite(next.velocity));
+      if (t <= 160) assert.ok(next.y <= -34);
+      assert.ok(Math.abs(next.y - previous.y) <= step * .8);
+      previous = next;
+    }
+  }
+  for (const t of [160, 280, 400, 500, 620, 720]) {
+    const a = env.app.dockSample(motion, t - .001), b = env.app.dockSample(motion, t + .001);
+    assert.ok(Math.abs(a.y - b.y) < .002);
+    assert.ok(Math.abs(a.velocity - b.velocity) < .001);
+  }
+  env.frame(800);
+  assert.equal(env.frames.size, 0);
+  assert.equal(properties.has('--dock-notch-height'), false); // restore the original 40px CSS geometry
+  assert.equal(iconProperties.size, 0);
+  assert.equal(env.app.getDockState().y, 0);
+  assert.equal(tabs.classList.contains('tabs--motion'), false);
+});
+
+test('dock interruption preserves position and velocity, cancels old frames and cleans up', () => {
+  const env = setup(), tabs = env.nodes.get('#tabs'); env.st.member = { id: 'me' };
+  env.app.setRoute('summary'); env.app.applyRouteUi(); env.frame(230);
+  const before = env.app.getDockState();
+  env.app.setRoute('tx'); env.app.applyRouteUi();
+  assert.equal(env.app.getDockState().y, before.y);
+  assert.equal(env.app.getDockMotion().points[0].v, before.velocity);
+  assert.equal(env.frames.size, 1);
+  env.frame(270); const exiting = env.app.getDockState();
+  env.app.setRoute('summary'); env.app.applyRouteUi();
+  assert.equal(env.app.getDockState().y, exiting.y);
+  assert.equal(env.app.getDockMotion().points[0].v, exiting.velocity);
+  assert.equal(env.frames.size, 1);
+  env.windowEvents.dispatch('resize', {});
+  assert.equal(env.frames.size, 1);
+  env.frame(1070);
+  assert.equal(env.frames.size, 0);
+  env.app.applyRouteUi(); assert.equal(env.frames.size, 0);
+  env.app.setRoute('tx'); env.app.applyRouteUi();
+  env.windowEvents.dispatch('pagehide', {});
+  assert.equal(env.frames.size, 0);
+  assert.equal(tabs.classList.contains('tabs--motion'), false);
+  env.app.setRoute('summary'); env.app.applyRouteUi();
+  tabs.isConnected = false; env.frame(1100);
+  assert.equal(env.frames.size, 0);
+  tabs.isConnected = true;
+  env.app.setRoute('tx'); env.app.applyRouteUi();
+  env.context.document.visibilityState = 'hidden';
+  env.context.document.dispatch('visibilitychange', {});
+  assert.equal(env.frames.size, 0);
+});
+
+test('reduced motion uses final dock geometry immediately and cancels active motion on change', () => {
+  let change;
+  const media = { matches: true, addEventListener(name, fn) { change = fn; } };
+  const env = setup(undefined, { motionMedia: media }); env.st.member = { id: 'me' };
+  env.app.setRoute('summary'); env.app.applyRouteUi();
+  assert.equal(env.frames.size, 0); assert.equal(env.app.getDockState().y, 0);
+  media.matches = false;
+  env.app.setRoute('tx'); env.app.applyRouteUi(); env.frame(300);
+  env.app.setRoute('summary'); env.app.applyRouteUi(); env.frame(460);
+  assert.equal(env.frames.size, 1);
+  media.matches = true; change();
+  assert.equal(env.frames.size, 0); assert.equal(env.app.getDockState().y, 0);
 });
