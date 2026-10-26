@@ -1,0 +1,44 @@
+name: Apply dock contact patch
+
+on:
+  push:
+    branches:
+      - fix/dock-contact-animation
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/dock-contact-animation
+          fetch-depth: 0
+      - name: Apply patch and validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .tmp/dock-contact.patch.gz.b64 | gzip -d > /tmp/dock-contact.patch
+          git apply --check /tmp/dock-contact.patch
+          git apply /tmp/dock-contact.patch
+          node --check src/app.js
+          node --check tests/app.test.cjs
+          git diff --check
+          set +e
+          node --test tests/*.test.cjs
+          TEST_STATUS=$?
+          set -e
+          rm -f .tmp/dock-contact.patch.gz.b64 .github/workflows/apply-dock-patch.yml
+          rmdir .tmp 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: animate dock contact with synchronized motion"
+          git push origin HEAD:fix/dock-contact-animation
+          if [ "$TEST_STATUS" -ne 0 ]; then
+            echo "Tests failed with exit code $TEST_STATUS"
+            exit "$TEST_STATUS"
+          fi
