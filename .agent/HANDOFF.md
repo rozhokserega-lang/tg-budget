@@ -1,3 +1,17 @@
+# SWR: активная передача 2026-10-26
+
+- Ветка `perf/swr-revalidation`, база main `229bcac`.
+- `src/cache.js`: invalidate(keys) сохраняет stale, версии блокируют старые ответы; одинаковые JSON переиспользуют ссылку.
+- `src/app.js`: TTL/SWR категорий/планов, точечная инвалидация add/edit/delete, независимые откаты, lifecycle/pull coalescing, сохранение scroll/search/sheet.
+- `styles/finance.css`: не перезапускать анимации планов на background repaint.
+- `tests/app.test.cjs`, `tests/cache.test.cjs`, `tests/swr-performance.cjs`: регрессии и измерения VM DOM.
+- Исходно 135/135; итог 152/152 + syntax/diff успешно, before/after benchmark завершён. После указания пользователя выполнен один итоговый запуск.
+- Отчёт: `.agent/SWR_REPORT.md`; локальный коммит/патч без push/merge/deploy. Следующий шаг: code review и ручной Telegram smoke.
+- Реальные Telegram/браузер не проверены. В api.js real updateTx уже заблокирован: не обходить без backend-контракта.
+
+---
+Предыдущая передача (другая задача):
+
 # Передача сессии
 
 Контрольная точка E локально: 2026-10-21. Цель/следующий шаг — STATE; очередь — TASKS.

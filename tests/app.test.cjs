@@ -68,7 +68,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
       call(action, payload) {
         apiCalls.push({ action, payload });
         if (options.api) return options.api(action, payload);
-        return Promise.resolve(action === 'me' ? { member: context.State.get().member } : action === 'list_plans' ? {} : []);
+        return Promise.resolve(action === 'me' ? { member: context.State.get().member } : action === 'list_plans' ? {} : action === 'categories' ? context.State.get().categories || [] : []);
       },
     },
     Queue: { size: () => queueOps.length, push(action, payload) { const op = { id: 'op-' + (queueOps.length + 1), action, payload }; queueOps.push(op); return op; } },
@@ -91,7 +91,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     getEditing: function () { return editingTx; }, getSaving: function () { return editSaving; },
     getDrag: function () { return sheetDrag; },
     openSummary: openSummary, openTx: openTx, openTxKind: openTxKind, setTxKind: setTxKind, loadResource: loadResource,
-    fetchSummary: fetchSummary, loadTx: loadTx, adoptMember: adoptMember,
+    fetchSummary: fetchSummary, loadTx: loadTx, adoptMember: adoptMember, loadCategories: loadCategories, invalidateTransactions: invalidateTransactions,
     refreshOnReturn: refreshOnReturn, clearCache: clearCache, cached: cached,
     applyLocalTx: applyLocalTx,
     loadMember: loadMember, deleteAccount: deleteAccount, closeDialog: closeDialog,
@@ -215,10 +215,10 @@ test('save waits for confirmation, rejects duplicate submit and preserves origin
   await settled();
   assert.equal(env.app.getEditing(), null);
   assert.equal(env.app.getSaving(), false);
-  assert.equal(env.st['txCache:2026-09'], undefined);
-  assert.equal(env.st['summaryCache:2026-09'], undefined);
-  assert.equal(env.st['txCache:2026-10'], undefined);
-  assert.equal(env.st['summaryCache:2026-10'], undefined);
+  assert.equal(env.st['txCache:2026-09'].data[0].id, 'expense');
+  assert.equal(env.st['summaryCache:2026-09'].data.expense, 20);
+  assert.equal(env.st['txCache:2026-10'].data.length, 0);
+  assert.equal(env.st['summaryCache:2026-10'].data.expense, 0);
   assert.equal(env.context.window.routeReloaded, 'summary');
 });
 
@@ -442,7 +442,7 @@ test('queued add keeps optimistic record until confirmation and invalidates on s
   assert.equal(env.queueOps[0].payload.occurred_on, '2026-09-22');
   assert.ok(env.st['txCache:2026-09'].data.some(row => row._local));
   env.windowEvents.dispatch('queue-sent', { detail: { id: env.queueOps[0].id, result: { id: 'server-new' } } });
-  assert.equal(env.st['txCache:2026-09'], undefined);
+  assert.equal(env.st['txCache:2026-09'].data.some(row => row.id === 'server-new' && !row._local), true);
 });
 
 test('member scope change removes pending add and delete overlays', async () => {
@@ -1136,4 +1136,212 @@ test('profile opens the shared home editor and returns after saving or cancellin
  assert.equal(env.context.State.homeOrder()[0],'categories');
  env.app.startHomeEdit(); env.app.cancelHomeEdit();
  assert.equal(env.app.getRoute().section,'interface'); assert.equal(env.st.homeEdit,false);
+});
+
+function countScreenPaints(env) {
+  const screen = env.nodes.get('#screen');
+  let html = screen.innerHTML, count = 0;
+  Object.defineProperty(screen, 'innerHTML', { get: () => html, set: value => { html = value; count++; } });
+  return () => count;
+}
+
+test('fresh finance cache paints once, equal forced response does not repaint or reset scroll', async () => {
+  const env = setup(undefined, { stubReload: false, api: () => Promise.resolve([]) });
+  env.app.cached('txCache:2026-09', []);
+  const paints = countScreenPaints(env);
+  env.app.openTx(); await settled();
+  assert.equal(paints(), 1); assert.equal(env.apiCalls.length, 0);
+  env.nodes.get('#screen').scrollTop = 200;
+  await env.app.refreshCurrentPage();
+  assert.equal(paints(), 1); assert.equal(env.nodes.get('#screen').scrollTop, 200);
+});
+
+test('expired finance cache is synchronous and a changed response preserves search, focus, scroll and sheet', async () => {
+  const clock = { now: 1000 }, pending = deferred();
+  const env = setup(undefined, { stubReload: false, clock, api: () => pending.promise });
+  env.app.cached('txCache:2026-09', [env.tx]); clock.now += 300001;
+  env.st.txFilter.q = 'old';
+  env.app.openTx();
+  assert.match(env.nodes.get('#screen').innerHTML, /old note/);
+  assert.doesNotMatch(env.nodes.get('#screen').innerHTML, /skeleton/);
+  const screen = env.nodes.get('#screen'); screen.scrollTop = 125;
+  const input = { id: 'tx-search', selectionStart: 1, selectionEnd: 2, focus() { this.focused = true; }, setSelectionRange(a,b) { this.range = [a,b]; } };
+  env.context.document.activeElement = input;
+  screen.querySelector = selector => selector === '#tx-search' ? input : null;
+  env.sheet.hidden = false; env.nodes.get('#sheet-body').innerHTML = 'draft stays';
+  pending.resolve([{ ...env.tx, note: 'old note updated' }]); await settled();
+  assert.match(screen.innerHTML, /old note updated/);
+  assert.equal(screen.scrollTop, 125); assert.equal(env.st.txFilter.q, 'old');
+  assert.equal(input.focused, true); assert.deepEqual(input.range, [1,2]);
+  assert.equal(env.sheet.hidden, false); assert.equal(env.nodes.get('#sheet-body').innerHTML, 'draft stays');
+  assert.equal(screen.classList.contains('screen--instant'), true);
+});
+
+test('ordinary plans entry respects TTL and expired categories return stale values while revalidating', async () => {
+  const clock = { now: 1000 }, categories = deferred();
+  let categoryCalls = 0;
+  const env = setup(undefined, { clock, api: action => {
+    if (action === 'categories') return ++categoryCalls === 1 ? Promise.resolve([{ id: 'old' }]) : categories.promise;
+    return Promise.resolve(action === 'list_plans' ? {} : []);
+  } });
+  env.app.openPlans(); await settled(); env.app.openPlans(); await settled();
+  assert.equal(env.apiCalls.filter(c => c.action === 'list_plans').length, 1);
+  await env.app.loadCategories(true);
+  clock.now += 300001;
+  assert.equal((await env.app.loadCategories())[0].id, 'old');
+  assert.equal(categoryCalls, 2);
+  categories.resolve([{ id: 'new' }]); await settled();
+  assert.equal(env.st.categories[0].id, 'new');
+});
+
+test('rapid home/finance switches and repeated month opens deduplicate active reads', async () => {
+  const rows = deferred(), summary = deferred();
+  const env = setup(undefined, { stubReload: false, api: action => action === 'list_tx' ? rows.promise : action === 'summary' ? summary.promise : Promise.resolve(action === 'list_plans' ? {} : []) });
+  env.app.cached('txCache:2026-09', [env.tx]);
+  env.app.cached('summaryCache:2026-09', { expense: 20, categories: [] });
+  env.app.openSummary(true); env.app.openTx(undefined, true); env.app.openSummary(true); env.app.openTx(undefined, true);
+  await settled();
+  assert.equal(env.apiCalls.filter(c => c.action === 'list_tx').length, 1);
+  assert.equal(env.apiCalls.filter(c => c.action === 'summary').length, 1);
+  rows.resolve([{ ...env.tx, note: 'latest-marker' }]); summary.resolve({ expense: 30, categories: [] }); await settled();
+  assert.match(env.nodes.get('#screen').innerHTML, /latest-marker/);
+  assert.equal(env.app.getRoute().name, 'tx');
+});
+
+test('pull refresh and lifecycle share page reads and lifecycle remains coalesced until data completes', async () => {
+  const rows = deferred(), member = { id: 'me', household_id: 'home' };
+  const env = setup(undefined, { stubReload: false, api: action => action === 'me' ? Promise.resolve({member}) : action === 'list_tx' ? rows.promise : Promise.resolve([]) });
+  env.app.adoptMember(member); env.app.cached('txCache:2026-09', [env.tx]); env.app.openTx(); await settled();
+  const pull = env.app.refreshCurrentPage(); const lifecycle = env.app.refreshOnReturn(); await settled();
+  assert.equal(env.app.refreshOnReturn(), lifecycle);
+  assert.equal(env.apiCalls.filter(c => c.action === 'list_tx').length, 1);
+  assert.equal(env.apiCalls.filter(c => c.action === 'me').length, 1);
+  rows.resolve([{ ...env.tx, note: 'partner-marker' }]); await Promise.all([pull, lifecycle]);
+  assert.match(env.nodes.get('#screen').innerHTML, /partner-marker/);
+});
+
+test('return from background updates finance behind an active edit without changing its draft', async () => {
+  const member = { id: 'me', household_id: 'home' };
+  const env = setup(undefined, { stubReload: false, api: action => Promise.resolve(action === 'me' ? {member} : action === 'categories' ? [{ id: 'food', kind: 'expense' }] : [{ ...env.tx, note: 'partner-change' }]) });
+  env.st.member = member;
+  env.app.cached('txCache:2026-09', [env.tx]); env.app.openTx(); await settled();
+  await open(env);
+  const editing = env.app.getEditing(), draft = env.nodes.get('#sheet-body').innerHTML;
+  await env.app.refreshOnReturn();
+  assert.equal(env.app.getEditing(), editing); assert.equal(env.nodes.get('#sheet-body').innerHTML, draft);
+  assert.equal(env.sheet.hidden, false); assert.equal(env.nodes.get('#screen').inert, true);
+  assert.match(env.nodes.get('#screen').innerHTML, /partner-change/);
+});
+
+test('targeted edit expires both months but leaves other month, plans and categories fresh', async () => {
+  const pending = deferred();
+  const env = setup(() => pending.promise);
+  env.app.cached('txCache:2026-08', []);
+  await env.app.loadPlans(); await env.app.loadCategories(true); await open(env);
+  const before = env.apiCalls.length;
+  env.app.submitEditTx(form()); pending.resolve({ id: 'expense' }); await settled();
+  await env.app.loadTx('2026-08'); await env.app.loadPlans(); await env.app.loadCategories(false);
+  assert.equal(env.apiCalls.length, before);
+  const data = deferred(); const late = env.app.loadResource('txCache:2026-09', () => data.promise, true);
+  const rejected = assert.rejects(late, {code: 'stale_response'}); await settled();
+  env.app.invalidateTransactions(['2026-09']); data.resolve([env.tx]); await rejected;
+  const n = env.apiCalls.length;
+  await env.app.loadTx('2026-09'); await env.app.loadTx('2026-10');
+  assert.equal(env.apiCalls.length - n, 2);
+});
+
+test('confirmed delete rejects pre-delete server response and revalidates partner totals', async () => {
+  const old = deferred(); let reads = 0;
+  const env = setup(undefined, { stubReload: false, api: action => action === 'list_tx' ? (++reads === 1 ? old.promise : Promise.resolve([])) : Promise.resolve(action === 'summary' ? { expense: 0, categories: [], members: [{ id: 'me', share: 0, balance: 0 }] } : action === 'list_plans' ? {} : []) });
+  env.app.cached('txCache:2026-09', [env.tx]); env.app.cached('summaryCache:2026-09', { expense: 20, categories: [] });
+  const request = env.app.loadTx('2026-09', true), rejected = assert.rejects(request, {code:'stale_response'}); await settled();
+  env.app.deleteTx('expense'); env.app.closeDialog(true); await settled();
+  env.queueOps.pop();
+  env.windowEvents.dispatch('queue-sent', { detail: { id: 'op-1', result: {} } });
+  await settled(); old.resolve([env.tx]); await rejected;
+  assert.equal(env.st['txCache:2026-09'].data.length, 0);
+  assert.equal(env.st['summaryCache:2026-09'].data.members[0].share, 0);
+});
+
+test('rolling back one delete preserves a second pending delete and a concurrent add', async () => {
+  const env = setup();
+  const second = { ...env.tx, id: 'second', amount: 10 };
+  env.app.cached('txCache:2026-09', [env.tx, second]);
+  env.app.cached('summaryCache:2026-09', { expense: 30, categories: [{id:'food',fact:30}], members: [] });
+  env.app.deleteTx('expense'); env.app.closeDialog(true); await settled();
+  env.app.deleteTx('second'); env.app.closeDialog(true); await settled();
+  env.app.applyLocalTx({ ...env.tx, id: 'third', amount: 5 });
+  env.windowEvents.dispatch('queue-failed', { detail: { op:env.queueOps[0], error: {code:'forbidden'} } });
+  const rows = env.st['txCache:2026-09'].data;
+  assert.equal(rows.filter(row => row.id === 'expense').length, 1);
+  assert.equal(rows.some(row => row.id === 'second'), false);
+  assert.equal(rows.some(row => row.id === 'third'), true);
+  assert.equal(env.st['summaryCache:2026-09'].data.expense, 25);
+});
+
+test('refresh on a newly opened page does not reuse an obsolete page promise or repaint the old route', async () => {
+  const september = deferred(), october = deferred();
+  const env = setup(undefined, { stubReload:false, api: (_, payload) => payload.month === '2026-09' ? september.promise : october.promise });
+  env.app.openTx(); const first = env.app.refreshCurrentPage();
+  env.st.month = '2026-10'; env.app.openTx(); const second = env.app.refreshCurrentPage();
+  assert.notEqual(first, second);
+  october.resolve([{...env.tx, occurred_on:'2026-10-01', note:'october-only'}]); await second;
+  september.resolve([{...env.tx, note:'september-hidden'}]); await first;
+  assert.match(env.nodes.get('#screen').innerHTML, /october-only/);
+  assert.doesNotMatch(env.nodes.get('#screen').innerHTML, /september-hidden/);
+});
+
+test('failed queued add rolls back only itself without dropping another pending add or unrelated month', async () => {
+  const env = setup();
+  env.app.cached('txCache:2026-08', []);
+  for (const amount of ['5', '7']) {
+    env.app.setAddDraftForTest({ amount, category_id:'food', note:'draft', date:'2026-09-22', is_shared:false, kind:'expense' });
+    env.app.submitAdd({ querySelector: () => ({ disabled:false }) });
+  }
+  assert.equal(env.st['summaryCache:2026-09'].data.expense, 32);
+  env.windowEvents.dispatch('queue-failed', { detail:{op:env.queueOps[0],error:{code:'bad_amount',message:'bad amount'}} });
+  assert.equal(env.st['summaryCache:2026-09'].data.expense, 27);
+  assert.equal(env.st['txCache:2026-09'].data.filter(row => row._local).length, 1);
+  const before = env.apiCalls.length; await env.app.loadTx('2026-08');
+  assert.equal(env.apiCalls.length, before);
+});
+
+test('confirming parallel adds reconciles IDs once and preserves the remaining optimistic row', async () => {
+  const env = setup(undefined, { api: action => Promise.resolve(action === 'list_tx' ? [{ ...env.tx, id:'server-first', amount:5 }] : []) });
+  for (const amount of ['5', '7']) {
+    env.app.setAddDraftForTest({ amount, category_id:'food', note:'draft', date:'2026-09-22', is_shared:false, kind:'expense' });
+    env.app.submitAdd({ querySelector: () => ({ disabled:false }) });
+  }
+  env.windowEvents.dispatch('queue-sent', { detail:{id:env.queueOps[0].id,result:{id:'server-first'}} });
+  assert.equal(env.st['txCache:2026-09'].data.filter(row => row.id === 'server-first').length, 1);
+  assert.equal(env.st['txCache:2026-09'].data.filter(row => row._local).length, 1);
+  const rows = await env.app.loadTx('2026-09');
+  assert.equal(rows.filter(row => row.id === 'server-first').length, 1);
+  assert.equal(rows.filter(row => row._local).length, 1);
+});
+
+test('partner summary and finance updates still paint when optional plans refresh fails', async () => {
+  const member = {id:'me',household_id:'home'};
+  const env = setup(undefined, {stubReload:false,api: action => {
+    if (action === 'me') return Promise.resolve({member});
+    if (action === 'list_plans' || action === 'list_recurring') return Promise.reject(Error('plans offline'));
+    return Promise.resolve(action === 'summary' ? { expense:40,categories:[{id:'food',name:'partner-updated',fact:40}] } : []);
+  }});
+  env.app.adoptMember(member);
+  env.app.cached('summaryCache:2026-09', {expense:20,categories:[]});
+  env.app.cached('txCache:2026-09', []);
+  await env.app.refreshOnReturn();
+  assert.match(env.nodes.get('#screen').innerHTML, /partner-updated/);
+  assert.match(env.nodes.get('#toast').textContent, /Не удалось обновить/);
+});
+
+test('search draft survives a background response before the debounce timer runs', async () => {
+  const next = deferred();
+  const env = setup(undefined, {stubReload:false,api:() => next.promise});
+  env.app.cached('txCache:2026-09', [env.tx]); env.app.openTx(); await settled();
+  env.nodes.get('#screen').dispatch('input', {target:{id:'tx-search',value:'pending text'}});
+  assert.equal(env.st.txFilter.q, 'pending text');
+  const refresh = env.app.refreshCurrentPage();
+  next.resolve([{...env.tx,note:'pending text server'}]); await refresh;
+  assert.match(env.nodes.get('#screen').innerHTML, /value="pending text"/);
 });

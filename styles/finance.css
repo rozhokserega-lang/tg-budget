@@ -1005,6 +1005,8 @@ html[data-theme='light'] .screen--peek { box-shadow: 0 0 30px rgba(33,24,50,.18)
    анимацию кольца: иначе оно наполнялось бы два раза подряд. */
 .screen--peek .finance-ring__segment,
 .screen--instant .finance-ring__segment { animation: none; }
+.screen--instant .plans-page .plan,
+.screen--instant .plans-page .progress__bar { animation: none; }
 /* Появление нового экрана длиннее угасания — нет заметной «пустой» паузы. */
 .screen { transition: opacity .2s cubic-bezier(.22,.86,.3,1); }
 

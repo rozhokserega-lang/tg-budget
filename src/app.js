@@ -351,7 +351,9 @@
   function screenKey() {
     return route.name + (route.name === 'settings' ? ':' + (route.section || 'home') : route.name === 'plans' ? ':' + plansTab : '');
   }
-  function render(html) {
+  function render(html, preserve) {
+    // Background updates keep the current screen interactive and stationary.
+    if (preserve && screenKey() === lastScreen && el.screen.innerHTML === html) return;
     // Смена экрана: старое содержимое мягко гаснет, потом появляется новое.
     // Мгновенная подмена DOM и анимация только нового и давала «рывок».
     var token = ++renderToken;
@@ -363,19 +365,31 @@
       applyRouteUi();
       fadeTimer = setTimeout(function () {
         el.screen.classList.remove('screen--fading');
-        if (token === renderToken) renderContent(html);
+        if (token === renderToken) renderContent(html, preserve);
       }, 110);
       return;
     }
-    renderContent(html);
+    renderContent(html, preserve);
   }
 
-  function renderContent(html) {
+  function renderContent(html, preserve) {
+    var scroll = preserve && screenKey() === lastScreen ? el.screen.scrollTop : 0;
+    var active = preserve && document.activeElement;
+    var search = active && active.id === 'tx-search' ? active : null;
+    var selection = search ? [search.selectionStart, search.selectionEnd] : null;
     el.screen.innerHTML = html;
-    el.screen.scrollTop = 0;
+    el.screen.scrollTop = scroll;
+    if (search) {
+      var input = el.screen.querySelector('#tx-search');
+      if (input) {
+        input.focus({ preventScroll: true });
+        if (selection[0] !== null && typeof input.setSelectionRange === 'function') input.setSelectionRange(selection[0], selection[1]);
+      }
+    }
     el.screen.classList.remove('screen--fading');
-    var instant = instantRender || Date.now() < instantUntil;
+    var instant = (preserve && screenKey() === lastScreen) || instantRender || Date.now() < instantUntil;
     el.screen.classList.toggle('screen--instant', instant);
+    if (preserve && screenKey() === lastScreen) el.screen.classList.remove('screen--in');
     // Каскад появления — только при смене экрана, не при каждом обновлении данных.
     if (screenKey() !== lastScreen) {
       lastScreen = screenKey();
@@ -450,6 +464,7 @@
 
   var resourceCache = BudgetCache.create();
   var dataEpoch = 0;
+  var resourceVersions = {};
   var memberRequest = 0;
   var lifecycleRequest = null;
 
@@ -460,6 +475,10 @@
   function adoptMember(member) {
     if (memberScope(st.member) !== memberScope(member)) {
       memberRequest++;
+      renderToken++;
+      clearTimeout(fadeTimer);
+      el.screen.innerHTML = '';
+      lastScreen = null;
       clearCache();
       st.categories = null;
       st.plans = null;
@@ -516,9 +535,9 @@
   }
 
   function loadResource(key, loader, force, commit) {
-    var epoch = dataEpoch;
+    var epoch = dataEpoch, version = resourceVersions[key] || 0;
     return resourceCache.fetch(key, loader, { force: !!force }).then(function (data) {
-      if (epoch !== dataEpoch || resourceCache.read(key, true) !== data) throw obsoleteResponse();
+      if (epoch !== dataEpoch || version !== (resourceVersions[key] || 0) || resourceCache.read(key, true) !== data) throw obsoleteResponse();
       if (commit) commit(data);
       return data;
     }).catch(function (err) { handleAccessFailure(err); throw err; });
@@ -534,19 +553,37 @@
   }
 
   function loadCategories(force) {
-    if (!force && st.categories) return Promise.resolve(st.categories);
-    return loadResource('categories', function () { return Api.call('categories'); }, force, function (list) {
+    var request = loadResource('categories', function () { return Api.call('categories'); }, force, function (list) {
       st.categories = Array.isArray(list) ? list : [];
     }).then(function () { return st.categories; });
+    if (!force && st.categories !== null) {
+      request.catch(function (err) { if (err.code !== 'stale_response') toast(T('Не удалось обновить категории')); });
+      return Promise.resolve(st.categories);
+    }
+    return request;
   }
 
   function clearCache() {
     dataEpoch++;
     resourceCache.invalidate();
+    resourceVersions = {};
     Object.keys(st).forEach(function (k) {
       if (k.indexOf('summaryCache:') === 0 || k.indexOf('txCache:') === 0) delete st[k];
     });
     st.lastSummary = null;
+  }
+
+  // Keep stale snapshots visible, but supersede every older read of these months.
+  function invalidateTransactions(months) {
+    var keys = [];
+    months.forEach(function (month) {
+      ['txCache:', 'summaryCache:'].forEach(function (prefix) {
+        var key = prefix + month;
+        if (keys.indexOf(key) === -1) keys.push(key);
+      });
+    });
+    keys.forEach(function (key) { resourceVersions[key] = (resourceVersions[key] || 0) + 1; });
+    resourceCache.invalidate(keys);
   }
 
   // Stale data remains renderable; TTL only governs ordinary network reads.
@@ -602,7 +639,7 @@
       if (lastPaint && snapshot.every(function (value, index) { return value === lastPaint[index]; })) return;
       lastPaint = snapshot;
       st.lastSummary = summary;
-      render(Views.renderSummary(summary, st.plans, expandedCat, cached('txCache:' + month), categoryView));
+      render(Views.renderSummary(summary, st.plans, expandedCat, cached('txCache:' + month), categoryView), true);
       if (State.isExpired()) banner(T('Пробный период закончился — новые записи недоступны.'));
     }
     if (previous) paint(); else render(Views.skeletonSummary());
@@ -614,7 +651,10 @@
       paint();
       return txRequest.then(function (rows) {
         if (!current()) return;
-        if (expandedCat) expandedCat = { id: expandedCat.id, rows: rows.filter(function (t) { return t.category_id === expandedCat.id; }) };
+        if (expandedCat) {
+          var expandedRows = rows.filter(function (t) { return t.category_id === expandedCat.id; });
+          if (JSON.stringify(expandedCat.rows) !== JSON.stringify(expandedRows)) expandedCat = { id: expandedCat.id, rows: expandedRows };
+        }
         paint();
       });
     }).catch(function (err) {
@@ -668,11 +708,11 @@
     var month = st.month;
     var previous = cached('txCache:' + month);
     if (scrollToFilter) txFilterScrollPending = true;
-    if (previous) render(Views.renderTxList(previous, st.txFilter, st.txChart)); else render(Views.skeletonList());
+    if (previous) render(Views.renderTxList(previous, st.txFilter, st.txChart), true); else render(Views.skeletonList());
     pendingScrollTxFilter();
     loadTx(month, force).then(function (all) {
       if (seq !== reqSeq || route.name !== 'tx' || month !== st.month) return;
-      render(Views.renderTxList(all, st.txFilter, st.txChart));
+      if (all !== previous) render(Views.renderTxList(all, st.txFilter, st.txChart), true);
       pendingScrollTxFilter();
       if (State.isExpired()) banner(T('Пробный период закончился — новые записи недоступны.'));
     }).catch(function (err) {
@@ -1016,14 +1056,15 @@
 
   // --- Планы ---
 
-  function openPlans(tab) {
+  function openPlans(tab, force) {
     if (tab) plansTab = tab;
     route = { name: 'plans' };
-    if (st.plans) render(Views.renderPlans(st.plans, plansTab)); else render(Views.skeletonList());
+    var previous = st.plans;
+    if (previous) render(Views.renderPlans(previous, plansTab), true); else render(Views.skeletonList());
     var seq = ++reqSeq;
-    loadPlans(true).then(function (plans) {
+    loadPlans(force).then(function (plans) {
       if (seq !== reqSeq || route.name !== 'plans') return;
-      render(Views.renderPlans(plans, plansTab));
+      if (plans !== previous) render(Views.renderPlans(plans, plansTab), true);
       if (State.isExpired()) banner(T('Пробный период закончился — изменения недоступны.'));
     }).catch(function (err) {
       if (seq !== reqSeq || route.name !== 'plans' || err.code === 'stale_response') return;
@@ -1258,30 +1299,16 @@
 
   // Убирает запись из кэшей и пересчитывает сводку на месте (без запроса).
   function removeOptimisticTx(tx) {
-    removeLocalTx(tx.id);
     var month = String(tx.occurred_on || '').slice(0, 7);
-    var s = st.lastSummary;
-    if (!s || month !== st.month) return;
-    var isIncome = (tx.categories && tx.categories.kind) === 'income';
-    var next = Object.assign({}, s);
-    next.income = Math.max(0, Number(s.income || 0) - (isIncome ? tx.amount : 0));
-    next.expense = Math.max(0, Number(s.expense || 0) - (isIncome ? 0 : tx.amount));
-    next.balance = next.income - next.expense;
-    next.categories = (s.categories || []).map(function (c) {
-      return c.id === tx.category_id ? Object.assign({}, c, { fact: Math.max(0, Number(c.fact || 0) - tx.amount) }) : c;
-    });
-    cached('summaryCache:' + st.month, next);
-    st.lastSummary = next;
-  }
-
-  // Копия сводки для отката оптимистичного удаления: меняем только те массивы,
-  // которые пересчитываются на клиенте.
-  function cloneSummary(s) {
-    if (!s) return s;
-    return Object.assign({}, s, {
-      categories: (s.categories || []).map(function (c) { return Object.assign({}, c); }),
-      members: (s.members || []).map(function (m) { return Object.assign({}, m); }),
-    });
+    var list = cached('txCache:' + month);
+    if (list) cached('txCache:' + month, list.filter(function (row) { return row.id !== tx.id; }));
+    var summary = cached('summaryCache:' + month);
+    if (summary) {
+      var restored = summaryAfterRemoval(summary, tx);
+      cached('summaryCache:' + month, restored);
+      if (month === st.month) st.lastSummary = restored;
+    }
+    invalidateTransactions([month]);
   }
 
   // Пересчёт сводки без запроса к серверу: убираем сумму записи из итогов,
@@ -2463,8 +2490,7 @@
     Api.updateTx(payload).then(function (tx) {
       if (request !== editGeneration || scope !== memberScope(st.member) || editingTx !== original) return;
       if (!tx || tx.id !== payload.id) throw new Error(T('Сервер не подтвердил изменение'));
-      clearCache();
-      st.lastSummary = null;
+      invalidateTransactions([String(original.occurred_on).slice(0, 7), date.slice(0, 7)]);
       expandedCat = null;
       editingTx = null;
       el.screen.inert = false;
@@ -2551,7 +2577,11 @@
       if (tx && tx.receipt_key && receiptStore()) {
         receiptStore().remember(scope, tx.receipt_key, { txId: tx.id, date: occurred, sum: amount });
       }
-      clearCache();
+      var rows = cached('txCache:' + occurred.slice(0, 7));
+      if (rows && tx && tx.id) cached('txCache:' + occurred.slice(0, 7), rows.map(function (row) {
+        return row.id === local.id ? Object.assign({}, row, tx, { _local: false }) : row;
+      }));
+      invalidateTransactions([occurred.slice(0, 7)]);
       // Сервер подтвердил — перерисовываем, чтобы убрать «отправляется».
       if (route.name === 'summary') openSummary();
       if (route.name === 'tx') openTx();
@@ -2622,10 +2652,6 @@
       });
 
       var month = removed && removed.occurred_on ? String(removed.occurred_on).slice(0, 7) : st.month;
-      var summarySnapshot = removed ? cloneSummary(cached('summaryCache:' + month)) : null;
-      var expandedSnapshot = expandedCat
-        ? { id: expandedCat.id, rows: expandedCat.rows ? expandedCat.rows.slice() : null }
-        : null;
       deletingTx[id] = true;
 
       if (removed) {
@@ -2660,6 +2686,9 @@
         // Только после подтверждения сервера освобождаем чек: при ошибке
         // запись вернётся, и защита от повторного добавления должна остаться.
         if (removed && receiptStore()) receiptStore().forgetForTx(scope, removed);
+        invalidateTransactions([month]);
+        if (route.name === 'summary') openSummary();
+        else if (route.name === 'tx') openTx();
       });
       root.addEventListener('queue-failed', function onFailed(ev) {
         if (ev.detail.op.id !== op.id) return;
@@ -2668,15 +2697,19 @@
         delete deletingTx[id];
         positions.forEach(function (pos) {
           var current = (cached(pos.key) || []).slice();
-          current.splice(Math.min(pos.index, current.length), 0, pos.tx);
+          if (!current.some(function (row) { return row.id === pos.tx.id; })) current.splice(Math.min(pos.index, current.length), 0, pos.tx);
           cached(pos.key, current);
         });
         pendingRestore.forEach(function (item) { pendingAdds[item.opId] = item.tx; });
-        if (summarySnapshot) {
-          cached('summaryCache:' + month, summarySnapshot);
-          if (month === st.month) st.lastSummary = summarySnapshot;
+        var currentSummary = cached('summaryCache:' + month);
+        if (currentSummary && removed) {
+          var restored = summaryAfterRemoval(currentSummary, Object.assign({}, removed, { amount: -Number(removed.amount) }));
+          cached('summaryCache:' + month, restored);
+          if (month === st.month) st.lastSummary = restored;
         }
-        expandedCat = expandedSnapshot;
+        if (expandedCat && expandedCat.rows && removed && expandedCat.id === removed.category_id) {
+          expandedCat = { id: expandedCat.id, rows: (cached('txCache:' + month) || []).filter(function (row) { return row.category_id === expandedCat.id; }) };
+        }
         root.Tg.haptic('error');
         toast(T('Не удалилось: {error}', { error: (ev.detail.error && ev.detail.error.message) || T('ошибка') }));
         if (route.name === 'tx') openTx();
@@ -3242,13 +3275,15 @@ document.addEventListener('click', function (ev) {
     var input = ev.target;
     if (!input || input.id !== 'tx-search') return;
     var value = input.value;
+    // Save the draft immediately; only filtering is debounced. A background
+    // render during these 120 ms must use the latest text.
+    if (!st.txFilter) st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
+    st.txFilter.q = value;
     clearTimeout(txSearchTimer);
     txSearchTimer = setTimeout(function () {
       if (route.name !== 'tx') return;
       var current = el.screen.querySelector('#tx-search');
       if (!current || current.value !== value) return;
-      if (!st.txFilter) st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
-      st.txFilter.q = value;
       var clear = el.screen.querySelector('[data-action="tx-search-clear"]');
       if (clear) clear.hidden = !value;
       refreshTxResults();
@@ -3724,16 +3759,18 @@ document.addEventListener('click', function (ev) {
   });
 
   // One page recognizer; expense rows and nested gesture surfaces keep priority.
-  var pageGesture = null, pageRefresh = null, refreshPageKey = null, pageSwipeUntil = 0;
+  var pageGesture = null, pageRefresh = null, refreshPageKey = null, refreshContext = null, pageSwipeUntil = 0;
   function pageGestureAxis(dx, dy) {
     if (Math.max(Math.abs(dx), Math.abs(dy)) < 10) return null;
     if (Math.abs(dx) > Math.abs(dy) * 1.5) return 'x';
     if (Math.abs(dy) > Math.abs(dx) * 1.5) return 'y';
     return null;
   }
-  function refreshCurrentPage() {
-    if (pageRefresh) return pageRefresh;
+  function refreshCurrentPage(forcePaint) {
     var name = route.name, key = screenKey(), month = st.month, seq = reqSeq, scope = memberScope(st.member);
+    var context = key + ':' + month + ':' + seq + ':' + scope;
+    if (pageRefresh && refreshContext === context) return pageRefresh;
+    var before = [cached('summaryCache:' + month), cached('txCache:' + month), st.plans, JSON.stringify(st.member)];
     function current() { return key === screenKey() && month === st.month && seq === reqSeq && scope === memberScope(st.member); }
     var tasks;
     if (name === 'summary') tasks = [loadSummary(month, true), loadTx(month, true), loadPlans(true)];
@@ -3749,30 +3786,39 @@ document.addEventListener('click', function (ev) {
     }
     else return Promise.resolve();
     refreshPageKey = key;
+    refreshContext = context;
     el.screen.style.setProperty('--pull-distance', '32px');
     el.screen.classList.add('screen--refreshing');
     el.screen.setAttribute('aria-busy', 'true');
-    pageRefresh = Promise.allSettled(tasks).then(function (results) {
+    var request = Promise.allSettled(tasks).then(function (results) {
       var failure = results.find(function (result) { return result.status === 'rejected'; });
-      if (failure) throw failure.reason;
       if (!current()) return;
+      var unchanged = before[0] === cached('summaryCache:' + month) && before[1] === cached('txCache:' + month) && before[2] === st.plans && before[3] === JSON.stringify(st.member);
+      if (unchanged && !failure && !forcePaint && name !== 'settings') return;
+      if (name === 'summary' && !cached('summaryCache:' + month)) {
+        if (failure) throw failure.reason;
+        return;
+      }
       if (name === 'summary') {
         if (expandedCat) expandedCat.rows = (cached('txCache:' + month) || []).filter(function (t) { return t.category_id === expandedCat.id; });
-        renderSummaryFromCache();
-      } else if (name === 'tx') refreshTxResults();
-      else if (name === 'plans') render(Views.renderPlans(st.plans, plansTab));
+        render(Views.renderSummary(cached('summaryCache:' + month), st.plans, expandedCat, cached('txCache:' + month), categoryView), true);
+      } else if (name === 'tx') render(Views.renderTxList(cached('txCache:' + month) || [], st.txFilter, st.txChart), true);
+      else if (name === 'plans') render(Views.renderPlans(st.plans, plansTab), true);
       else render(Views.renderSettings(route.section));
+      if (failure) throw failure.reason;
     }).catch(function (err) {
       if (!current() || err.code === 'stale_response') return;
       if (err.code === 'unauthorized' || err.code === 'no_household') return fail(err);
       toast(T('Не удалось обновить — показываем сохранённое'));
     }).finally(function () {
-      pageRefresh = null; refreshPageKey = null;
+      if (pageRefresh !== request) return;
+      pageRefresh = null; refreshPageKey = null; refreshContext = null;
       el.screen.classList.remove('screen--refreshing');
       el.screen.removeAttribute('aria-busy');
       el.screen.style.removeProperty('--pull-distance');
     });
-    return pageRefresh;
+    pageRefresh = request;
+    return request;
   }
   function pageGestureBlocked(target) {
     if (!el.sheet.hidden || !el.dialog.hidden || !st.member || route.name === 'add' || route.name === 'limits' || st.homeEdit) return true;
@@ -3914,16 +3960,15 @@ document.addEventListener('click', function (ev) {
 
   function refreshOnReturn() {
     if (!st.member || lifecycleRequest) return lifecycleRequest;
-    var seq = reqSeq;
+    var seq = reqSeq, previousMember = JSON.stringify(st.member);
     lifecycleRequest = loadMember().then(function (me) {
       if (!me) { reqSeq++; return render(Views.renderOnboarding(onboarding)); }
-      if (editingTx || route.name === 'add') return;
+      if (route.name === 'add' || st.homeEdit) return;
       if (seq !== reqSeq && route.name !== 'summary' && route.name !== 'tx') return;
-      if (route.name === 'summary') openSummary(true);
-      else if (route.name === 'tx') openTx(undefined, true);
-      else if (route.name === 'plans') openPlans();
-      // Categories may have changed on another device; refresh after critical loads start.
-      loadCategories(true).catch(function (err) { if (err.code !== 'stale_response') toast(T('Не удалось обновить категории')); });
+      // Share the page refresh promise with pull-to-refresh until all reads finish.
+      return Promise.all([['summary', 'tx', 'plans'].indexOf(route.name) !== -1 ? refreshCurrentPage(previousMember !== JSON.stringify(st.member)) : Promise.resolve(), loadCategories(true).catch(function (err) {
+        if (err.code !== 'stale_response') toast(T('Не удалось обновить категории'));
+      })]);
     }).catch(function (err) { if (err.code !== 'stale_response') toast(T('Не удалось обновить — показываем сохранённое')); })
       .finally(function () { lifecycleRequest = null; });
     return lifecycleRequest;
