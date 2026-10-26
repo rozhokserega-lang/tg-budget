@@ -1365,7 +1365,7 @@ test('search draft survives a background response before the debounce timer runs
   assert.match(env.nodes.get('#screen').innerHTML, /value="pending text"/);
 });
 
-test('dock stays flat through first contact, overshoots, rebounds and settles on one clock', () => {
+test('fixed dock insert stays flat until contact, opens once and survives button rebound', () => {
   const env = setup(), tabs = env.nodes.get('#tabs');
   env.st.member = { id: 'me' };
   const properties = new Map(), iconProperties = new Map();
@@ -1378,16 +1378,23 @@ test('dock stays flat through first contact, overshoots, rebounds and settles on
   Object.defineProperty(tabs, 'offsetWidth', { get() { throw new Error('forced layout'); } });
   env.app.setRoute('summary'); env.app.applyRouteUi();
   const motion = env.app.getDockMotion();
+  const insertPath = () => decodeURIComponent(properties.get('--dock-insert-mask') || '');
   for (const time of [0, 80, 159, 160]) {
     env.frame(time);
-    assert.equal(parseFloat(properties.get('--dock-notch-height')), 0);
+    assert.equal(properties.get('--dock-notch-height'), '40px');
+    assert.match(insertPath(), /M0 0C16 0 12 0 48 0C84 0 80 0 96 0V40H0Z/);
+    assert.match(insertPath(), /preserveAspectRatio="none"/);
   }
   assert.equal(env.app.getDockState().y, -34);
-  env.frame(220); const pressing = parseFloat(properties.get('--dock-notch-height'));
-  assert.ok(pressing > 0 && pressing < 40);
-  env.frame(280); assert.ok(parseFloat(properties.get('--dock-notch-height')) > 40);
+  env.frame(220);
+  const pressing = Number(insertPath().match(/M0 0C16 0 12 ([\d.]+)/)[1]);
+  assert.ok(pressing > 0 && pressing < 38);
+  env.frame(280);
+  assert.equal(properties.get('--dock-insert-mask'), 'linear-gradient(transparent,transparent)');
   assert.equal(env.app.getDockState().y, 6);
-  env.frame(400); assert.ok(parseFloat(properties.get('--dock-notch-height')) < 40);
+  env.frame(400);
+  assert.equal(properties.get('--dock-notch-height'), '40px');
+  assert.equal(properties.get('--dock-insert-mask'), 'linear-gradient(transparent,transparent)');
   assert.equal(env.app.getDockState().y, -6);
   for (const step of [8, 16, 33, 100]) {
     let previous = env.app.dockSample(motion, 0);
@@ -1406,7 +1413,9 @@ test('dock stays flat through first contact, overshoots, rebounds and settles on
   }
   env.frame(800);
   assert.equal(env.frames.size, 0);
-  assert.equal(properties.has('--dock-notch-height'), false); // restore the original 40px CSS geometry
+  for (const key of ['--dock-notch-height', '--dock-insert-mask', '--dock-contact-edge']) {
+    assert.equal(properties.has(key), false); // only animation properties are discarded
+  }
   assert.equal(iconProperties.size, 0);
   assert.equal(env.app.getDockState().y, 0);
   assert.equal(tabs.classList.contains('tabs--motion'), false);

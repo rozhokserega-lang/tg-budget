@@ -55,6 +55,7 @@
   var pageSettle = null;
   // При возвращении на главную кнопка «Добавить» падает в вырез.
   var tabsPrimaryVisible = null;
+  var dockReveal = 0;
   var dockFrame = null;
   var dockMotion = null;
   var dockState = { y: -84, velocity: 0, opacity: 0 };
@@ -284,7 +285,7 @@
     root.Tg.backButton(null);
   }
 
-  // One clock and one contact coordinate drive both the button and the existing mask.
+  // One clock drives the button and a temporary insert inside the fixed notch.
   // The 54px button ends at y=34 relative to the dock; y=-34 is first contact.
   function dockSample(motion, elapsed) {
     var points = motion.points;
@@ -307,7 +308,27 @@
     dockState = state;
     var contact = Math.max(0, (state.y + 34) / 34);
     var squash = Math.max(0, contact - 1) * .35;
-    el.tabs.style.setProperty('--dock-notch-height', (40 * contact) + 'px');
+    // The finished dock never stretches. A mask insert closes its hole before contact.
+    // Its upper edge bends in fixed SVG coordinates; no rectangular layer moves away
+    // from the shoulders, and there is only ONE painted background (no alpha seams).
+    var progress = Math.min(1, contact);
+    if (dockMotion && !dockMotion.toOpacity) {
+      progress = dockMotion.fromReveal * Math.min(1, progress / (dockMotion.fromContact || 1));
+    } else if (dockMotion) progress = Math.max(dockReveal, progress);
+    dockReveal = progress;
+    var depth = 38 * progress;
+    var path = 'M0 0C16 0 12 ' + depth + ' 48 ' + depth +
+      'C84 ' + depth + ' 80 0 96 0V40H0Z';
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 40" preserveAspectRatio="none">' +
+      '<path fill="black" d="' + path + '"/></svg>';
+    var edgeDepth = .5 + 37.5 * progress;
+    var edge = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 40" preserveAspectRatio="none">' +
+      '<path fill="none" stroke="rgba(191,206,216,.23)" stroke-width="1" d="M0 .5C16 .5 12 ' + edgeDepth +
+      ' 48 ' + edgeDepth + 'C84 ' + edgeDepth + ' 80 .5 96 .5"/></svg>';
+    el.tabs.style.setProperty('--dock-notch-height', '40px');
+    el.tabs.style.setProperty('--dock-insert-mask', progress >= 1 ? 'linear-gradient(transparent,transparent)' :
+      'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")');
+    el.tabs.style.setProperty('--dock-contact-edge', 'url("data:image/svg+xml,' + encodeURIComponent(edge) + '")');
     var icon = el.tabs.querySelector('.tab--primary .tab__icon');
     if (icon) {
       icon.style.transform = 'translateY(' + state.y + 'px) scale(' + (1 + squash) + ',' + (1 - squash) + ')';
@@ -324,6 +345,8 @@
       var visible = tabsPrimaryVisible === true;
       paintDock({ y: visible ? 0 : -84, velocity: 0, opacity: visible ? 1 : 0 });
       el.tabs.style.removeProperty('--dock-notch-height');
+      el.tabs.style.removeProperty('--dock-insert-mask');
+      el.tabs.style.removeProperty('--dock-contact-edge');
       var icon = el.tabs.querySelector('.tab--primary .tab__icon');
       if (icon) { icon.style.removeProperty('transform'); icon.style.removeProperty('opacity'); }
     }
@@ -345,7 +368,8 @@
     else points = [start, { t: 160, y: -34, v: .625 }, { t: 280, y: 6, v: 0 },
       { t: 400, y: -6, v: 0 }, { t: 500, y: 2, v: 0 },
       { t: 620, y: -.5, v: 0 }, { t: 720, y: .12, v: 0 }, { t: 800, y: 0, v: 0 }];
-    dockMotion = { start: now, points: points, duration: points[points.length - 1].t,
+    dockMotion = { fromReveal: dockReveal, fromContact: Math.min(1, Math.max(0, (dockState.y + 34) / 34)),
+      start: now, points: points, duration: points[points.length - 1].t,
       fromOpacity: dockState.opacity, toOpacity: show ? 1 : 0 };
     el.tabs.classList.add('tabs--motion');
     if (show) el.tabs.classList.add('tabs--intro');
