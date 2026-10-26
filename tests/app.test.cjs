@@ -1081,6 +1081,20 @@ test('page swipe follows main tabs, skips add and ignores interactive targets', 
   assert.equal(env.context.window.routeReloaded, null);
 });
 
+test('page swipe starts on cards and stat buttons but not on gesture surfaces', () => {
+  const env = setup();
+  env.st.member = { id: 'me', household_id: 'home' };
+  // На телефоне карточки категорий и стат-блоки занимают почти весь экран:
+  // если считать их интерактивными, свайп между страницами почти не работает.
+  const token = name => new RegExp('(^|,)\\s*' + name + '\\s*(,|$)');
+  const target = selector => ({ closest: value => token(selector).test(value) ? {} : null });
+  assert.equal(env.app.pageSwipeAllowed(target('button')), true);
+  assert.equal(env.app.pageSwipeAllowed(target('input')), false);
+  assert.equal(env.app.pageSwipeAllowed(target('.tx')), false);
+  assert.equal(env.app.pageSwipeAllowed(target('.finance-operation')), false);
+  assert.equal(env.app.pageSwipeAllowed(target('.segments')), false);
+});
+
 test('page swipe peeks at the neighbouring page rendered from cached data', () => {
   const env = setup();
   env.st.member = { id: 'me', household_id: 'home' };

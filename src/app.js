@@ -1738,8 +1738,12 @@
     if (MAIN_TABS.indexOf(route.name) === -1) return false;
     if (el.sheet && !el.sheet.hidden) return false;
     if (el.dialog && !el.dialog.hidden) return false;
+    // Обычные кнопки (карточки категорий, стат-блоки, пункты профиля) свайп не
+    // глушат: клик после жеста отменяется, а на телефоне они закрывают почти
+    // весь экран. Блокируем только поверхности со своим горизонтальным жестом,
+    // поля ввода и перетаскивание.
     if (target && target.closest &&
-        target.closest('input,textarea,select,button,a,label,[contenteditable],.tx,.cat-tx,.finance-operation,.sheet,.dialog,.quick-actions,details,[draggable="true"],[data-gesture-lock],.segments')) {
+        target.closest('input,textarea,select,a,label,[contenteditable],.tx,.cat-tx,.finance-operation,.sheet,.dialog,.quick-actions,details,[draggable="true"],[data-gesture-lock],.segments')) {
       return false;
     }
     return true;
@@ -1816,7 +1820,9 @@
     if (gesture.dx && gesture.dir && Math.sign(gesture.dx) !== gesture.dir) return false;
     var width = gesture.width || pageSwipeWidth();
     var moved = Math.abs(gesture.shift === undefined ? gesture.dx : gesture.shift);
-    return moved > width / 4 || (!!gesture.fast && moved > 24);
+    // Пятая часть ширины — короче прежней четверти: на узком экране жест
+    // должен срабатывать без длинной протяжки через весь экран.
+    return moved > width / 5 || (!!gesture.fast && moved > 20);
   }
 
   function clearPageSwipeStyles(gesture) {
