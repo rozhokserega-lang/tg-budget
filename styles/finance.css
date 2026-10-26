@@ -676,35 +676,21 @@ body { background: var(--c-bg); }
 .tab--primary .tab__icon { transition: background .26s ease, color .2s ease, box-shadow .26s ease, transform .26s cubic-bezier(.3,.86,.24,1), opacity .2s ease; }
 .tab--primary:active .tab__icon { transform: scale(.92); }
 
-/* Падение кнопки в вырез при каждом возвращении на главную.
-   Проминается весь док целиком — фон, вырез и вкладки одним блоком,
-   поэтому иконки не «отстают» от фона. Тайминги заданы на каждый отрезок:
-   кнопка падает с ускорением и ударяется ровно на 58% таймлайна,
-   в этот же момент док получает максимальный прогиб; отскок (74%) и
-   успокоение (88%) тоже совпадают кадр в кадр. */
-.tabs--intro {
-  animation: dock-drop .8s linear both;
-  transform-origin: 50% 100%;
+/* Contact motion is painted by a single RAF model; only the local notch deforms. */
+.tabs.tabs--motion { transition: grid-template-columns .38s cubic-bezier(.22,1,.36,1); }
+.tabs.tabs--motion > .tab--primary {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: none;
 }
-.tabs--intro .tab--primary .tab__icon {
-  animation: add-drop .8s linear both;
+.tabs--motion .tab--primary .tab__icon {
+  animation: none;
+  transition: background .26s ease, color .2s ease, box-shadow .26s ease;
+  will-change: transform, opacity;
 }
 .tab--primary.tab--jelly .tab__icon { animation: add-jelly .44s cubic-bezier(.22,.8,.3,1); }
-@keyframes dock-drop {
-  0%, 50% { transform: translateX(-50%); animation-timing-function: cubic-bezier(.2,.7,.5,1); }
-  58% { transform: translateX(-50%) translateY(3px) scaleY(.955); animation-timing-function: cubic-bezier(.3,.6,.4,1); }
-  74% { transform: translateX(-50%) translateY(-1px) scaleY(1.008); animation-timing-function: cubic-bezier(.4,0,.6,1); }
-  88% { transform: translateX(-50%) translateY(.5px) scaleY(.998); animation-timing-function: ease-out; }
-  100% { transform: translateX(-50%); }
-}
-@keyframes add-drop {
-  0% { transform: translateY(-84px) scale(.78); opacity: 0; animation-timing-function: cubic-bezier(.5,.05,.8,.4); }
-  14% { opacity: 1; }
-  58% { transform: translateY(2px) scale(1.05,.9); opacity: 1; animation-timing-function: cubic-bezier(.3,.6,.4,1); }
-  74% { transform: translateY(-3px) scale(.98,1.02); animation-timing-function: cubic-bezier(.4,0,.6,1); }
-  88% { transform: translateY(.5px) scale(1.01,.995); animation-timing-function: ease-out; }
-  100% { transform: none; opacity: 1; }
-}
+.tabs--motion .tab--primary.tab--jelly .tab__icon { animation: none; }
 @keyframes add-jelly {
   0% { transform: scale(1); }
   28% { transform: scale(1.12,.84); }
