@@ -1610,25 +1610,33 @@
     var v = formEl.elements;
     var memberName = String(v.member_name.value || '').trim();
     var householdName = String(v.household_name.value || '').trim();
-    if (!memberName) return badInput(T('Введите имя'), v.member_name);
-    if (!householdName) return badInput(T('Введите название'), v.household_name);
     var previous = {
       name: st.member.name,
       household: st.member.households && st.member.households.name,
     };
-    if (memberName === previous.name && householdName === previous.household) {
+    // Сохраняем только изменённые поля. Иначе пустое сохранённое значение
+    // другого поля блокировало бы смену имени или названия семьи.
+    var renameMember = memberName !== String(previous.name || '').trim();
+    var renameHousehold = householdName !== String(previous.household || '').trim();
+    if (!renameMember && !renameHousehold) {
       root.Tg.haptic('light');
       toast(T('Сохранено'));
       return;
     }
+    if (renameMember && !memberName) return badInput(T('Введите имя'), v.member_name);
+    if (renameHousehold && !householdName) return badInput(T('Введите название'), v.household_name);
     var btn = formEl.querySelector('[type="submit"]');
     if (btn) btn.disabled = true;
     // Оптимистично: имя сразу доступно главной и профилю, без ожидания сети.
-    st.member = Object.assign({}, st.member, {
-      name: memberName,
-      households: Object.assign({}, st.member.households, { name: householdName }),
-    });
-    mutate('save_profile', { member_name: memberName, household_name: householdName }).then(function (res) {
+    st.member = Object.assign({}, st.member);
+    if (renameMember) st.member.name = memberName;
+    if (renameHousehold) {
+      st.member.households = Object.assign({}, st.member.households, { name: householdName });
+    }
+    var payload = {};
+    if (renameMember) payload.member_name = memberName;
+    if (renameHousehold) payload.household_name = householdName;
+    mutate('save_profile', payload).then(function (res) {
       if (res && res.member_name) st.member = Object.assign({}, st.member, { name: res.member_name });
       if (res && res.household_name && st.member.households) {
         st.member.households = Object.assign({}, st.member.households, { name: res.household_name });
@@ -1637,10 +1645,11 @@
       toast(T('Сохранено'));
       if (route.name === 'settings') render(Views.renderSettings(route.section));
     }).catch(function (err) {
-      st.member = Object.assign({}, st.member, {
-        name: previous.name,
-        households: Object.assign({}, st.member.households, { name: previous.household }),
-      });
+      st.member = Object.assign({}, st.member);
+      if (renameMember) st.member.name = previous.name;
+      if (renameHousehold) {
+        st.member.households = Object.assign({}, st.member.households, { name: previous.household });
+      }
       if (btn) btn.disabled = false;
       root.Tg.haptic('error');
       toast(err.message || T('Не удалось сохранить'));
