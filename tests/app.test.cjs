@@ -955,6 +955,56 @@ test('home edit reorders blocks, persists on save, resets and cancels', () => {
   assert.deepEqual(JSON.parse(env.storage.get('budget.homeOrder.' + (env.st.member && env.st.member.id))), defaults);
 });
 
+test('profile form saves the changed name even when the stored household name is empty', async () => {
+  const saves = [];
+  const env = setup(undefined, {
+    stubReload: false,
+    api: (action, payload) => {
+      if (action === 'save_profile') {
+        saves.push(payload);
+        return Promise.resolve({ ok: true, member_name: payload.member_name });
+      }
+      return Promise.resolve(action === 'me' ? { member: env.st.member } : []);
+    },
+  });
+  env.st.member = { id: 'me', name: 'Аня', households: { id: 'h1' } };
+  env.app.openSettings('family');
+  const formNode = {
+    elements: { member_name: { value: 'Анечка' }, household_name: { value: '' } },
+    querySelector: selector => selector === '[type="submit"]' ? { disabled: false } : null,
+  };
+  env.app.submitProfile(formNode);
+  assert.equal(env.st.member.name, 'Анечка');
+  await settled();
+  assert.equal(saves.length, 1);
+  assert.equal(saves[0].member_name, 'Анечка');
+  assert.equal(Object.prototype.hasOwnProperty.call(saves[0], 'household_name'), false);
+  assert.match(env.nodes.get('#toast').textContent, /Сохранено/);
+  assert.doesNotMatch(env.nodes.get('#toast').textContent, /Введите/);
+});
+
+test('profile submit event reaches the profile handler', async () => {
+  const env = setup(undefined, {
+    stubReload: false,
+    api: (action, payload) => {
+      if (action === 'save_profile') return Promise.resolve({ ok: true, household_name: payload.household_name });
+      return Promise.resolve(action === 'me' ? { member: env.st.member } : []);
+    },
+  });
+  env.st.member = { id: 'me', name: 'Аня', households: { id: 'h1', name: 'Наша семья' } };
+  env.app.openSettings('family');
+  const formNode = {
+    matches: selector => selector === 'form',
+    getAttribute: name => name === 'data-form' ? 'profile' : null,
+    elements: { member_name: { value: 'Аня' }, household_name: { value: 'Семья 2' } },
+    querySelector: () => null,
+  };
+  env.context.document.dispatch('submit', { target: formNode, preventDefault() {} });
+  assert.equal(env.st.member.households.name, 'Семья 2');
+  await settled();
+  assert.ok(env.apiCalls.some(call => call.action === 'save_profile' && call.payload.household_name === 'Семья 2'));
+});
+
 test('solo add form forces is_shared false even without the toggle', () => {
   const env = setup();
   const formNode = fakeNode();
