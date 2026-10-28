@@ -1975,6 +1975,45 @@ textarea.input {
   transform: translate(-50%, 0);
 }
 
+/* Подтверждение «расход добавлен»: карточка по центру экрана с галочкой. */
+.toast--success {
+  top: 50%;
+  bottom: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  border-radius: var(--radius-lg);
+  background: var(--c-card);
+  color: var(--c-text);
+  border: 1px solid var(--c-border);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  transform: translate(-50%, -50%) scale(0.9);
+  transition: opacity var(--dur) var(--ease), transform var(--dur-slow) cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.toast--success::before {
+  content: '✓';
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--c-income);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.toast--success.toast--visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
 /* Нижняя панель (шит) для форм планов */
 .sheet {
   position: fixed;

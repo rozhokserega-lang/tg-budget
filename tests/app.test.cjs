@@ -1516,3 +1516,26 @@ test('reduced motion uses final dock geometry immediately and cancels active mot
   media.matches = true; change();
   assert.equal(env.frames.size, 0); assert.equal(env.app.getDockState().y, 0);
 });
+
+test('adding an expense shows a centered success popup and a later message restores the bottom toast', () => {
+  const env = setup();
+  env.app.setAddDraftForTest({ amount: '12', category_id: 'food', note: '', date: '2026-09-22', is_shared: false, kind: 'expense' });
+  env.app.submitAdd({ querySelector: () => ({ disabled: false }) });
+  const toast = env.nodes.get('#toast');
+  assert.equal(toast.hidden, false);
+  assert.equal(toast.textContent, 'Расход добавлен');
+  assert.equal(toast.classList.contains('toast--success'), true);
+  env.app.setAddDraftForTest({ amount: '', category_id: 'food', note: '', date: '2026-09-22', is_shared: false, kind: 'expense' });
+  env.app.submitAdd({ querySelector: () => ({ disabled: false }), elements: { amount: { focus() {} } } });
+  assert.equal(toast.textContent, 'Введите сумму цифрами');
+  assert.equal(toast.classList.contains('toast--success'), false);
+});
+
+test('adding income keeps the regular bottom toast', () => {
+  const env = setup();
+  env.app.setAddDraftForTest({ amount: '50', category_id: 'salary', note: '', date: '2026-09-22', is_shared: false, kind: 'income' });
+  env.app.submitAdd({ querySelector: () => ({ disabled: false }) });
+  const toast = env.nodes.get('#toast');
+  assert.equal(toast.textContent, 'Записано');
+  assert.equal(toast.classList.contains('toast--success'), false);
+});
