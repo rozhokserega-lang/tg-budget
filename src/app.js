@@ -94,15 +94,22 @@
   }
 
   var toastTimer = null;
-  function toast(text) {
+  // opts.success — всплывающий попап по центру с галочкой вместо строки внизу.
+  function toast(text, opts) {
+    var success = !!(opts && opts.success);
+    clearTimeout(toastTimer);
+    el.toast.classList.remove('toast--success');
     el.toast.textContent = text;
     el.toast.hidden = false;
+    if (success) el.toast.classList.add('toast--success');
     requestAnimationFrame(function () { el.toast.classList.add('toast--visible'); });
-    clearTimeout(toastTimer);
     toastTimer = setTimeout(function () {
       el.toast.classList.remove('toast--visible');
-      toastTimer = setTimeout(function () { el.toast.hidden = true; }, 250);
-    }, 2200);
+      toastTimer = setTimeout(function () {
+        el.toast.hidden = true;
+        el.toast.classList.remove('toast--success');
+      }, 250);
+    }, success ? 1700 : 2200);
   }
 
   function dialog(text, okLabel) {
@@ -2682,7 +2689,8 @@
     form = {};
     btn.disabled = true;
     root.Tg.haptic('success');
-    toast(T('Записано'));
+    if (values.kind === 'income') toast(T('Записано'));
+    else toast(T('Расход добавлен'), { success: true });
     openSummary();
 
     var op = Queue.push('add_tx', Object.assign({ local_id: local.id }, payload));
