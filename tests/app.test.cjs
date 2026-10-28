@@ -1415,7 +1415,7 @@ test('search draft survives a background response before the debounce timer runs
   assert.match(env.nodes.get('#screen').innerHTML, /value="pending text"/);
 });
 
-test('fixed dock insert stays flat until contact, opens once and survives button rebound', () => {
+test('reference dock bounce animates the button without overriding CSS notch geometry', () => {
   const env = setup(), tabs = env.nodes.get('#tabs');
   env.st.member = { id: 'me' };
   const properties = new Map(), iconProperties = new Map();
@@ -1428,24 +1428,15 @@ test('fixed dock insert stays flat until contact, opens once and survives button
   Object.defineProperty(tabs, 'offsetWidth', { get() { throw new Error('forced layout'); } });
   env.app.setRoute('summary'); env.app.applyRouteUi();
   const motion = env.app.getDockMotion();
-  const insertPath = () => decodeURIComponent(properties.get('--dock-insert-mask') || '');
-  for (const time of [0, 80, 159, 160]) {
+  for (const [time, y] of [[0, -84], [160, -34], [280, 6], [400, -6]]) {
     env.frame(time);
-    assert.equal(properties.get('--dock-notch-height'), '40px');
-    assert.match(insertPath(), /M0 0C16 0 12 0 48 0C84 0 80 0 96 0V40H0Z/);
-    assert.match(insertPath(), /preserveAspectRatio="none"/);
+    assert.equal(env.app.getDockState().y, y);
+    assert.match(iconProperties.get('transform'), new RegExp('^translateY\\(' + y));
+    for (const key of ['--dock-notch-height', '--dock-insert-mask', '--dock-contact-edge']) {
+      assert.equal(properties.has(key), false);
+    }
   }
-  assert.equal(env.app.getDockState().y, -34);
-  env.frame(220);
-  const pressing = Number(insertPath().match(/M0 0C16 0 12 ([\d.]+)/)[1]);
-  assert.ok(pressing > 0 && pressing < 38);
-  env.frame(280);
-  assert.equal(properties.get('--dock-insert-mask'), 'linear-gradient(transparent,transparent)');
-  assert.equal(env.app.getDockState().y, 6);
-  env.frame(400);
-  assert.equal(properties.get('--dock-notch-height'), '40px');
-  assert.equal(properties.get('--dock-insert-mask'), 'linear-gradient(transparent,transparent)');
-  assert.equal(env.app.getDockState().y, -6);
+  assert.equal(Number(iconProperties.get('opacity')), 1);
   for (const step of [8, 16, 33, 100]) {
     let previous = env.app.dockSample(motion, 0);
     for (let t = step; t <= 800; t += step) {
