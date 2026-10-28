@@ -676,8 +676,8 @@ body { background: var(--c-bg); }
 .tab--primary .tab__icon { transition: background .26s ease, color .2s ease, box-shadow .26s ease, transform .26s cubic-bezier(.3,.86,.24,1), opacity .2s ease; }
 .tab--primary:active .tab__icon { transform: scale(.92); }
 
-/* Contact motion is painted by a single RAF model; only the local notch deforms. */
-.tabs.tabs--motion { transition: grid-template-columns .38s cubic-bezier(.22,1,.36,1); }
+/* Match the reference demo: CSS opens the notch while RAF animates the button. */
+.tabs.tabs--motion { transition: grid-template-columns .38s cubic-bezier(.22,1,.36,1), --dock-notch-height .38s cubic-bezier(.22,1,.36,1); }
 .tabs.tabs--motion > .tab--primary {
   opacity: 1;
   visibility: visible;
@@ -913,20 +913,19 @@ button.finance-stat:focus-visible { outline: 2px solid var(--stat-color); outlin
   left: calc((100vw - 100%) / -2);
   right: calc((100vw - 100%) / -2);
   bottom: -9px;
-  border: 1px solid rgba(194,201,219,.13);
+  border: 1px solid var(--dock-edge-color);
   border-bottom: 0;
   border-radius: 23px 23px 0 0;
   background: linear-gradient(180deg,rgba(34,36,47,.97),rgba(24,26,35,.98));
   /* Home ends with the existing 96x40px notch: horizontal tangents at both shoulders and the bowl.
      Three adjacent mask pieces plus the lower fill avoid stretching its curve. */
-  --dock-mask: var(--dock-insert-mask, linear-gradient(transparent,transparent)) center top / 96px 40px no-repeat,
-    linear-gradient(#000 0 0) left top / calc(50% - 48px) 100% no-repeat,
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 40'%3E%3Cpath fill='black' d='M0 0C16 0 12 38 48 38C84 38 80 0 96 0V40H0Z'/%3E%3C/svg%3E") center top / 96px var(--dock-notch-height, 40px) no-repeat,
+  --dock-mask: linear-gradient(#000 0 0) left top / calc(50% - 48px) 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 40'%20preserveAspectRatio='none'%3E%3Cpath fill='black' d='M0 0C16 0 12 38 48 38C84 38 80 0 96 0V40H0Z'/%3E%3C/svg%3E") center top / 96px var(--dock-notch-height, 40px) no-repeat,
     linear-gradient(#000 0 0) right top / calc(50% - 48px) 100% no-repeat,
     linear-gradient(#000 0 0) center bottom / 100% calc(100% - var(--dock-notch-height, 40px) + 1px) no-repeat;
   -webkit-mask: var(--dock-mask);
   mask: var(--dock-mask);
-  box-shadow: 0 8px 28px rgba(0,0,0,.32),inset 0 1px rgba(255,255,255,.035);
+  box-shadow: 0 8px 28px rgba(0,0,0,.32);
 }
 .tab { min-height: 56px; height: 58px; gap: 2px; font-size: 10px; }
 .tab__icon { height: 22px; }
@@ -950,7 +949,10 @@ button.finance-stat:focus-visible { outline: 2px solid var(--stat-color); outlin
   width: 100vw;
   height: var(--dock-notch-height, 40px);
   border-radius: 0;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 40'%3E%3Cpath fill='none' stroke='rgba(191,206,216,.23)' stroke-width='1' d='M0 .5C16 .5 12 38 48 38C84 38 80 .5 96 .5'/%3E%3C/svg%3E") center top / 96px var(--dock-notch-height, 40px) no-repeat;
+  --dock-edge-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 40'%20preserveAspectRatio='none'%3E%3Cpath fill='none' stroke='black' stroke-width='1' d='M0 .5C16 .5 12 38 48 38C84 38 80 .5 96 .5'/%3E%3C/svg%3E") center top / 96px var(--dock-notch-height, 40px) no-repeat;
+  background: var(--dock-edge-color);
+  -webkit-mask: var(--dock-edge-mask);
+  mask: var(--dock-edge-mask);
 }
 @media (max-width: 390px) {
   .finance-stat { padding: 11px 9px; border-radius: 15px; }
@@ -1179,13 +1181,13 @@ html[data-theme='light'] .cat .progress { background: var(--c-card-strong); }
 html[data-theme='light'] .tabs::before {
   border-color: var(--c-border);
   background: linear-gradient(180deg,rgba(255,255,255,.98),rgba(246,243,251,.99));
-  box-shadow: 0 8px 28px rgba(33,24,50,.12),inset 0 1px rgba(255,255,255,.7);
+  box-shadow: 0 8px 28px rgba(33,24,50,.12);
 }
 html[data-theme='light'] .tabs__notch-fill {
   border-color: var(--c-border);
   background: linear-gradient(180deg,rgba(255,255,255,.98),rgba(246,243,251,.99));
 }
-html[data-theme='light'] .tabs::after { filter: invert(1); opacity: .55; }
+html[data-theme='light'] .tabs { --dock-edge-color: var(--c-border); }
 html[data-theme='light'] .tabs--quick-actions::before,
 html[data-theme='light'] .tabs--quick-actions::after { opacity: 0; }
 html[data-theme='light'] .tab { color: var(--c-hint); }
@@ -1281,6 +1283,7 @@ html[data-theme='light'] .tx-delete { color: var(--c-expense); }
   initial-value: 40px;
 }
 .tabs {
+  --dock-edge-color: rgba(194,201,219,.13);
   --dock-notch-height: 40px;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
   transition: grid-template-columns .38s cubic-bezier(.22,1,.36,1), --dock-notch-height .38s cubic-bezier(.22,1,.36,1);
@@ -1305,11 +1308,4 @@ html[data-theme='light'] .tx-delete { color: var(--c-expense); }
 }
 @media (prefers-reduced-motion: reduce) {
   .tabs, .tabs > .tab--primary { transition: none; }
-}
-
-/* Temporary insert is combined with the fixed notch in one mask, not a separate
-   translucent rectangle. Fixed 96x40 SVG viewport prevents shrinking shoulders. */
-.tabs.tabs--motion::after {
-  height: 40px;
-  background: var(--dock-contact-edge) center top / 96px 40px no-repeat;
 }
