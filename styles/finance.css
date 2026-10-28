@@ -1293,7 +1293,8 @@ html[data-theme='light'] .tx-delete { color: var(--c-expense); }
   opacity: 1;
   visibility: visible;
   transform: none;
-  transition: opacity .22s ease, transform .3s ease, visibility 0s;
+  /* RAF owns the entire flight; settling must not start a second transition. */
+  transition: none;
 }
 .tabs--primary-hidden {
   --dock-notch-height: 0px;
@@ -1302,9 +1303,9 @@ html[data-theme='light'] .tx-delete { color: var(--c-expense); }
 .tabs--primary-hidden > .tab--primary {
   opacity: 0;
   visibility: hidden;
-  transform: translateY(16px) scale(.65);
+  transform: none;
   pointer-events: none;
-  transition: opacity .2s ease, transform .3s ease, visibility 0s .3s;
+  transition: none;
 }
 @media (prefers-reduced-motion: reduce) {
   .tabs, .tabs > .tab--primary { transition: none; }
