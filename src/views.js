@@ -836,6 +836,10 @@
       (selects ? '<div class="tx-filters">' + selects + '</div>' : '');
   }
 
+  // История показывает последние дни месяца, остальные догружаются порциями
+  // (app.js увеличивает State.txDays по прокрутке или кнопке).
+  var TX_DAY_CHUNK = 4;
+
   function txResults(all, filter) {
     var st = State.get();
     var f = filter || {};
@@ -854,10 +858,18 @@
     var found = T('Найдено: {records}', { records: P('records', list.length) });
     var count = '<div class="tx-count"><span>' + (kindLabel ? e(kindLabel) + ' · ' : '') + e(found) + '</span>' +
       '<button type="button" class="tx-count__reset" data-action="tx-clear-filter">' + e(T('Сбросить')) + '</button></div>';
+    var groups = groupByDay(list);
+    var limit = Math.max(1, Number(st.txDays) || TX_DAY_CHUNK);
+    var shown = groups.slice(0, limit);
+    var rest = groups.length - shown.length;
     return (active ? count : '') +
-      groupByDay(list).map(function (g) {
+      shown.map(function (g) {
         return '<div class="tx-group"><div class="tx-group__title">' + e(Fmt.dayLabel(g.day)) + '</div>' + g.items.map(financeHistoryRow).join('') + '</div>';
-      }).join('');
+      }).join('') +
+      (rest > 0
+        ? '<button type="button" class="tx-more" id="tx-more" data-action="tx-more">' +
+          e(T('Показать ещё {days}', { days: P('days', Math.min(TX_DAY_CHUNK, rest)) })) + '</button>'
+        : '');
   }
 
   function renderTxList(all, filter, chartMode) {
@@ -1710,6 +1722,7 @@
 
     renderTxList: renderTxList,
     txResults: txResults,
+    txDayChunk: TX_DAY_CHUNK,
     renderForm: renderForm,
     renderEditForm: renderEditForm,
     renderCoverEditor: renderCoverEditor,
