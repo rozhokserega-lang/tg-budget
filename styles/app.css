@@ -392,9 +392,30 @@ button,
 }
 
 .month-nav__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 -4px;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   font-size: 15px;
   font-weight: 600;
   text-transform: capitalize;
+}
+
+.month-nav__label:active {
+  background: var(--c-card);
+}
+
+.month-nav__label svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  opacity: .6;
 }
 
 .month-nav__btn {

@@ -62,7 +62,10 @@
     return (
       '<div class="month-nav">' +
       '<button type="button" class="month-nav__btn" data-action="month-prev" aria-label="' + e(T('Предыдущий месяц')) + '">‹</button>' +
-      '<span class="month-nav__label">' + e(Fmt.monthTitle(month)) + '</span>' +
+      '<button type="button" class="month-nav__label" data-action="open-months" aria-label="' + e(T('Выбрать месяц')) + '">' +
+      e(Fmt.monthTitle(month)) +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>' +
+      '</button>' +
       '<button type="button" class="month-nav__btn" data-action="month-next" aria-label="' + e(T('Следующий месяц')) + '"' +
       (isCurrent ? ' disabled' : '') + '>›</button>' +
       '</div>'
@@ -607,6 +610,83 @@
     }).join('');
     return dueBanner(plans) + monthNav(st.month) + toolbar + body;
 
+  }
+
+  // --- Общая сводка по месяцам ---
+
+  var MONTH_PERIODS = [3, 6, 12];
+
+  // entries: { 'YYYY-MM': summary } — отсутствующий месяц ещё грузится,
+  // null означает, что загрузить его не удалось.
+  function monthSummaryRow(ym, summary, active) {
+    var pending = summary === undefined;
+    var failed = summary === null;
+    var body;
+    if (pending || failed) {
+      body = '<span class="month-row__flow"><span class="muted">' + e(T(pending ? 'Загрузка…' : 'Нет данных')) + '</span></span>' +
+        '<span class="month-row__balance muted">—</span>';
+    } else {
+      var income = Number(summary.income) || 0;
+      var expense = Number(summary.expense) || 0;
+      var balance = Number(summary.balance);
+      if (!isFinite(balance)) balance = income - expense;
+      body = '<span class="month-row__flow">' +
+        '<span class="amount amount--pos">+' + e(money(income)) + '</span>' +
+        '<span class="amount amount--neg">−' + e(money(expense)) + '</span></span>' +
+        '<span class="month-row__balance' + (balance < 0 ? ' amount--neg' : '') + '">' + e(money(balance)) + '</span>';
+    }
+    return '<button type="button" class="month-row' + (active ? ' month-row--active' : '') +
+      '" data-action="months-select" data-month="' + e(ym) + '" aria-pressed="' + (active ? 'true' : 'false') + '"' +
+      (active ? ' aria-current="true"' : '') + '>' +
+      '<span class="month-row__title">' + e(Fmt.monthTitle(ym)) + '</span>' + body + '</button>';
+  }
+
+  function renderMonths(months, entries, period) {
+    var st = State.get();
+    months = Array.isArray(months) ? months : [];
+    entries = entries || {};
+    period = MONTH_PERIODS.indexOf(Number(period)) !== -1 ? Number(period) : 6;
+    var income = 0, expense = 0, ready = 0, failed = 0;
+    months.forEach(function (ym) {
+      var summary = entries[ym];
+      if (summary) {
+        ready++;
+        income += Number(summary.income) || 0;
+        expense += Number(summary.expense) || 0;
+      } else if (summary === null) failed++;
+    });
+    var chips = MONTH_PERIODS.map(function (n) {
+      var active = n === period;
+      return '<button type="button" class="months-range__chip" data-action="months-period" data-period="' + n +
+        '" aria-pressed="' + active + '">' + e(P('months', n)) + '</button>';
+    }).join('');
+    var total;
+    if (ready === months.length && months.length) {
+      var balance = income - expense;
+      total = '<div class="months-total__grid">' +
+        '<div class="months-total__cell"><span class="months-total__label">' + e(T('Доходы')) + '</span>' +
+        '<span class="months-total__value amount--pos">+' + e(money(income)) + '</span></div>' +
+        '<div class="months-total__cell"><span class="months-total__label">' + e(T('Расходы')) + '</span>' +
+        '<span class="months-total__value amount--neg">−' + e(money(expense)) + '</span></div>' +
+        '<div class="months-total__cell"><span class="months-total__label">' + e(T('Остаток')) + '</span>' +
+        '<span class="months-total__value' + (balance < 0 ? ' amount--neg' : '') + '">' + e(money(balance)) + '</span></div>' +
+        '</div>';
+    } else {
+      total = '<p class="months-total__hint">' + e(T(failed ? 'Не удалось загрузить часть месяцев' : 'Загружаем сводку…')) + '</p>' +
+        (failed ? '<button type="button" class="btn btn--sm" data-action="months-retry">' + e(T('Повторить загрузку')) + '</button>' : '');
+    }
+    return '<div class="profile-detail__heading">' +
+      '<button type="button" class="profile-back" data-action="months-back" aria-label="' + e(T('Назад')) + '">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button>' +
+      '<h1>' + e(T('Общая сводка')) + '</h1></div>' +
+      '<div class="months-range" role="group" aria-label="' + e(T('Период')) + '">' +
+      '<span class="months-range__label">' + e(T('Период')) + '</span>' + chips + '</div>' +
+      '<div class="card months-total">' + total + '</div>' +
+      '<div class="section"><div class="section__head"><span class="section__title">' + e(T('По месяцам')) + '</span></div>' +
+      '<div class="card months-list">' + months.map(function (ym) {
+        return monthSummaryRow(ym, entries[ym], ym === st.month);
+      }).join('') + '</div></div>' +
+      '<p class="small muted mt-16">' + e(T('Нажмите на месяц, чтобы открыть его сводку.')) + '</p>';
   }
 
   // --- Траты ---
@@ -1619,6 +1699,7 @@
     skeletonList: skeletonList,
     categoryTxList: categoryTxList,
     renderSummary: renderSummary,
+    renderMonths: renderMonths,
     renderQuickActions: renderQuickActions,
     renderExportSheet: renderExportSheet,
     renderPlans: renderPlans,

@@ -362,6 +362,41 @@ test('none split hides the partner settlement entirely', () => {
   assert.match(html, /Остаток за месяц/);
 });
 
+test('month title opens the overall monthly summary', () => {
+  const ctx = setup();
+  const html = home(ctx);
+  assert.match(html, /class="month-nav__label" data-action="open-months"/);
+  assert.match(html, /Выбрать месяц/);
+});
+
+test('monthly overview shows period, per-month totals and marks the selected month', () => {
+  const ctx = setup();
+  ctx.State.get().month = '2026-09';
+  const html = ctx.Views.renderMonths(['2026-08', '2026-09', '2026-10'], {
+    '2026-08': { income: 100, expense: 40, balance: 60 },
+    '2026-09': { income: 0, expense: 0, balance: 0 },
+    '2026-10': { income: 300, expense: 120, balance: 180 },
+  }, 3);
+  assert.match(html, /Общая сводка/);
+  assert.match(html, /data-action="months-period" data-period="3" aria-pressed="true"/);
+  assert.match(html, /data-action="months-select" data-month="2026-09" aria-pressed="true"/);
+  assert.match(html, /data-action="months-back"/);
+  assert.match(html, /months-total__grid/);
+  assert.match(html, /240/);
+  assert.match(html, /180/);
+});
+
+test('monthly overview explains loading and offers retry after failures', () => {
+  const ctx = setup();
+  const loading = ctx.Views.renderMonths(['2026-09', '2026-10'], {}, 3);
+  assert.match(loading, /Загружаем сводку…/);
+  assert.doesNotMatch(loading, /months-total__grid/);
+  assert.match(loading, /data-month="2026-09"/);
+  const failed = ctx.Views.renderMonths(['2026-09'], { '2026-09': null }, 3);
+  assert.match(failed, /Не удалось загрузить часть месяцев/);
+  assert.match(failed, /data-action="months-retry"/);
+});
+
 test('home edit mode shows every block with keyboard reorder controls and inert content', () => {
   const ctx = setup();
   const normal = home(ctx);

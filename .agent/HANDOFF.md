@@ -1,3 +1,12 @@
+# 2026-10-29: общая сводка по месяцам
+
+- `src/views.js`: название месяца в `monthNav` стало кнопкой `open-months`; новый `renderMonths` — период 3/6/12, итог, строки месяцев, состояние загрузки/ошибки.
+- `src/app.js`: route `months` (`from` = summary/tx), `openMonths` через `fetchSummary` с кэшем по месяцу, `setMonthsPeriod`, `selectMonthsMonth`, `leaveMonths`; BackButton/подсветка вкладки/блокировка pull.
+- `styles/app.css`, `styles/finance.css`: кнопка-месяц и стили экрана. `src/i18n.js`: en/es строки. `index.html`: версии ассетов и build. `README.md`: описание.
+- `tests/app.test.cjs`: 5 сценариев (загрузка периода, смена периода/выбор месяца, возврат в финансы, старый выбранный месяц, ошибки/retry). `tests/views.test.cjs`: 3 теста разметки.
+- Проверено: `node --test` 168/168, `node --check src/app.js`, `git diff --check`. Chromium/Telegram нет: визуально мобильная вёрстка и реальный backend не проверены.
+- Ограничения: запросы к `summary` идут параллельно по каждому месяцу периода (до 12), это осознанный компромисс ради точных итогов; при отсутствии сети показываются сохранённые/ошибочные месяцы.
+
 # SWR: активная передача 2026-10-26
 
 - Ветка `perf/swr-revalidation`, база main `229bcac`.

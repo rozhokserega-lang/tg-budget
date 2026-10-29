@@ -38,6 +38,10 @@
   try { if (root.localStorage.getItem('budget.homeCategorySort') === 'amount') st.homeCategorySort = 'amount'; } catch (e) {}
   // Раскрытая категория на сводке: { id, rows } или null.
   var expandedCat = null;
+  // Общая сводка: выбранная длина периода и месяцы, которые не загрузились.
+  var MONTHS_PERIODS = [3, 6, 12];
+  var monthsPeriod = 6;
+  var monthsFailed = {};
   // Сетка/список категорий — выбор запоминается на устройстве.
   var categoryView = 'grid';
   try {
@@ -285,6 +289,8 @@
     if (editingTx) return root.Tg.backButton(function () {});
     if (st.homeEdit) return root.Tg.backButton(cancelHomeEdit);
     if (route.name === 'add') return root.Tg.backButton(goHome);
+    // Общая сводка — подэкран сводки или финансов: «Назад» возвращает туда же.
+    if (route.name === 'months') return root.Tg.backButton(leaveMonths);
     // Лимиты — подэкран настроек: «Назад» возвращает к ним.
     if (route.name === 'limits') return root.Tg.backButton(function () { openSettings('budget'); });
     if (route.name === 'settings' && route.section) return root.Tg.backButton(function () { openSettings(); });
@@ -392,6 +398,7 @@
     }
     // «Добавить» — не место, а действие: подсвечиваем вкладку, с которой пришли.
     var active = route.name === 'add' ? 'summary'
+      : route.name === 'months' ? (route.from === 'tx' ? 'tx' : 'summary')
       : route.name === 'limits' ? 'settings'
       : route.name;
     // Меню создаём один раз: перерисовка на каждом переходе вызывала мигание иконок.
@@ -577,6 +584,7 @@
       pendingAdds = {};
       deletingTx = {};
       expandedCat = null;
+      monthsFailed = {};
       editingTx = null;
       editSaving = false;
       editGeneration++;
@@ -772,6 +780,79 @@
     root.Tg.haptic('light');
     if (route.name === 'tx') openTx();
     else openSummary();
+  }
+
+  // --- Общая сводка по месяцам ---
+
+  function monthsForPeriod(period) {
+    var end = Fmt.currentMonth();
+    // Не теряем выбранный месяц, если пользователь листал более старую историю.
+    if (st.month && st.month < Fmt.shiftMonth(end, -(period - 1))) end = st.month;
+    var list = [];
+    for (var i = period - 1; i >= 0; i--) list.push(Fmt.shiftMonth(end, -i));
+    return list;
+  }
+
+  // Сводки за выбранный период грузятся параллельно и кэшируются по месяцу:
+  // повторное открытие или смена периода не создаёт лишних запросов.
+  function openMonths(force) {
+    var from = route.name === 'months' ? route.from : route.name === 'tx' ? 'tx' : 'summary';
+    route = { name: 'months', from: from };
+    var seq = ++reqSeq;
+    var months = monthsForPeriod(monthsPeriod);
+    function current() { return seq === reqSeq && route.name === 'months'; }
+    function entries() {
+      var map = {};
+      months.forEach(function (ym) {
+        // Сохранённая сводка важнее отметки об ошибке: показываем её, пока
+        // повторная загрузка не удалась.
+        var summary = cached('summaryCache:' + ym);
+        if (summary) map[ym] = summary;
+        else if (monthsFailed[ym]) map[ym] = null;
+      });
+      return map;
+    }
+    function paint() {
+      if (!current()) return;
+      render(Views.renderMonths(months, entries(), monthsPeriod), true);
+    }
+    paint();
+    var toLoad = months.filter(function (ym) {
+      var fresh = resourceCache.read('summaryCache:' + ym);
+      return force ? (!!monthsFailed[ym] || !fresh) : !fresh;
+    });
+    if (!toLoad.length) return;
+    toLoad.forEach(function (ym) { delete monthsFailed[ym]; });
+    Promise.allSettled(toLoad.map(function (ym) {
+      return fetchSummary(ym, force).catch(function (err) {
+        if (err.code !== 'stale_response') monthsFailed[ym] = true;
+      });
+    })).then(paint);
+  }
+
+  function setMonthsPeriod(period) {
+    var next = Number(period);
+    if (MONTHS_PERIODS.indexOf(next) === -1 || next === monthsPeriod) return;
+    monthsPeriod = next;
+    root.Tg.haptic('light');
+    openMonths();
+  }
+
+  function leaveMonths() {
+    if (route.name !== 'months') return;
+    var from = route.from;
+    root.Tg.haptic('light');
+    if (from === 'tx') openTx();
+    else openSummary();
+  }
+
+  function selectMonthsMonth(month) {
+    if (route.name !== 'months') return;
+    var target = String(month || '');
+    if (!/^\d{4}-\d{2}$/.test(target) || target > Fmt.currentMonth()) return;
+    st.month = target;
+    expandedCat = null;
+    leaveMonths();
   }
 
   function goHome() {
@@ -3147,6 +3228,11 @@ document.addEventListener('click', function (ev) {
         break;
       case 'month-prev': changeMonth(-1); break;
       case 'month-next': changeMonth(1); break;
+      case 'open-months': openMonths(); break;
+      case 'months-period': setMonthsPeriod(actionBtn.getAttribute('data-period')); break;
+      case 'months-select': selectMonthsMonth(actionBtn.getAttribute('data-month')); break;
+      case 'months-back': leaveMonths(); break;
+      case 'months-retry': openMonths(true); break;
       case 'go-tx': openTx(null); break;
       case 'go-tx-kind':
         root.Tg.haptic('light');
@@ -3927,7 +4013,7 @@ document.addEventListener('click', function (ev) {
     return request;
   }
   function pageGestureBlocked(target) {
-    if (!el.sheet.hidden || !el.dialog.hidden || !st.member || route.name === 'add' || route.name === 'limits' || st.homeEdit) return true;
+    if (!el.sheet.hidden || !el.dialog.hidden || !st.member || route.name === 'add' || route.name === 'limits' || route.name === 'months' || st.homeEdit) return true;
     if (target.closest('input,textarea,select,button,a,[contenteditable],.tx,.finance-operation,.category-picker,[draggable="true"],[data-gesture-lock],.segments')) return true;
     for (var node = target; node && node !== el.screen; node = node.parentElement) {
       var css = root.getComputedStyle(node);

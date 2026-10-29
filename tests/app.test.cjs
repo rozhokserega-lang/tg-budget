@@ -95,6 +95,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     getEditing: function () { return editingTx; }, getSaving: function () { return editSaving; },
     getDrag: function () { return sheetDrag; },
     openSummary: openSummary, openTx: openTx, openTxKind: openTxKind, setTxKind: setTxKind, loadResource: loadResource,
+    openMonths: openMonths, setMonthsPeriod: setMonthsPeriod, leaveMonths: leaveMonths, selectMonthsMonth: selectMonthsMonth,
     fetchSummary: fetchSummary, loadTx: loadTx, adoptMember: adoptMember, loadCategories: loadCategories, invalidateTransactions: invalidateTransactions,
     refreshOnReturn: refreshOnReturn, clearCache: clearCache, cached: cached,
     applyLocalTx: applyLocalTx,
@@ -155,6 +156,15 @@ function form(overrides = {}) {
 function deferred() { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; }
 async function settled() { await new Promise(resolve => setImmediate(resolve)); }
 async function open(env) { env.app.openEditTx('expense'); await settled(); }
+function clickAction(env, action, attrs = {}) {
+  const button = {
+    getAttribute: name => name === 'data-action' ? action : (attrs[name] ?? null),
+    hasAttribute: () => false,
+    closest: selector => selector === '[data-action]' ? button : null,
+  };
+  env.context.document.dispatch('click', { target: button });
+  return button;
+}
 
 test('edit entry points open a shared form with source values without mutating transaction', async () => {
   const env = setup();
@@ -1529,4 +1539,82 @@ test('adding income keeps the regular bottom toast', () => {
   const toast = env.nodes.get('#toast');
   assert.equal(toast.textContent, 'Записано');
   assert.equal(toast.classList.contains('toast--success'), false);
+});
+
+test('month title opens the monthly overview and loads a summary for every month in the period', async () => {
+  const env = setup(undefined, {
+    stubReload: false,
+    api: action => Promise.resolve(action === 'summary' ? { income: 300, expense: 120, balance: 180 } : action === 'list_plans' ? {} : []),
+  });
+  env.st.member = { id: 'me' };
+  clickAction(env, 'open-months');
+  assert.equal(env.app.getRoute().name, 'months');
+  await settled();
+  const months = env.apiCalls.filter(call => call.action === 'summary').map(call => call.payload.month);
+  assert.deepEqual(months.sort(), ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10']);
+  const html = env.nodes.get('#screen').innerHTML;
+  assert.equal((html.match(/data-action="months-select"/g) || []).length, 6);
+  assert.match(html, /Общая сводка/);
+  assert.match(html, /data-period="6"[^>]*aria-pressed="true"/);
+  assert.equal(env.st['summaryCache:2026-05'].data.income, 300);
+  env.context.backHandler();
+  assert.equal(env.app.getRoute().name, 'summary');
+});
+
+test('overview period limits months and selecting one opens its summary', async () => {
+  const env = setup(undefined, {
+    stubReload: false,
+    api: action => Promise.resolve(action === 'summary' ? { income: 300, expense: 120, balance: 180 } : action === 'list_plans' ? {} : []),
+  });
+  env.st.member = { id: 'me' };
+  env.app.openMonths();
+  await settled();
+  const callsBefore = env.apiCalls.filter(call => call.action === 'summary').length;
+  clickAction(env, 'months-period', { 'data-period': '3' });
+  const html = env.nodes.get('#screen').innerHTML;
+  assert.equal((html.match(/data-action="months-select"/g) || []).length, 3);
+  assert.match(html, /data-month="2026-08"/);
+  assert.doesNotMatch(html, /data-month="2026-07"/);
+  assert.equal(env.apiCalls.filter(call => call.action === 'summary').length, callsBefore);
+  clickAction(env, 'months-select', { 'data-month': '2026-08' });
+  assert.equal(env.st.month, '2026-08');
+  assert.equal(env.app.getRoute().name, 'summary');
+});
+
+test('overview opened from finances returns to finances', async () => {
+  const env = setup(undefined, { stubReload: false, api: () => Promise.resolve([]) });
+  env.st.member = { id: 'me' };
+  env.app.openTx();
+  await settled();
+  clickAction(env, 'open-months');
+  assert.equal(env.app.getRoute().from, 'tx');
+  await settled();
+  clickAction(env, 'months-back');
+  assert.equal(env.app.getRoute().name, 'tx');
+});
+
+test('overview keeps an older selected month inside the period', async () => {
+  const env = setup(undefined, { stubReload: false, api: () => Promise.resolve({}) });
+  env.st.month = '2025-11';
+  env.app.openMonths();
+  const html = env.nodes.get('#screen').innerHTML;
+  assert.match(html, /data-month="2025-11"/);
+  assert.match(html, /data-month="2025-06"/);
+  assert.doesNotMatch(html, /data-month="2025-05"/);
+  assert.doesNotMatch(html, /data-month="2025-12"/);
+  await settled();
+});
+
+test('failed month summaries show a retry action instead of totals', async () => {
+  const env = setup(undefined, {
+    stubReload: false,
+    api: action => action === 'summary' ? Promise.reject(new Error('offline')) : Promise.resolve([]),
+  });
+  env.app.openMonths();
+  await settled();
+  const html = env.nodes.get('#screen').innerHTML;
+  assert.match(html, /Не удалось загрузить часть месяцев/);
+  assert.match(html, /data-action="months-retry"/);
+  assert.doesNotMatch(html, /months-total__grid/);
+  assert.equal(env.apiCalls.filter(call => call.action === 'summary').length, 6);
 });
