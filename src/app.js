@@ -493,6 +493,7 @@
     }
     applyRouteUi();
     pendingScrollTxFilter();
+    fillTxDays();
   }
 
   // Предупреждение сверху экрана (подписка и т. п.).
@@ -794,6 +795,7 @@
       if (category && category.kind === 'income') st.txChart = 'income';
       else if (category) st.txChart = 'expense';
     }
+    resetTxDays();
     var seq = ++reqSeq;
     var month = st.month;
     var previous = cached('txCache:' + month);
@@ -1436,6 +1438,7 @@
     var mode = kind === 'income' || kind === 'expense' ? kind : 'balance';
     st.txChart = mode;
     st.txFilter.kind = mode === 'balance' ? null : mode;
+    resetTxDays();
     if (route.name !== 'tx') return;
     var scroll = el.screen.scrollTop;
     render(Views.renderTxList(cached('txCache:' + st.month) || [], st.txFilter, st.txChart));
@@ -1448,8 +1451,17 @@
     openTx();
   }
 
+  // Дни истории: первая порция показывается сразу, следующая — по прокрутке.
+  function txDayChunk() {
+    return Number(Views.txDayChunk) || 4;
+  }
+
+  function resetTxDays() {
+    st.txDays = txDayChunk();
+  }
+
   // Перерисовываем только результаты: поле поиска и селекты не теряют фокус.
-  function refreshTxResults() {
+  function paintTxResults() {
     if (route.name !== 'tx') return;
     var all = cached('txCache:' + st.month) || [];
     var box = el.screen.querySelector('#tx-results');
@@ -1457,9 +1469,35 @@
     box.innerHTML = Views.txResults(all, st.txFilter);
   }
 
+  // Догружаем порции, пока кнопка «Показать ещё» не уйдёт ниже экрана:
+  // иначе короткий список нельзя было бы долистать до следующей порции.
+  function fillTxDays() {
+    if (route.name !== 'tx' || !el.screen || typeof el.screen.getBoundingClientRect !== 'function') return;
+    for (var i = 0; i < 12; i++) {
+      var more = el.screen.querySelector('#tx-more');
+      if (!more || typeof more.getBoundingClientRect !== 'function') return;
+      if (more.getBoundingClientRect().top > el.screen.getBoundingClientRect().bottom + 120) return;
+      st.txDays = (Number(st.txDays) || txDayChunk()) + txDayChunk();
+      paintTxResults();
+    }
+  }
+
+  function refreshTxResults() {
+    paintTxResults();
+    fillTxDays();
+  }
+
+  function moreTxDays() {
+    if (route.name !== 'tx') return;
+    st.txDays = (Number(st.txDays) || txDayChunk()) + txDayChunk();
+    paintTxResults();
+    fillTxDays();
+  }
+
   function clearTxSearch() {
     if (!st.txFilter) return;
     st.txFilter.q = '';
+    resetTxDays();
     var input = el.screen.querySelector('#tx-search');
     if (input) {
       input.value = '';
@@ -2904,6 +2942,7 @@ document.addEventListener('click', function (ev) {
       closeCategoryPicker(picker);
       picker.querySelector('summary').focus({ preventScroll: true });
       root.Tg.haptic('light');
+      resetTxDays();
       refreshTxResults();
     }
     document.querySelectorAll('.category-picker[open]').forEach(function (picker) {
@@ -3171,6 +3210,7 @@ document.addEventListener('click', function (ev) {
       case 'quick-action': runQuickAction(actionBtn.getAttribute('data-quick')); break;
       case 'tx-clear-filter': clearTxFilter(); break;
       case 'tx-search-clear': clearTxSearch(); break;
+      case 'tx-more': moreTxDays(); break;
 
       case 'toggle-cat': toggleCategory(actionBtn.getAttribute('data-id')); break;
       case 'add-in-cat': openAdd({ category_id: actionBtn.getAttribute('data-id'), kind: 'expense' }); break;
@@ -3392,6 +3432,7 @@ document.addEventListener('click', function (ev) {
       if (!current || current.value !== value) return;
       var clear = el.screen.querySelector('[data-action="tx-search-clear"]');
       if (clear) clear.hidden = !value;
+      resetTxDays();
       refreshTxResults();
     }, 120);
   });
@@ -3447,9 +3488,18 @@ document.addEventListener('click', function (ev) {
     if (t.matches('[data-tx-category]')) {
       st.txFilter.category_id = t.value || null;
       root.Tg.haptic('light');
+      resetTxDays();
       refreshTxResults();
     }
   });
+
+  // Бесконечная прокрутка истории: у кнопки «Показать ещё» догружаем следующую порцию.
+  el.screen.addEventListener('scroll', function () {
+    if (route.name !== 'tx' || !el.screen.querySelector) return;
+    var more = el.screen.querySelector('#tx-more');
+    if (!more || typeof more.getBoundingClientRect !== 'function') return;
+    if (more.getBoundingClientRect().top <= el.screen.getBoundingClientRect().bottom + 240) moreTxDays();
+  }, { passive: true });
 
   el.sheet.addEventListener('click', function (ev) {
     if (ev.target.closest('[data-sheet-close]')) closeSheet();
