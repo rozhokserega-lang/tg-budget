@@ -83,6 +83,52 @@ body { background: var(--c-bg); }
 .section__head { margin: 22px 3px 11px; }
 .section__title { color: #aba7b5; font-size: 11px; letter-spacing: .11em; }
 
+/* Общая сводка: период и список месяцев. */
+.months-range { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
+.months-range__label { font-size: 12px; color: var(--c-hint); }
+.months-range__chip {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+.months-range__chip[aria-pressed="true"] {
+  border-color: var(--c-accent);
+  background: color-mix(in srgb, var(--c-accent) 12%, transparent);
+  color: var(--c-accent);
+}
+.months-total { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-bottom: 16px; padding: 14px 16px; }
+.months-total__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }
+.months-total__cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.months-total__label { font-size: 11px; color: var(--c-hint); }
+.months-total__value { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.months-total__hint { margin: 0; font-size: 13px; color: var(--c-hint); }
+.months-list { padding: 0 14px; }
+.month-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--c-border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.month-row:last-child { border-bottom: 0; }
+.month-row:active { background: var(--c-card-strong); }
+.month-row--active { background: color-mix(in srgb, var(--c-accent) 10%, transparent); }
+.month-row__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: capitalize; }
+.month-row__flow { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.month-row__balance { flex: none; min-width: 62px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+
 /* Violet account card with a soft, editorial line-chart. */
 .hero {
   display: flex;
