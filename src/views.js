@@ -836,7 +836,9 @@
       (selects ? '<div class="tx-filters">' + selects + '</div>' : '');
   }
 
-  function txResults(all, filter) {
+  // dayLimit ограничивает историю первыми (самыми свежими) днями.
+  // Остальные дни догружает приложение по мере прокрутки.
+  function txResults(all, filter, dayLimit) {
     var st = State.get();
     var f = filter || {};
     var list = reconcileList(filterTx(all, f)).filter(function (t) {
@@ -854,20 +856,24 @@
     var found = T('Найдено: {records}', { records: P('records', list.length) });
     var count = '<div class="tx-count"><span>' + (kindLabel ? e(kindLabel) + ' · ' : '') + e(found) + '</span>' +
       '<button type="button" class="tx-count__reset" data-action="tx-clear-filter">' + e(T('Сбросить')) + '</button></div>';
+    var groups = groupByDay(list);
+    var shown = dayLimit > 0 ? groups.slice(0, dayLimit) : groups;
+    var more = shown.length < groups.length;
     return (active ? count : '') +
-      groupByDay(list).map(function (g) {
+      shown.map(function (g) {
         return '<div class="tx-group"><div class="tx-group__title">' + e(Fmt.dayLabel(g.day)) + '</div>' + g.items.map(financeHistoryRow).join('') + '</div>';
-      }).join('');
+      }).join('') +
+      (more ? '<button type="button" class="tx-more" id="tx-more" data-action="tx-more">' + e(T('Показать ещё')) + '</button>' : '');
   }
 
-  function renderTxList(all, filter, chartMode) {
+  function renderTxList(all, filter, chartMode, dayLimit) {
     var st = State.get();
     var pending = (root.Queue && Queue.size()) ? '<div class="sync-note">' + e(T('Изменения отправятся, когда появится связь')) + '</div>' : '';
     return '<div class="finance-page">' +
       monthNav(st.month) + pending + financeOverview(all, filter, chartMode) +
       '<div class="finance-ledger">' + txControls(all, filter) +
       '<h2 class="finance-history-title">' + e(T('История')) + '</h2>' +
-      '<div id="tx-results">' + txResults(all, filter) + '</div></div></div>';
+      '<div id="tx-results">' + txResults(all, filter, dayLimit) + '</div></div></div>';
   }
 
   function financeHistoryRow(t) {

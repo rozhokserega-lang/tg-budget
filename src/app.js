@@ -500,6 +500,7 @@
     }
     applyRouteUi();
     pendingScrollTxFilter();
+    observeTxMore();
   }
 
   // Предупреждение сверху экрана (подписка и т. п.).
@@ -864,6 +865,7 @@
   // Любой явный переход сбрасывает поиск и фильтры участника.
   function openTx(categoryId, force, scrollToFilter) {
     route = { name: 'tx' };
+    resetTxDays();
     if (categoryId !== undefined) st.txFilter = { kind: null, category_id: categoryId || null, member_id: null, q: '' };
     if (!st.txFilter) st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
     if (st.txChart !== 'income' && st.txChart !== 'expense' && st.txChart !== 'balance') st.txChart = 'expense';
@@ -879,11 +881,11 @@
     var month = st.month;
     var previous = cached('txCache:' + month);
     if (scrollToFilter) txFilterScrollPending = true;
-    if (previous) render(Views.renderTxList(previous, st.txFilter, st.txChart), true); else render(Views.skeletonList());
+    if (previous) render(Views.renderTxList(previous, st.txFilter, st.txChart, txDayLimit), true); else render(Views.skeletonList());
     pendingScrollTxFilter();
     loadTx(month, force).then(function (all) {
       if (seq !== reqSeq || route.name !== 'tx' || month !== st.month) return;
-      if (all !== previous) render(Views.renderTxList(all, st.txFilter, st.txChart), true);
+      if (all !== previous) render(Views.renderTxList(all, st.txFilter, st.txChart, txDayLimit), true);
       pendingScrollTxFilter();
       if (State.isExpired()) banner(T('Пробный период закончился — новые записи недоступны.'));
     }).catch(function (err) {
@@ -1517,9 +1519,10 @@
     var mode = kind === 'income' || kind === 'expense' ? kind : 'balance';
     st.txChart = mode;
     st.txFilter.kind = mode === 'balance' ? null : mode;
+    resetTxDays();
     if (route.name !== 'tx') return;
     var scroll = el.screen.scrollTop;
-    render(Views.renderTxList(cached('txCache:' + st.month) || [], st.txFilter, st.txChart));
+    render(Views.renderTxList(cached('txCache:' + st.month) || [], st.txFilter, st.txChart, txDayLimit));
     el.screen.scrollTop = scroll;
   }
 
@@ -1529,18 +1532,55 @@
     openTx();
   }
 
+  // История показывает порцию последних дней, остальные догружаются
+  // при прокрутке (бесконечная лента). Порция сбрасывается при смене
+  // месяца, фильтра или поиска, чтобы список снова начинался с свежих дней.
+  var TX_DAYS_INITIAL = 3;
+  var TX_DAYS_STEP = 3;
+  var txDayLimit = TX_DAYS_INITIAL;
+  var txMoreObserver = null;
+
+  function resetTxDays() {
+    txDayLimit = TX_DAYS_INITIAL;
+  }
+
+  function loadMoreTxDays() {
+    if (route.name !== 'tx') return;
+    var box = el.screen.querySelector('#tx-results');
+    if (!box || !box.querySelector('#tx-more')) return;
+    txDayLimit += TX_DAYS_STEP;
+    refreshTxResults();
+  }
+
+  // Метка «Показать ещё» у нижней кромки экрана догружает следующую порцию.
+  // Наблюдатель пересоздаётся после каждой перерисовки результатов.
+  function observeTxMore() {
+    if (txMoreObserver) {
+      txMoreObserver.disconnect();
+      txMoreObserver = null;
+    }
+    var sentinel = el.screen.querySelector('#tx-more');
+    if (!sentinel || typeof root.IntersectionObserver !== 'function') return;
+    txMoreObserver = new root.IntersectionObserver(function (entries) {
+      if (entries.some(function (entry) { return entry.isIntersecting; })) loadMoreTxDays();
+    }, { root: el.screen, rootMargin: '240px 0px' });
+    txMoreObserver.observe(sentinel);
+  }
+
   // Перерисовываем только результаты: поле поиска и селекты не теряют фокус.
   function refreshTxResults() {
     if (route.name !== 'tx') return;
     var all = cached('txCache:' + st.month) || [];
     var box = el.screen.querySelector('#tx-results');
     if (!box) return;
-    box.innerHTML = Views.txResults(all, st.txFilter);
+    box.innerHTML = Views.txResults(all, st.txFilter, txDayLimit);
+    observeTxMore();
   }
 
   function clearTxSearch() {
     if (!st.txFilter) return;
     st.txFilter.q = '';
+    resetTxDays();
     var input = el.screen.querySelector('#tx-search');
     if (input) {
       input.value = '';
@@ -1951,7 +1991,7 @@
     if (name === 'tx') {
       var rows = cached('txCache:' + st.month);
       var filter = st.txFilter || { kind: null, category_id: null, member_id: null, q: '' };
-      return rows ? Views.renderTxList(rows, filter, st.txChart || 'expense') : Views.skeletonList();
+      return rows ? Views.renderTxList(rows, filter, st.txChart || 'expense', txDayLimit) : Views.skeletonList();
     }
     if (name === 'plans') return st.plans ? Views.renderPlans(st.plans, plansTab) : Views.skeletonList();
     if (name === 'settings') return Views.renderSettings(null);
@@ -3257,6 +3297,7 @@ document.addEventListener('click', function (ev) {
       case 'quick-action': runQuickAction(actionBtn.getAttribute('data-quick')); break;
       case 'tx-clear-filter': clearTxFilter(); break;
       case 'tx-search-clear': clearTxSearch(); break;
+      case 'tx-more': loadMoreTxDays(); break;
 
       case 'toggle-cat': toggleCategory(actionBtn.getAttribute('data-id')); break;
       case 'add-in-cat': openAdd({ category_id: actionBtn.getAttribute('data-id'), kind: 'expense' }); break;
@@ -3478,6 +3519,7 @@ document.addEventListener('click', function (ev) {
       if (!current || current.value !== value) return;
       var clear = el.screen.querySelector('[data-action="tx-search-clear"]');
       if (clear) clear.hidden = !value;
+      resetTxDays();
       refreshTxResults();
     }, 120);
   });
@@ -3994,7 +4036,7 @@ document.addEventListener('click', function (ev) {
       if (name === 'summary') {
         if (expandedCat) expandedCat.rows = (cached('txCache:' + month) || []).filter(function (t) { return t.category_id === expandedCat.id; });
         render(Views.renderSummary(cached('summaryCache:' + month), st.plans, expandedCat, cached('txCache:' + month), categoryView), true);
-      } else if (name === 'tx') render(Views.renderTxList(cached('txCache:' + month) || [], st.txFilter, st.txChart), true);
+      } else if (name === 'tx') render(Views.renderTxList(cached('txCache:' + month) || [], st.txFilter, st.txChart, txDayLimit), true);
       else if (name === 'plans') render(Views.renderPlans(st.plans, plansTab), true);
       else render(Views.renderSettings(route.section));
       if (failure) throw failure.reason;
