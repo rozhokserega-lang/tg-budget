@@ -92,3 +92,11 @@ E: все 60 тестов проходят (node --test tests/*.test.cjs), synta
 - styles/finance.css: вырез раскрывается CSS-переходом .38s; preserveAspectRatio=none; единый цвет кромки через SVG alpha mask в обеих темах.
 - index.html: новые хеши CSS/JS. tests/app.test.cjs: регрессия проверяет эталонные положения и отсутствие вмешательства JS в геометрию выреза.
 - 160/160 тестов, syntax/diff-check успешно. Chromium отсутствует: визуальная проверка Telegram остаётся открытой.
+
+## 2026-10-30: история по 3 дня с догрузкой
+- Ветка agent/8b26beba-task.
+- src/views.js: `txResults(all, filter, dayLimit)` и `renderTxList(..., dayLimit)` показывают первые N дней; при остатке выводится кнопка-метка `#tx-more[data-action="tx-more"]`.
+- src/app.js: `TX_DAYS_INITIAL/STEP=3`, `txDayLimit`; сброс при `openTx`, смене типа/поиска; `IntersectionObserver` с root `el.screen` догружает порцию, клик по метке — fallback. Лимит прокинут во все повторные отрисовки, включая swipe-preview.
+- styles/finance.css: стиль метки для тёмной и светлой темы. src/i18n.js: «Показать ещё» en/es. tests/views.test.cjs: проверка 3/6/7 дней и метки.
+- Ребейз на main 42acf24; конфликт `STATE.md` разрешён, версии ассетов пересчитаны (build f12eb25c6e3d).
+- Проверки: 169/169, `node --check src/app.js`, `git diff --check`. Реальный скролл в Telegram не проверен.

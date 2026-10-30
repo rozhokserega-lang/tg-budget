@@ -103,6 +103,23 @@ test('finance groups newest days and creation times first without mutating input
   assert.equal((html.match(/class="tx-group"/g) || []).length, 2);
   assert.equal(JSON.stringify(rows), before);
 });
+test('finance history shows three newest days first and reveals the rest in batches', () => {
+  const ctx = setup();
+  const rows = Array.from({ length: 7 }, (_, i) => tx('d' + i, '2025-01-0' + (i + 1), '2025-01-0' + (i + 1) + 'T10:00:00Z'));
+  const first = ctx.Views.txResults(rows, {}, 3);
+  assert.equal((first.match(/class="tx-group"/g) || []).length, 3);
+  assert.match(first, /data-tx-id="d6"/);
+  assert.doesNotMatch(first, /data-tx-id="d3"/);
+  assert.match(first, /id="tx-more" data-action="tx-more"/);
+  const second = ctx.Views.txResults(rows, {}, 6);
+  assert.equal((second.match(/class="tx-group"/g) || []).length, 6);
+  assert.match(second, /data-tx-id="d1"/);
+  assert.match(second, /id="tx-more"/);
+  const all = ctx.Views.txResults(rows, {}, 9);
+  assert.equal((all.match(/class="tx-group"/g) || []).length, 7);
+  assert.doesNotMatch(all, /id="tx-more"/);
+  assert.equal((ctx.Views.renderTxList(rows, {}, 'expense', 3).match(/class="tx-group"/g) || []).length, 3);
+});
 test('finance category is primary static text, description secondary and edit beside delete', () => {
   const ctx = setup();
   const html = ctx.Views.txResults([tx('id', '2025-01-01', '', { note: '<coffee>' })], {});

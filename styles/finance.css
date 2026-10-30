@@ -924,6 +924,9 @@ button.finance-stat:focus-visible { outline: 2px solid var(--stat-color); outlin
 .finance-history-title { font-size: 19px; letter-spacing: -.02em; margin: 0 0 10px; }
 .finance-page .tx-group__title { display: block; padding: 14px 0 7px; color: #929eb2; font-size: 12px; }
 .finance-page .tx-group { margin: 0 0 8px; }
+/* Метка следующей порции дней: её появление у нижней кромки запускает догрузку. */
+.tx-more { display: block; width: 100%; margin: 10px 0 4px; padding: 12px; border-radius: 12px; border: 1px dashed #35425b; background: transparent; color: #929eb2; font-size: 12px; }
+.tx-more:focus-visible { outline: 2px solid #65dfa4; outline-offset: 2px; }
 .finance-page .tx { border: 0; background: #151e2b; border-radius: 14px; margin: 6px 0; }
 .finance-page .tx__row { gap: 12px; min-height: 76px; padding: 14px 12px; background: #1b2535; border-radius: 14px; transition: transform .3s cubic-bezier(.22,1,.36,1),background .2s; user-select: none; -webkit-user-select: none; }
 .finance-page .tx__row--dragging { transition: none; cursor: grabbing; }
@@ -1293,6 +1296,7 @@ html[data-theme='light'] .category-picker__option[aria-pressed='true'] { backgro
 html[data-theme='light'] .category-picker__option:hover { background: var(--c-card-strong); }
 html[data-theme='light'] .finance-page .tx-group__title,
 html[data-theme='light'] .finance-operation__meta { color: var(--c-hint); }
+html[data-theme='light'] .tx-more { border-color: var(--c-border); color: var(--c-hint); }
 html[data-theme='light'] .finance-page .tx { background: transparent; }
 html[data-theme='light'] .finance-page .tx__row { background: var(--c-card); }
 html[data-theme='light'] .finance-page .cat__icon { --tile: #8a5a2b; --tile-bg: #f7eadc; }
