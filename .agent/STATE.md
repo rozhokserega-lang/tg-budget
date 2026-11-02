@@ -1,10 +1,10 @@
 # Текущее состояние
 
 2026-11-02. Задача: разрешить перенос существующего расхода в другую категорию.
-Ветка: fix/edit-expense-category от main 05bf22f (PR #13 влит).
+Ветка влита: main b02c815; backend PR #2 влит в `tg-budget-app` (9c3056f).
 
-Готово: `Api.updateTx` в реальном режиме отправляет `update_tx`; клиентское ограничение `update_unsupported` убрано; тесты real-mode обновлены; README и версии ассетов пересчитаны (build d8ad8a2ee103). Серверный `update_tx` и синхронизация `miniapp` — в `tg-budget-app`, ветка fix/edit-expense-category.
+Готово: `Api.updateTx` в реальном режиме отправляет `update_tx`; Edge Function `api` v16 ACTIVE; GitHub Pages run 41398606587 успешен; production отдаёт build d8ad8a2ee103 и `src/api.js?v=0edd5d0a1e02`. Проверено, что deployed `api.js` содержит `update_tx`, а endpoint без initData возвращает 401.
 
-Проверки: `tests/edit-api.test.cjs` 5/5; полный прогон 168/170 — два старых теста общей сводки зависят от текущего месяца и падают на main после смены месяца, к изменению не относятся. `node --check` и `git diff --check` чисты; Deno check API выполнен в tg-budget-app.
+Проверки: edit-api 5/5; полный прогон 168/170 — два старых теста общей сводки зависят от текущего месяца, к изменению не относятся; Deno check, syntax/diff check успешны. Production Edge Function сверена с main после деплоя.
 
-Следующий шаг: review PR, затем с подтверждением задеплоить `api` и влить публичный клиент/Pages.
+Следующий шаг: ручной smoke в Telegram — открыть существующий расход, сменить категорию и сохранить.

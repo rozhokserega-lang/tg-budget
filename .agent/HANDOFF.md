@@ -5,7 +5,9 @@
 - `tests/edit-api.test.cjs`: mocked real-mode success/error; 5/5.
 - `README.md`: контракт обновлён; `index.html`: build `d8ad8a2ee103`.
 - Полный прогон: 168/170; два старых теста общей сводки зависят от текущего месяца и падают после смены месяца, не связаны с задачей.
-- Backend `update_tx` и `miniapp` — в `tg-budget-app`, ветка `fix/edit-expense-category`; deploy и merge не выполнялись.
+- Backend PR #2 влит в `tg-budget-app`; `api` v16 задеплоен; GitHub Pages run 41398606587 успешен.
+- Production: build `d8ad8a2ee103`, `api.js` содержит `update_tx`; endpoint без initData возвращает 401.
+- Осталось: ручной smoke в Telegram — сменить категорию существующего расхода.
 
 # 2026-10-29: общая сводка по месяцам
 

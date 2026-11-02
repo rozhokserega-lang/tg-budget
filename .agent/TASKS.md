@@ -38,4 +38,5 @@
 # Редактирование расхода (2026-11-02)
 - [x] Real-mode `Api.updateTx` отправляет `update_tx`.
 - [x] Тесты real-mode, README, версии ассетов (build d8ad8a2ee103).
-- [ ] Merge/deploy после подтверждения и проверка в Telegram.
+- [x] Merge/deploy: backend PR #2, api v16, Pages run 41398606587.
+- [ ] Ручной smoke в Telegram: перенести расход в другую категорию.
