@@ -43,7 +43,6 @@
     duplicate_receipt: 'Этот чек уже записан в бюджете.',
     bad_split_mode: 'Не удалось изменить способ деления.',
     bad_month: 'Не удалось определить месяц.',
-    update_unsupported: 'Редактирование расходов на сервере пока не подключено. Изменения не сохранены.',
   };
 
   function isDemo() {
@@ -82,10 +81,7 @@
     );
   }
 
-  // The real server update contract is not confirmed. Keep this adapter isolated
-  // until the backend explicitly supports the proposed update_tx payload.
   function updateTx(payload) {
-    if (!isDemo()) return Promise.reject(new ApiError('update_unsupported'));
     return call('update_tx', payload).catch(function (err) {
       throw new ApiError(err.code || 'network', err.status, err.data);
     });

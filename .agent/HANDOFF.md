@@ -1,3 +1,12 @@
+# 2026-11-02: перенос расхода между категориями
+
+- Ветка `fix/edit-expense-category` от main `05bf22f` (PR #13 влит).
+- `src/api.js`: real-mode `Api.updateTx` вызывает `update_tx`; сообщение `update_unsupported` удалено.
+- `tests/edit-api.test.cjs`: mocked real-mode success/error; 5/5.
+- `README.md`: контракт обновлён; `index.html`: build `d8ad8a2ee103`.
+- Полный прогон: 168/170; два старых теста общей сводки зависят от текущего месяца и падают после смены месяца, не связаны с задачей.
+- Backend `update_tx` и `miniapp` — в `tg-budget-app`, ветка `fix/edit-expense-category`; deploy и merge не выполнялись.
+
 # 2026-10-29: общая сводка по месяцам
 
 - `src/views.js`: название месяца в `monthNav` стало кнопкой `open-months`; новый `renderMonths` — период 3/6/12, итог, строки месяцев, состояние загрузки/ошибки.

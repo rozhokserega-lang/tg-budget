@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { runInNewContext } = require('node:vm');
 
-function environment(real = false) {
-  let requests = 0;
+function environment(real = false, fetchImpl = null) {
+  const requests = [];
   const window = {
     location: { search: '' },
     APP_API_URL: 'https://example.invalid/api',
@@ -12,12 +12,16 @@ function environment(real = false) {
     Tg: { isInsideTelegram: () => real, initData: () => 'test' },
   };
   const context = { window, URLSearchParams, Intl, console,
-    setTimeout: fn => fn(), fetch: () => { requests++; throw new Error('Unexpected network'); } };
+    setTimeout: fn => fn(), fetch: (url, options) => {
+      requests.push({ url, options });
+      if (fetchImpl) return fetchImpl(url, options);
+      throw new Error('Unexpected network');
+    } };
   for (const file of ['format.js', 'demo.js', 'api.js']) {
     runInNewContext(readFileSync(require.resolve('../src/' + file), 'utf8'), context);
     Object.assign(context, window);
   }
-  return { ...window, requests: () => requests };
+  return { ...window, requests: () => requests.length, calls: () => requests };
 }
 
 test('demo update preserves immutable and omitted fields, refreshes relations and clears note', async () => {
@@ -75,11 +79,31 @@ test('invalid updates reject without mutating the existing expense', async () =>
   }
 });
 
-test('real mode reports unsupported without a request or demo mutation', async () => {
-  const env = environment(true);
-  const before = JSON.stringify(env.DEMO_API.state().tx);
-  await assert.rejects(env.Api.updateTx({ id: 'anything', amount: 12 }), error =>
-    error.code === 'update_unsupported' && error.message.includes('Изменения не сохранены'));
-  assert.equal(env.requests(), 0);
-  assert.equal(JSON.stringify(env.DEMO_API.state().tx), before);
+test('real mode sends update_tx with initData and returns the saved transaction', async () => {
+  const saved = { id: 'tx-1', amount: 12, category_id: 'cat-1', categories: { name: 'Еда', kind: 'expense' } };
+  const env = environment(true, () => Promise.resolve(new Response(JSON.stringify(saved), {
+    status: 200, headers: { 'content-type': 'application/json' },
+  })));
+  const result = await env.Api.updateTx({ id: 'tx-1', amount: 12, category_id: 'cat-1' });
+  assert.equal(result.id, 'tx-1');
+  assert.equal(result.amount, 12);
+  assert.equal(result.category_id, 'cat-1');
+  assert.equal(result.categories.name, 'Еда');
+  assert.equal(env.requests(), 1);
+  const [request] = env.calls();
+  assert.equal(request.url, 'https://example.invalid/api');
+  const body = JSON.parse(request.options.body);
+  assert.equal(body.initData, 'test');
+  assert.equal(body.action, 'update_tx');
+  assert.equal(body.id, 'tx-1');
+  assert.equal(body.category_id, 'cat-1');
+});
+
+test('real mode maps update_tx server errors', async () => {
+  const env = environment(true, () => Promise.resolve(new Response(JSON.stringify({ error: 'bad_category' }), {
+    status: 400, headers: { 'content-type': 'application/json' },
+  })));
+  await assert.rejects(env.Api.updateTx({ id: 'tx-1', category_id: 'income' }), error =>
+    error.code === 'bad_category' && error.status === 400 && !!error.message);
+  assert.equal(env.requests(), 1);
 });
