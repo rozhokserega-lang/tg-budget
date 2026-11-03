@@ -3,7 +3,7 @@
   root.Payments = { create: function (host) {
     var C = root.PaymentsCalendar, V = root.PaymentsViews;
     var s = { month: root.Fmt.todayIso().slice(0, 7), selected: root.Fmt.todayIso(), data: null, loading: false, error: null };
-    var generation = 0, busy = false, scope = null, confirmationKeys = Object.create(null);
+    var generation = 0, busy = false, scope = null, confirmationKeys = Object.create(null), formContext = null;
     function resetScope() {
       var next = host.scope();
       if (next !== scope) { scope = next; generation++; s.data = null; confirmationKeys = Object.create(null); }
@@ -32,6 +32,7 @@
       if (id && !current) return host.toast('Платёж уже изменился. Обновите календарь');
       host.categories().then(function (cats) {
         if (currentScope !== host.scope() || gen !== generation || !host.active()) return;
+        formContext = { scope: currentScope, id: id, payment: confirm ? null : current };
         host.sheet(confirm ? V.confirm(current, cats) : V.form(current, cats, s.selected));
       }).catch(function (err) { host.toast(err.message); });
     }
@@ -62,6 +63,7 @@
       if (busy) return;
       var v = form.elements, id = form.getAttribute('data-id'), payload;
       try {
+        if (formContext && formContext.scope !== host.scope()) throw new Error('Семья изменилась. Откройте форму заново.');
         var amount = root.Fmt.parseAmount(v.amount.value);
         if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7) throw new Error('Проверьте сумму: положительное число, до двух знаков после запятой');
         var category = (root.State.get().categories || []).find(function (c) { return c.id === v.category_id.value && c.kind === 'expense' && !c.archived; });
@@ -69,11 +71,14 @@
         if (confirm) {
           if (!C.valid(v.paid_on.value)) throw new Error('Проверьте дату оплаты');
           // Stable across retry, including an unknown result after a network interruption.
-          if (!confirmationKeys[id]) confirmationKeys[id] = root.crypto && root.crypto.randomUUID ? root.crypto.randomUUID() : 'confirm-' + Date.now() + '-' + Math.random().toString(36).slice(2);
-          payload = { occurrence_id: id, amount: amount, paid_on: v.paid_on.value, category_id: category.id, idempotency_key: confirmationKeys[id] };
+          var signature = JSON.stringify([amount, v.paid_on.value, category.id]);
+          if (!confirmationKeys[id] || confirmationKeys[id].signature !== signature) confirmationKeys[id] = { signature: signature, key: root.crypto && root.crypto.randomUUID ? root.crypto.randomUUID() : 'confirm-' + Date.now() + '-' + Math.random().toString(36).slice(2) };
+          payload = { occurrence_id: id, amount: amount, paid_on: v.paid_on.value, category_id: category.id, idempotency_key: confirmationKeys[id].key };
         } else {
           var reminders = v.reminders.value.trim();
           payload = { payment: root.PaymentsApi.validate({ id: id || undefined, name: v.name.value.trim(), description: v.description.value.trim(), amount: amount, category_id: category.id, date: v.date.value, repeat: v.type.value === 'regular' ? { interval: Number(v.interval.value), unit: v.unit.value } : null, reminders: reminders ? Array.from(new Set(reminders.split(',').map(function (n) { return n.trim() === '' ? NaN : Number(n.trim()); }))) : [], overdue_every: v.overdue_every.value === '' ? null : Number(v.overdue_every.value) }) };
+          var original = formContext && formContext.id === id ? formContext.payment : id && findPayment(id);
+          if (original && original.server) payload.payment.server = original.server;
         }
       } catch (err) { form.querySelector('.payment-form-error').textContent = err.message; return; }
       return mutate(confirm ? 'confirm' : 'save', payload, form);
