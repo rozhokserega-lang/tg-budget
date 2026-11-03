@@ -62,3 +62,8 @@
 - [x] REST-адаптер и список всех шаблонов, ограничения формы, тесты.
 - [x] Зеркало miniapp, frontend 188/188, backend 51/51, Deno check, browser demo smoke.
 - [ ] Проверка в Telegram и согласованный rollout.
+
+## Личный трекер задач — 2026-11-03
+- [x] Frontend и demo-адаптер, формы/сортировка/повторы, интеграция навигации/кэша.
+- [x] Автотесты и требования подключения backend: docs/tasks-adapter.md.
+- [ ] Согласовать backend API и подключить APP_TASKS_ADAPTER; Telegram smoke (touch, уведомления, server purge).

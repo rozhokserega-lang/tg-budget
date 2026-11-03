@@ -78,7 +78,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   if (options.motionMedia) context.window.matchMedia = () => options.motionMedia;
   if (options.covers) context.window.Covers = options.covers;
   Object.assign(context, context.window);
-  for (const file of ['recurring', 'format', 'state', 'views', 'cache', 'payments-calendar', 'payments-api', 'payments-views', 'payments']) {
+  for (const file of ['recurring', 'format', 'state', 'views', 'cache', 'payments-calendar', 'payments-api', 'payments-views', 'payments', 'tasks-model', 'tasks-api', 'tasks-views', 'tasks']) {
     runInNewContext(readFileSync(require.resolve(`../src/${file}.js`), 'utf8'), context);
     Object.assign(context, context.window);
   }
@@ -87,7 +87,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   // Keep production event registration and implementations; omit network boot only.
   runInNewContext(source.replace(/\n  boot\(\);/, `
   root.TestApp = {
-    payments: payments, dockSample: dockSample, getDockState: function () { return dockState; }, getDockMotion: function () { return dockMotion; },
+    taskTracker: taskTracker, payments: payments, dockSample: dockSample, getDockState: function () { return dockState; }, getDockMotion: function () { return dockMotion; },
     applyRouteUi: applyRouteUi, setRoute: function (name) { route = {name:name}; },
     pageGestureAxis: pageGestureAxis, refreshCurrentPage: refreshCurrentPage,
     openEditTx: openEditTx, submitEditTx: submitEditTx, cancelEditTx: cancelEditTx,
@@ -1646,4 +1646,24 @@ test('payment confirmation invalidates finance caches and uses one atomic adapte
   assert.equal(button.disabled,false);
   await env.app.refreshCurrentPage();
   assert.equal(env.app.getRoute().name,'payments');
+});
+
+
+test('task module opens in app, refreshes and invalidates task cache after preference changes', async () => {
+  const env = setup();
+  env.st.member = {id:'me',household_id:'home'};
+  let sort = 'due', reads = 0, writes = 0;
+  env.context.window.APP_TASKS_ADAPTER = {
+    list: async () => { reads++; return {lists:[],tasks:[],preferences:{selected:'all',sort,orders:{}}}; },
+    preferences: async q => { writes++; assert.equal(q.scope,'me:home'); sort=q.sort; }
+  };
+  await env.app.taskTracker().open();
+  assert.equal(env.app.getRoute().name,'tasks');
+  assert.match(env.nodes.get('#screen').innerHTML, /Трекер задач/);
+  await env.app.taskTracker().change({value:'manual',hasAttribute:()=>false,getAttribute:()=> 'sort'});
+  assert.equal(writes,1);
+  assert.equal(reads,2);
+  await env.app.refreshCurrentPage();
+  assert.equal(reads,3);
+  assert.match(env.nodes.get('#screen').innerHTML, /value="manual" selected/);
 });
