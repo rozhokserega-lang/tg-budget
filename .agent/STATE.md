@@ -16,3 +16,6 @@
 
 ## Трекер задач — PR #17
 Пользователь разрешил merge в main. Конфликты с интеграцией REST платежей разрешены с сохранением обеих реализаций. Frontend задач: tasks*.js, tasks.css; mock только demo, production ожидает APP_TASKS_ADAPTER. Требования: docs/tasks-adapter.md. Telegram smoke и backend-интеграция задач остаются.
+
+## Напоминания — PR #16
+Пользователь разрешил merge. Совмещены платежи REST и трекер задач из main 173edb1. Напоминания работают через demo mock; APP_REMINDERS_ADAPTER ещё требуется сопоставить с актуальным docs/api. Telegram smoke остаётся.

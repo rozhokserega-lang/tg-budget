@@ -67,3 +67,7 @@
 - [x] Frontend и demo-адаптер, формы/сортировка/повторы, интеграция навигации/кэша.
 - [x] Автотесты и требования подключения backend: docs/tasks-adapter.md.
 - [ ] Согласовать backend API и подключить APP_TASKS_ADAPTER; Telegram smoke (touch, уведомления, server purge).
+
+# Напоминания — PR #16
+- [x] Календарь, CRUD, repeat, pause/resume/complete, уведомления-настройки, demo mock.
+- [ ] Production-адаптер с актуальным docs/api и Telegram smoke.
