@@ -35,6 +35,32 @@ E: все 60 тестов проходят (node --test tests/*.test.cjs), synta
 
 Пользователь разрешил push и merge main. Реализация baa43ca; origin/main515ac88 добавил собственные editor/swipe/dock, scanner/CSV/theme. При интеграции переиспользованы main editor с входом из profile/interface и возвратом, pointer swipe и постоянный плюс. Наши dropdown и pull-refresh сохранены. Порядок member-scoped с legacy fallback. Конфликтующие тесты актуализированы; browser editor/save/return и console[] проверены. 132/132 теста и syntax всех src прошли; Build02005d2d983b. Следующие шаги — STATE. AGENTS.md и untracked план исходные пользовательские, не добавлять.
 
+## Деплой модулей v1 (2026-11-03)
+
+Через Supabase MCP: миграции 018–022 применены (`apply_migration`), функции `api` v18 и `notify` v10 задеплоены с `verify_jwt=false`. MCP сохраняет относительные пути: передавались `api/*.ts` + `_shared/*.ts` (entrypoint `api/index.ts`) и `notify/index.ts` + `_shared/*.ts`; плоское дублирование не понадобилось. `apply_migration` берёт версию из текущего времени — при двух вызовах в одну секунду возможен `duplicate key schema_migrations_pkey`, поэтому применять по одной с паузой.
+
+Cron `notify-hourly` снимался на время миграций и восстановлен (jobid 3). Проверки: health 200, 401 без initData, `notify` 403 без секрета, прогон cron 200 и `succeeded`, 9 шаблонов/9 начислений из 9 legacy-платежей, дублей `dedupe_key`/`expense_id` нет, advisors только INFO.
+
+Найден и исправлен баг dual-write: удаление `recurring_payments` обнуляло `legacy_recurring_id` по FK, и шаблон не скрывался. Теперь id шаблона запоминается до удаления, скрытие — по id (`hideTemplate`), тест 49/49, коммит `cd540a0`.
+
+## Модули v1, реализация (2026-11-03)
+
+Ветка `feature/modules-v1` в `../teletreker` (от `e424723`), изменения не закоммичены. Новые файлы: `supabase/migrations/018_recurrence_and_outbox.sql` … `022_backfill_payments.sql`, `supabase/functions/_shared/{recurrence,modules,notification_text}.ts`, `supabase/functions/api/{v1,v1_http,v1_validate,v1_serialize,v1_errors,v1_path,legacy_sync}.ts`, `tests/` (8 файлов). Изменены только `supabase/functions/api/index.ts` и `supabase/functions/notify/index.ts`; pre-existing untracked `miniapp/.agent/`, `miniapp/AGENTS.md` не тронуты.
+
+Проверки: `node --test tests/*.test.mjs` — 48/48; все изменённые TS проходят `npx -y esbuild … --outfile=/dev/null`; в `tg-budget-public` обновлены `docs/api/BACKEND.md` (валюта в начислениях, состав миграции 019) и `.agent/*`.
+
+Не сделано: миграции нигде не применены, `api`/`notify` не задеплоены, SQL/конкурентные интеграционные тесты не запускались (нет БД). Коммит `d64f282` отправлен в origin, PR #5 открыт. Перед деплоем — бэкап БД по `BACKEND.md` §8, после — `GET /v1/health` и smoke legacy-действий.
+
+## Аудит нового ТЗ, 2026-11-03
+
+## Этап 2 контракта, 2026-11-03
+
+Созданы `docs/api/openapi.v1.yaml`, `FRONTEND_API_CONTRACT.md`, `BACKEND.md`, `generate-types.mjs`, `api-types.d.ts`. Проверки: YAML парсится, 22 пути / 34 операции / 42 схемы, все `$ref` разрешаются; `node docs/api/generate-types.mjs` отработал (openapi-typescript 7.13.0). Код бэкенда не менялся. Открытые вопросы — в конце `BACKEND.md`; согласование контракта ещё не получено.
+
+Бэкенд найден в `../teletreker` (origin `tg-budget-app`), ветка `main` e424723, чистая (кроме untracked `miniapp/.agent`, `miniapp/AGENTS.md`). Ключевые файлы: `supabase/functions/api/index.ts` (action-протокол, `verifyInitData`), `supabase/functions/api/telegram.ts`, `supabase/functions/notify/index.ts` (pg_cron, `x-cron-secret`), `supabase/migrations/001_schema.sql`, `005_payments.sql` (подписка Stars, не модуль платежей), `010_notifications.sql`, `013_recurring_reminder_days.sql`, `017_month_split_mode.sql`, `docs/PROJECT.md` (деплой, pg_cron `notify-hourly`).
+
+Ограничения: `deno`/Supabase CLI/MCP отсутствуют; применить миграции и задеплоить функции из этой сессии нельзя. `supabase/` в `tg-budget-public` ignored — серверные правки делать в `../teletreker`, контракт/доки фронта — здесь. Тестов бэкенда нет; фронтовые тесты — `miniapp/tests/*.test.cjs` / `tests/*.test.cjs` на node.
+
 Публикация завершена: feature/ui-ux-v2 и main на origin b7bdae6, рабочая ветка main. Build b934973230a9 (после нормализации конечной пустой строки CSS). Пользовательские AGENTS временно stash и восстановлены без конфликтов; исходный untracked план сохранён. Память о публикации обновлена локально без отдельного коммита.
 
 ## Исправление home-only dock, 2026-10-26
