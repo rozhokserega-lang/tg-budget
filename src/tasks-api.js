@@ -15,6 +15,6 @@
     remove:function(q){var s=store(q);s.tasks=s.tasks.filter(function(t){return t.id!==q.id;});},
     preferences:function(q){var s=store(q);if(q.selected!==undefined){if(!['all','none'].includes(q.selected))checkList(s,q.selected);s.preferences.selected=q.selected;}if(q.sort!==undefined){if(!['due','priority','created','manual'].includes(q.sort))throw new Error('Неизвестная сортировка');s.preferences.sort=q.sort;}if(q.order)s.preferences.orders[q.view]=copy(q.order);}
   };
-  function adapter(){return root.APP_TASKS_ADAPTER || (root.Api.isDemo()?mock:null);}
+  function adapter(){return root.APP_TASKS_ADAPTER || (root.Api.isDemo()?mock:root.TasksRest);}
   root.TasksApi={available:function(){return !!adapter();},isMock:function(){return !root.APP_TASKS_ADAPTER&&root.Api.isDemo();},invoke:function(method,q){return Promise.resolve().then(function(){var a=adapter();if(!a||typeof a[method]!=='function')throw new Error('Модуль ожидает подключения серверного API');return a[method](q);});}};
 })(window);
