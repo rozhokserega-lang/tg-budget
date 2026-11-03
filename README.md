@@ -179,3 +179,7 @@ Android/iOS и серверное редактирование не провер
 После интеграции проверяются все Node tests, syntax src/*.js, git diff --check и версии ресурсов. Browser demo подтверждает вход из профиля в общий редактор, перестановку, сохранение и возврат; console errors [].
 
 Приёмка Telegram Android/iOS/Desktop остаётся открытой: реальные touch/native gestures, safe area, offline/background, reduced motion и профилирование FPS. Порог pull140px и исключение краёв24px предварительные; 60 FPS не измерялись. Серверные файлы отсутствуют в checkout; ограничения серверного редактирования из разделов выше сохраняются.
+
+## Модуль платежей
+
+Календарь платежей подключён к REST v1 через `src/payments-rest.js`; демо использует отдельное хранилище в памяти. Перед публикацией требуется серверный контракт 1.1.0 со списком шаблонов. Порядок обновления, ограничения и проверки — [docs/payments-adapter.md](docs/payments-adapter.md); канонический контракт — [docs/api/FRONTEND_API_CONTRACT.md](docs/api/FRONTEND_API_CONTRACT.md).

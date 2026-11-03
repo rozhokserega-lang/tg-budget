@@ -1,4 +1,4 @@
-/** No speculative network actions. Inject APP_PAYMENTS_ADAPTER after backend contract approval. */
+/** Demo storage and validation; real requests use the REST v1 adapter. */
 (function (root) {
   var stores = Object.create(null), seq = 0;
   function copy(x) { return JSON.parse(JSON.stringify(x)); }
@@ -18,13 +18,14 @@
   }
   function freeze(s) { project(s, root.Fmt.todayIso()).forEach(function (o) { s.due[o.id] = o; }); }
   function validate(p) {
-    if (!p.name || !p.name.trim() || p.name.length > 160) error('bad_name', 'Введите название до 160 символов');
-    if (!Number.isFinite(p.amount) || p.amount <= 0 || Math.abs(Math.round(p.amount * 100) - p.amount * 100) > 1e-7) error('bad_amount', 'Укажите положительную сумму, не более двух знаков после запятой');
-    if (!root.PaymentsCalendar.valid(p.date) || p.date < '1900-01-01' || p.date > '2100-12-31') error('bad_date', 'Укажите корректную дату');
+    if (!p.name || !p.name.trim() || p.name.length > 120) error('bad_name', 'Введите название до 120 символов');
+    if (!Number.isFinite(p.amount) || p.amount <= 0 || p.amount > 1e9 || Math.abs(Math.round(p.amount * 100) - p.amount * 100) > 1e-7) error('bad_amount', 'Укажите положительную сумму, не более двух знаков после запятой');
+    if (p.description && p.description.length > 1000) error('bad_description', 'Описание должно быть до 1000 символов');
+    if (!root.PaymentsCalendar.valid(p.date) || p.date < '2000-01-01' || p.date > '2100-12-31') error('bad_date', 'Укажите корректную дату');
     if (!p.category_id) error('bad_category', 'Выберите категорию расхода');
-    if (p.repeat && (!['day', 'week', 'month', 'year'].includes(p.repeat.unit) || !Number.isSafeInteger(p.repeat.interval) || p.repeat.interval < 1 || p.repeat.interval > 365)) error('bad_repeat', 'Интервал должен быть целым числом от 1 до 365');
-    if (!Array.isArray(p.reminders) || p.reminders.length > 10 || p.reminders.some(function (n) { return !Number.isInteger(n) || n < 0 || n > 365; })) error('bad_reminders', 'Укажите до 10 уведомлений от 0 до 365 дней');
-    if (p.overdue_every !== null && (!Number.isInteger(p.overdue_every) || p.overdue_every < 1 || p.overdue_every > 365)) error('bad_reminders', 'Повтор при просрочке: от 1 до 365 дней');
+    if (p.repeat && (!['day', 'week', 'month', 'year'].includes(p.repeat.unit) || !Number.isSafeInteger(p.repeat.interval) || p.repeat.interval < 1 || p.repeat.interval > ({day:365,week:365,month:12,year:10})[p.repeat.unit])) error('bad_repeat', 'Проверьте интервал: дни/недели до 365, месяцы до 12, годы до 10');
+    if (!Array.isArray(p.reminders) || p.reminders.length > 10 || p.reminders.some(function (n) { return !Number.isInteger(n * 1440) || n < 0 || n > 30; })) error('bad_reminders', 'Укажите до 10 уведомлений от 0 до 30 дней');
+    if (p.overdue_every !== null && (!Number.isInteger(p.overdue_every) || p.overdue_every < 1 || p.overdue_every > 30)) error('bad_reminders', 'Повтор при просрочке: от 1 до 30 дней');
     return p;
   }
   var mock = {
@@ -69,7 +70,7 @@
       return copy(result);
     }
   };
-  function adapter() { return root.APP_PAYMENTS_ADAPTER || (root.Api.isDemo() ? mock : null); }
+  function adapter() { return root.APP_PAYMENTS_ADAPTER || (root.Api.isDemo() ? mock : root.PaymentsRest); }
   function invoke(method, payload) {
     return Promise.resolve().then(function () {
       var a = adapter();

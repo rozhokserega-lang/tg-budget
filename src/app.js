@@ -3423,6 +3423,10 @@ document.addEventListener('click', function (ev) {
   });
 
   document.addEventListener('change', function (ev) {
+    if (ev.target.matches('[data-payment-unit]')) {
+      ev.target.form.elements.interval.max = ({day:365,week:365,month:12,year:10})[ev.target.value];
+      return;
+    }
     if (!ev.target.matches('[data-payment-type]')) return;
     var repeat = ev.target.closest('form').querySelector('.payment-repeat');
     repeat.hidden = repeat.disabled = ev.target.value !== 'regular';
