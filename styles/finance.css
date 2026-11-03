@@ -83,6 +83,52 @@ body { background: var(--c-bg); }
 .section__head { margin: 22px 3px 11px; }
 .section__title { color: #aba7b5; font-size: 11px; letter-spacing: .11em; }
 
+/* Общая сводка: период и список месяцев. */
+.months-range { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
+.months-range__label { font-size: 12px; color: var(--c-hint); }
+.months-range__chip {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+.months-range__chip[aria-pressed="true"] {
+  border-color: var(--c-accent);
+  background: color-mix(in srgb, var(--c-accent) 12%, transparent);
+  color: var(--c-accent);
+}
+.months-total { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-bottom: 16px; padding: 14px 16px; }
+.months-total__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }
+.months-total__cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.months-total__label { font-size: 11px; color: var(--c-hint); }
+.months-total__value { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.months-total__hint { margin: 0; font-size: 13px; color: var(--c-hint); }
+.months-list { padding: 0 14px; }
+.month-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--c-border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.month-row:last-child { border-bottom: 0; }
+.month-row:active { background: var(--c-card-strong); }
+.month-row--active { background: color-mix(in srgb, var(--c-accent) 10%, transparent); }
+.month-row__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: capitalize; }
+.month-row__flow { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.month-row__balance { flex: none; min-width: 62px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+
 /* Violet account card with a soft, editorial line-chart. */
 .hero {
   display: flex;
@@ -676,35 +722,21 @@ body { background: var(--c-bg); }
 .tab--primary .tab__icon { transition: background .26s ease, color .2s ease, box-shadow .26s ease, transform .26s cubic-bezier(.3,.86,.24,1), opacity .2s ease; }
 .tab--primary:active .tab__icon { transform: scale(.92); }
 
-/* Падение кнопки в вырез при каждом возвращении на главную.
-   Проминается весь док целиком — фон, вырез и вкладки одним блоком,
-   поэтому иконки не «отстают» от фона. Тайминги заданы на каждый отрезок:
-   кнопка падает с ускорением и ударяется ровно на 58% таймлайна,
-   в этот же момент док получает максимальный прогиб; отскок (74%) и
-   успокоение (88%) тоже совпадают кадр в кадр. */
-.tabs--intro {
-  animation: dock-drop .8s linear both;
-  transform-origin: 50% 100%;
+/* Match the reference demo: CSS opens the notch while RAF animates the button. */
+.tabs.tabs--motion { transition: grid-template-columns .38s cubic-bezier(.22,1,.36,1), --dock-notch-height .38s cubic-bezier(.22,1,.36,1); }
+.tabs.tabs--motion > .tab--primary {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: none;
 }
-.tabs--intro .tab--primary .tab__icon {
-  animation: add-drop .8s linear both;
+.tabs--motion .tab--primary .tab__icon {
+  animation: none;
+  transition: background .26s ease, color .2s ease, box-shadow .26s ease;
+  will-change: transform, opacity;
 }
 .tab--primary.tab--jelly .tab__icon { animation: add-jelly .44s cubic-bezier(.22,.8,.3,1); }
-@keyframes dock-drop {
-  0%, 50% { transform: translateX(-50%); animation-timing-function: cubic-bezier(.2,.7,.5,1); }
-  58% { transform: translateX(-50%) translateY(3px) scaleY(.955); animation-timing-function: cubic-bezier(.3,.6,.4,1); }
-  74% { transform: translateX(-50%) translateY(-1px) scaleY(1.008); animation-timing-function: cubic-bezier(.4,0,.6,1); }
-  88% { transform: translateX(-50%) translateY(.5px) scaleY(.998); animation-timing-function: ease-out; }
-  100% { transform: translateX(-50%); }
-}
-@keyframes add-drop {
-  0% { transform: translateY(-84px) scale(.78); opacity: 0; animation-timing-function: cubic-bezier(.5,.05,.8,.4); }
-  14% { opacity: 1; }
-  58% { transform: translateY(2px) scale(1.05,.9); opacity: 1; animation-timing-function: cubic-bezier(.3,.6,.4,1); }
-  74% { transform: translateY(-3px) scale(.98,1.02); animation-timing-function: cubic-bezier(.4,0,.6,1); }
-  88% { transform: translateY(.5px) scale(1.01,.995); animation-timing-function: ease-out; }
-  100% { transform: none; opacity: 1; }
-}
+.tabs--motion .tab--primary.tab--jelly .tab__icon { animation: none; }
 @keyframes add-jelly {
   0% { transform: scale(1); }
   28% { transform: scale(1.12,.84); }
@@ -892,6 +924,9 @@ button.finance-stat:focus-visible { outline: 2px solid var(--stat-color); outlin
 .finance-history-title { font-size: 19px; letter-spacing: -.02em; margin: 0 0 10px; }
 .finance-page .tx-group__title { display: block; padding: 14px 0 7px; color: #929eb2; font-size: 12px; }
 .finance-page .tx-group { margin: 0 0 8px; }
+/* Метка следующей порции дней: её появление у нижней кромки запускает догрузку. */
+.tx-more { display: block; width: 100%; margin: 10px 0 4px; padding: 12px; border-radius: 12px; border: 1px dashed #35425b; background: transparent; color: #929eb2; font-size: 12px; }
+.tx-more:focus-visible { outline: 2px solid #65dfa4; outline-offset: 2px; }
 .finance-page .tx { border: 0; background: #151e2b; border-radius: 14px; margin: 6px 0; }
 .finance-page .tx__row { gap: 12px; min-height: 76px; padding: 14px 12px; background: #1b2535; border-radius: 14px; transition: transform .3s cubic-bezier(.22,1,.36,1),background .2s; user-select: none; -webkit-user-select: none; }
 .finance-page .tx__row--dragging { transition: none; cursor: grabbing; }
@@ -927,19 +962,19 @@ button.finance-stat:focus-visible { outline: 2px solid var(--stat-color); outlin
   left: calc((100vw - 100%) / -2);
   right: calc((100vw - 100%) / -2);
   bottom: -9px;
-  border: 1px solid rgba(194,201,219,.13);
+  border: 1px solid var(--dock-edge-color);
   border-bottom: 0;
   border-radius: 23px 23px 0 0;
   background: linear-gradient(180deg,rgba(34,36,47,.97),rgba(24,26,35,.98));
   /* Home ends with the existing 96x40px notch: horizontal tangents at both shoulders and the bowl.
      Three adjacent mask pieces plus the lower fill avoid stretching its curve. */
   --dock-mask: linear-gradient(#000 0 0) left top / calc(50% - 48px) 100% no-repeat,
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 40'%3E%3Cpath fill='black' d='M0 0C16 0 12 38 48 38C84 38 80 0 96 0V40H0Z'/%3E%3C/svg%3E") center top / 96px var(--dock-notch-height, 40px) no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 40'%20preserveAspectRatio='none'%3E%3Cpath fill='black' d='M0 0C16 0 12 38 48 38C84 38 80 0 96 0V40H0Z'/%3E%3C/svg%3E") center top / 96px var(--dock-notch-height, 40px) no-repeat,
     linear-gradient(#000 0 0) right top / calc(50% - 48px) 100% no-repeat,
     linear-gradient(#000 0 0) center bottom / 100% calc(100% - var(--dock-notch-height, 40px) + 1px) no-repeat;
   -webkit-mask: var(--dock-mask);
   mask: var(--dock-mask);
-  box-shadow: 0 8px 28px rgba(0,0,0,.32),inset 0 1px rgba(255,255,255,.035);
+  box-shadow: 0 8px 28px rgba(0,0,0,.32);
 }
 .tab { min-height: 56px; height: 58px; gap: 2px; font-size: 10px; }
 .tab__icon { height: 22px; }
@@ -963,7 +998,10 @@ button.finance-stat:focus-visible { outline: 2px solid var(--stat-color); outlin
   width: 100vw;
   height: var(--dock-notch-height, 40px);
   border-radius: 0;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 40'%3E%3Cpath fill='none' stroke='rgba(191,206,216,.23)' stroke-width='1' d='M0 .5C16 .5 12 38 48 38C84 38 80 .5 96 .5'/%3E%3C/svg%3E") center top / 96px var(--dock-notch-height, 40px) no-repeat;
+  --dock-edge-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 40'%20preserveAspectRatio='none'%3E%3Cpath fill='none' stroke='black' stroke-width='1' d='M0 .5C16 .5 12 38 48 38C84 38 80 .5 96 .5'/%3E%3C/svg%3E") center top / 96px var(--dock-notch-height, 40px) no-repeat;
+  background: var(--dock-edge-color);
+  -webkit-mask: var(--dock-edge-mask);
+  mask: var(--dock-edge-mask);
 }
 @media (max-width: 390px) {
   .finance-stat { padding: 11px 9px; border-radius: 15px; }
@@ -1005,6 +1043,8 @@ html[data-theme='light'] .screen--peek { box-shadow: 0 0 30px rgba(33,24,50,.18)
    анимацию кольца: иначе оно наполнялось бы два раза подряд. */
 .screen--peek .finance-ring__segment,
 .screen--instant .finance-ring__segment { animation: none; }
+.screen--instant .plans-page .plan,
+.screen--instant .plans-page .progress__bar { animation: none; }
 /* Появление нового экрана длиннее угасания — нет заметной «пустой» паузы. */
 .screen { transition: opacity .2s cubic-bezier(.22,.86,.3,1); }
 
@@ -1190,13 +1230,13 @@ html[data-theme='light'] .cat .progress { background: var(--c-card-strong); }
 html[data-theme='light'] .tabs::before {
   border-color: var(--c-border);
   background: linear-gradient(180deg,rgba(255,255,255,.98),rgba(246,243,251,.99));
-  box-shadow: 0 8px 28px rgba(33,24,50,.12),inset 0 1px rgba(255,255,255,.7);
+  box-shadow: 0 8px 28px rgba(33,24,50,.12);
 }
 html[data-theme='light'] .tabs__notch-fill {
   border-color: var(--c-border);
   background: linear-gradient(180deg,rgba(255,255,255,.98),rgba(246,243,251,.99));
 }
-html[data-theme='light'] .tabs::after { filter: invert(1); opacity: .55; }
+html[data-theme='light'] .tabs { --dock-edge-color: var(--c-border); }
 html[data-theme='light'] .tabs--quick-actions::before,
 html[data-theme='light'] .tabs--quick-actions::after { opacity: 0; }
 html[data-theme='light'] .tab { color: var(--c-hint); }
@@ -1256,6 +1296,7 @@ html[data-theme='light'] .category-picker__option[aria-pressed='true'] { backgro
 html[data-theme='light'] .category-picker__option:hover { background: var(--c-card-strong); }
 html[data-theme='light'] .finance-page .tx-group__title,
 html[data-theme='light'] .finance-operation__meta { color: var(--c-hint); }
+html[data-theme='light'] .tx-more { border-color: var(--c-border); color: var(--c-hint); }
 html[data-theme='light'] .finance-page .tx { background: transparent; }
 html[data-theme='light'] .finance-page .tx__row { background: var(--c-card); }
 html[data-theme='light'] .finance-page .cat__icon { --tile: #8a5a2b; --tile-bg: #f7eadc; }
@@ -1292,6 +1333,7 @@ html[data-theme='light'] .tx-delete { color: var(--c-expense); }
   initial-value: 40px;
 }
 .tabs {
+  --dock-edge-color: rgba(194,201,219,.13);
   --dock-notch-height: 40px;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
   transition: grid-template-columns .38s cubic-bezier(.22,1,.36,1), --dock-notch-height .38s cubic-bezier(.22,1,.36,1);
@@ -1301,7 +1343,8 @@ html[data-theme='light'] .tx-delete { color: var(--c-expense); }
   opacity: 1;
   visibility: visible;
   transform: none;
-  transition: opacity .22s ease, transform .3s ease, visibility 0s;
+  /* RAF owns the entire flight; settling must not start a second transition. */
+  transition: none;
 }
 .tabs--primary-hidden {
   --dock-notch-height: 0px;
@@ -1310,9 +1353,9 @@ html[data-theme='light'] .tx-delete { color: var(--c-expense); }
 .tabs--primary-hidden > .tab--primary {
   opacity: 0;
   visibility: hidden;
-  transform: translateY(16px) scale(.65);
+  transform: none;
   pointer-events: none;
-  transition: opacity .2s ease, transform .3s ease, visibility 0s .3s;
+  transition: none;
 }
 @media (prefers-reduced-motion: reduce) {
   .tabs, .tabs > .tab--primary { transition: none; }

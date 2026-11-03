@@ -76,8 +76,9 @@ test('home has a square receipt scanner next to the category view toggle', () =>
   const quick = ctx.Views.renderQuickActions(0);
   assert.match(quick, /data-quick="receipt-photo"/);
   assert.match(quick, /Фото чека/);
+  assert.doesNotMatch(quick, /goal-new|debt-new|wish-new/);
   const pages = quick.split('<div class="quick-actions__page"').slice(1);
-  assert.deepEqual(pages.map(page => (page.match(/data-quick=/g) || []).length), [6, 6, 2]);
+  assert.deepEqual(pages.map(page => (page.match(/data-quick=/g) || []).length), [4, 5, 2]);
   assert.match(quick, /data-page="2"/);
   assert.match(quick, /data-quick="settings"/);
   assert.match(quick, /data-quick="repeat-last"/);
@@ -102,6 +103,23 @@ test('finance groups newest days and creation times first without mutating input
   assert.deepEqual([...html.matchAll(/data-tx-id="([^"]+)"/g)].map(m => m[1]), ['b', 'tie', 'a', 'old']);
   assert.equal((html.match(/class="tx-group"/g) || []).length, 2);
   assert.equal(JSON.stringify(rows), before);
+});
+test('finance history shows three newest days first and reveals the rest in batches', () => {
+  const ctx = setup();
+  const rows = Array.from({ length: 7 }, (_, i) => tx('d' + i, '2025-01-0' + (i + 1), '2025-01-0' + (i + 1) + 'T10:00:00Z'));
+  const first = ctx.Views.txResults(rows, {}, 3);
+  assert.equal((first.match(/class="tx-group"/g) || []).length, 3);
+  assert.match(first, /data-tx-id="d6"/);
+  assert.doesNotMatch(first, /data-tx-id="d3"/);
+  assert.match(first, /id="tx-more" data-action="tx-more"/);
+  const second = ctx.Views.txResults(rows, {}, 6);
+  assert.equal((second.match(/class="tx-group"/g) || []).length, 6);
+  assert.match(second, /data-tx-id="d1"/);
+  assert.match(second, /id="tx-more"/);
+  const all = ctx.Views.txResults(rows, {}, 9);
+  assert.equal((all.match(/class="tx-group"/g) || []).length, 7);
+  assert.doesNotMatch(all, /id="tx-more"/);
+  assert.equal((ctx.Views.renderTxList(rows, {}, 'expense', 3).match(/class="tx-group"/g) || []).length, 3);
 });
 test('finance category is primary static text, description secondary and edit beside delete', () => {
   const ctx = setup();
@@ -360,6 +378,41 @@ test('none split hides the partner settlement entirely', () => {
   assert.doesNotMatch(html, /class="partner"/);
   assert.doesNotMatch(html, /Как делим:/);
   assert.match(html, /Остаток за месяц/);
+});
+
+test('month title opens the overall monthly summary', () => {
+  const ctx = setup();
+  const html = home(ctx);
+  assert.match(html, /class="month-nav__label" data-action="open-months"/);
+  assert.match(html, /Выбрать месяц/);
+});
+
+test('monthly overview shows period, per-month totals and marks the selected month', () => {
+  const ctx = setup();
+  ctx.State.get().month = '2026-09';
+  const html = ctx.Views.renderMonths(['2026-08', '2026-09', '2026-10'], {
+    '2026-08': { income: 100, expense: 40, balance: 60 },
+    '2026-09': { income: 0, expense: 0, balance: 0 },
+    '2026-10': { income: 300, expense: 120, balance: 180 },
+  }, 3);
+  assert.match(html, /Общая сводка/);
+  assert.match(html, /data-action="months-period" data-period="3" aria-pressed="true"/);
+  assert.match(html, /data-action="months-select" data-month="2026-09" aria-pressed="true"/);
+  assert.match(html, /data-action="months-back"/);
+  assert.match(html, /months-total__grid/);
+  assert.match(html, /240/);
+  assert.match(html, /180/);
+});
+
+test('monthly overview explains loading and offers retry after failures', () => {
+  const ctx = setup();
+  const loading = ctx.Views.renderMonths(['2026-09', '2026-10'], {}, 3);
+  assert.match(loading, /Загружаем сводку…/);
+  assert.doesNotMatch(loading, /months-total__grid/);
+  assert.match(loading, /data-month="2026-09"/);
+  const failed = ctx.Views.renderMonths(['2026-09'], { '2026-09': null }, 3);
+  assert.match(failed, /Не удалось загрузить часть месяцев/);
+  assert.match(failed, /data-action="months-retry"/);
 });
 
 test('home edit mode shows every block with keyboard reorder controls and inert content', () => {

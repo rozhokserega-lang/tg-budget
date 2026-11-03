@@ -42,7 +42,9 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   const homeScreen = options.homeScreen || { supported: false, status: 'unsupported', added: false };
   const windowEvents = fakeNode();
   const storage = new Map(options.storage || []);
-  const context = { document, console, performance, setTimeout: fn => { timers.set(++timerId, fn); return timerId; }, clearTimeout: id => timers.delete(id), requestAnimationFrame: fn => fn() };
+  const frames = new Map();
+  let frameId = 0, frameTime = 0;
+  const context = { document, console, performance: { now: () => frameTime }, setTimeout: fn => { timers.set(++timerId, fn); return timerId; }, clearTimeout: id => timers.delete(id), requestAnimationFrame: fn => { frames.set(++frameId, fn); return frameId; }, cancelAnimationFrame: id => frames.delete(id) };
   if (options.clock) context.Date = class extends Date { static now() { return options.clock.now; } };
   context.window = {
     localStorage: {
@@ -68,14 +70,15 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
       call(action, payload) {
         apiCalls.push({ action, payload });
         if (options.api) return options.api(action, payload);
-        return Promise.resolve(action === 'me' ? { member: context.State.get().member } : action === 'list_plans' ? {} : []);
+        return Promise.resolve(action === 'me' ? { member: context.State.get().member } : action === 'list_plans' ? {} : action === 'categories' ? context.State.get().categories || [] : []);
       },
     },
     Queue: { size: () => queueOps.length, push(action, payload) { const op = { id: 'op-' + (queueOps.length + 1), action, payload }; queueOps.push(op); return op; } },
   };
+  if (options.motionMedia) context.window.matchMedia = () => options.motionMedia;
   if (options.covers) context.window.Covers = options.covers;
   Object.assign(context, context.window);
-  for (const file of ['recurring', 'format', 'state', 'views', 'cache']) {
+  for (const file of ['recurring', 'format', 'state', 'views', 'cache', 'payments-calendar', 'payments-api', 'payments-views', 'payments']) {
     runInNewContext(readFileSync(require.resolve(`../src/${file}.js`), 'utf8'), context);
     Object.assign(context, context.window);
   }
@@ -84,6 +87,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   // Keep production event registration and implementations; omit network boot only.
   runInNewContext(source.replace(/\n  boot\(\);/, `
   root.TestApp = {
+    payments: payments, dockSample: dockSample, getDockState: function () { return dockState; }, getDockMotion: function () { return dockMotion; },
     applyRouteUi: applyRouteUi, setRoute: function (name) { route = {name:name}; },
     pageGestureAxis: pageGestureAxis, refreshCurrentPage: refreshCurrentPage,
     openEditTx: openEditTx, submitEditTx: submitEditTx, cancelEditTx: cancelEditTx,
@@ -91,7 +95,8 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     getEditing: function () { return editingTx; }, getSaving: function () { return editSaving; },
     getDrag: function () { return sheetDrag; },
     openSummary: openSummary, openTx: openTx, openTxKind: openTxKind, setTxKind: setTxKind, loadResource: loadResource,
-    fetchSummary: fetchSummary, loadTx: loadTx, adoptMember: adoptMember,
+    openMonths: openMonths, setMonthsPeriod: setMonthsPeriod, leaveMonths: leaveMonths, selectMonthsMonth: selectMonthsMonth,
+    fetchSummary: fetchSummary, loadTx: loadTx, adoptMember: adoptMember, loadCategories: loadCategories, invalidateTransactions: invalidateTransactions,
     refreshOnReturn: refreshOnReturn, clearCache: clearCache, cached: cached,
     applyLocalTx: applyLocalTx,
     loadMember: loadMember, deleteAccount: deleteAccount, closeDialog: closeDialog,
@@ -139,6 +144,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   st['summaryCache:2026-10'] = { data: { expense: 0 }, at: Date.now() };
   if (options.stubReload !== false) context.window.TestApp.preventRouteReloadForTest();
   return { context, app: context.window.TestApp, st, tx, sheet, panel, nodes, calls, apiCalls, windowEvents, queueOps, homeScreen, alerts, storage,
+    frames, frame(time) { frameTime = time; const pending = [...frames.values()]; frames.clear(); pending.forEach(fn => fn(time)); },
     flushTimers() { const pending = [...timers.values()]; timers.clear(); pending.forEach(fn => fn()); } };
 }
 function form(overrides = {}) {
@@ -150,6 +156,15 @@ function form(overrides = {}) {
 function deferred() { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; }
 async function settled() { await new Promise(resolve => setImmediate(resolve)); }
 async function open(env) { env.app.openEditTx('expense'); await settled(); }
+function clickAction(env, action, attrs = {}) {
+  const button = {
+    getAttribute: name => name === 'data-action' ? action : (attrs[name] ?? null),
+    hasAttribute: () => false,
+    closest: selector => selector === '[data-action]' ? button : null,
+  };
+  env.context.document.dispatch('click', { target: button });
+  return button;
+}
 
 test('edit entry points open a shared form with source values without mutating transaction', async () => {
   const env = setup();
@@ -215,10 +230,10 @@ test('save waits for confirmation, rejects duplicate submit and preserves origin
   await settled();
   assert.equal(env.app.getEditing(), null);
   assert.equal(env.app.getSaving(), false);
-  assert.equal(env.st['txCache:2026-09'], undefined);
-  assert.equal(env.st['summaryCache:2026-09'], undefined);
-  assert.equal(env.st['txCache:2026-10'], undefined);
-  assert.equal(env.st['summaryCache:2026-10'], undefined);
+  assert.equal(env.st['txCache:2026-09'].data[0].id, 'expense');
+  assert.equal(env.st['summaryCache:2026-09'].data.expense, 20);
+  assert.equal(env.st['txCache:2026-10'].data.length, 0);
+  assert.equal(env.st['summaryCache:2026-10'].data.expense, 0);
   assert.equal(env.context.window.routeReloaded, 'summary');
 });
 
@@ -442,7 +457,7 @@ test('queued add keeps optimistic record until confirmation and invalidates on s
   assert.equal(env.queueOps[0].payload.occurred_on, '2026-09-22');
   assert.ok(env.st['txCache:2026-09'].data.some(row => row._local));
   env.windowEvents.dispatch('queue-sent', { detail: { id: env.queueOps[0].id, result: { id: 'server-new' } } });
-  assert.equal(env.st['txCache:2026-09'], undefined);
+  assert.equal(env.st['txCache:2026-09'].data.some(row => row.id === 'server-new' && !row._local), true);
 });
 
 test('member scope change removes pending add and delete overlays', async () => {
@@ -510,14 +525,16 @@ test('failed delete restores the record, category totals and member amounts', as
   assert.match(env.nodes.get('#toast').textContent, /Не удалилось/);
 });
 
-test('plan SWR shows cached goals and retains them if background refresh fails', async () => {
+test('modules replaces legacy sections without requesting or deleting old data', async () => {
   const env = setup(undefined, { api: () => Promise.reject(new Error('offline')) });
-  env.st.plans = { goals: [{ id: 'g', name: 'cached-plan-marker', target: 100, saved: 10 }], debts: [], wishes: [], recurring: [] };
+  env.st.plans = { goals: [{ id: 'g', name: 'cached-plan-marker' }], debts: [], wishes: [], recurring: [] };
   env.app.openPlans();
-  assert.match(env.nodes.get('#screen').innerHTML, /cached-plan-marker/);
   await settled();
-  assert.match(env.nodes.get('#screen').innerHTML, /cached-plan-marker/);
-  assert.match(env.nodes.get('#toast').textContent, /Не удалось обновить/);
+  assert.match(env.nodes.get('#screen').innerHTML, /Модули/);
+  assert.match(env.nodes.get('#screen').innerHTML, /data-module="payments"/);
+  assert.doesNotMatch(env.nodes.get('#screen').innerHTML, /cached-plan-marker|Желания|Долги|Цели/);
+  assert.equal(env.st.plans.goals[0].id, 'g');
+  assert.equal(env.apiCalls.length, 0);
 });
 
 test('a delayed plans response does not repaint settings after a quick tab switch', async () => {
@@ -760,7 +777,7 @@ test('dock visibility, focusability and intro follow home across interrupted tra
    assert.equal(primary.inert,!shown);
    assert.equal(attrs.get('aria-hidden'),String(!shown));
  }
- env.flushTimers();
+ env.frame(800);
  assert.equal(tabs.classList.contains('tabs--intro'),false);
  env.app.applyRouteUi(); // cached repaint does not restart an already settled home intro
  assert.equal(tabs.classList.contains('tabs--intro'),false);
@@ -775,7 +792,7 @@ test('leaving home moves focus away from the central action before hiding it', (
  let focused=false;
  const primary=Object.assign(fakeNode(), {contains:node=>node===primary, setAttribute(name) { if(name==='aria-hidden') assert.equal(focused,true); }});
  const profile={focus(){focused=true;}};
- tabs.querySelector=selector=>selector==='[data-tab="add"]'?primary:selector==='[data-tab="settings"]'?profile:{};
+ tabs.querySelector=selector=>selector==='[data-tab="add"]'?primary:selector==='[data-tab="settings"]'?profile:selector==='.tabs__notch-fill'?{}:null;
  env.context.document.activeElement=primary;
  env.app.setRoute('settings'); env.app.applyRouteUi();
  assert.equal(focused,true); assert.equal(primary.inert,true);
@@ -950,6 +967,56 @@ test('home edit reorders blocks, persists on save, resets and cancels', () => {
   assert.deepEqual(JSON.parse(env.storage.get('budget.homeOrder.' + (env.st.member && env.st.member.id))), defaults);
 });
 
+test('profile form saves the changed name even when the stored household name is empty', async () => {
+  const saves = [];
+  const env = setup(undefined, {
+    stubReload: false,
+    api: (action, payload) => {
+      if (action === 'save_profile') {
+        saves.push(payload);
+        return Promise.resolve({ ok: true, member_name: payload.member_name });
+      }
+      return Promise.resolve(action === 'me' ? { member: env.st.member } : []);
+    },
+  });
+  env.st.member = { id: 'me', name: 'Аня', households: { id: 'h1' } };
+  env.app.openSettings('family');
+  const formNode = {
+    elements: { member_name: { value: 'Анечка' }, household_name: { value: '' } },
+    querySelector: selector => selector === '[type="submit"]' ? { disabled: false } : null,
+  };
+  env.app.submitProfile(formNode);
+  assert.equal(env.st.member.name, 'Анечка');
+  await settled();
+  assert.equal(saves.length, 1);
+  assert.equal(saves[0].member_name, 'Анечка');
+  assert.equal(Object.prototype.hasOwnProperty.call(saves[0], 'household_name'), false);
+  assert.match(env.nodes.get('#toast').textContent, /Сохранено/);
+  assert.doesNotMatch(env.nodes.get('#toast').textContent, /Введите/);
+});
+
+test('profile submit event reaches the profile handler', async () => {
+  const env = setup(undefined, {
+    stubReload: false,
+    api: (action, payload) => {
+      if (action === 'save_profile') return Promise.resolve({ ok: true, household_name: payload.household_name });
+      return Promise.resolve(action === 'me' ? { member: env.st.member } : []);
+    },
+  });
+  env.st.member = { id: 'me', name: 'Аня', households: { id: 'h1', name: 'Наша семья' } };
+  env.app.openSettings('family');
+  const formNode = {
+    matches: selector => selector === 'form',
+    getAttribute: name => name === 'data-form' ? 'profile' : null,
+    elements: { member_name: { value: 'Аня' }, household_name: { value: 'Семья 2' } },
+    querySelector: () => null,
+  };
+  env.context.document.dispatch('submit', { target: formNode, preventDefault() {} });
+  assert.equal(env.st.member.households.name, 'Семья 2');
+  await settled();
+  assert.ok(env.apiCalls.some(call => call.action === 'save_profile' && call.payload.household_name === 'Семья 2'));
+});
+
 test('solo add form forces is_shared false even without the toggle', () => {
   const env = setup();
   const formNode = fakeNode();
@@ -1081,6 +1148,20 @@ test('page swipe follows main tabs, skips add and ignores interactive targets', 
   assert.equal(env.context.window.routeReloaded, null);
 });
 
+test('page swipe starts on cards and stat buttons but not on gesture surfaces', () => {
+  const env = setup();
+  env.st.member = { id: 'me', household_id: 'home' };
+  // На телефоне карточки категорий и стат-блоки занимают почти весь экран:
+  // если считать их интерактивными, свайп между страницами почти не работает.
+  const token = name => new RegExp('(^|,)\\s*' + name + '\\s*(,|$)');
+  const target = selector => ({ closest: value => token(selector).test(value) ? {} : null });
+  assert.equal(env.app.pageSwipeAllowed(target('button')), true);
+  assert.equal(env.app.pageSwipeAllowed(target('input')), false);
+  assert.equal(env.app.pageSwipeAllowed(target('.tx')), false);
+  assert.equal(env.app.pageSwipeAllowed(target('.finance-operation')), false);
+  assert.equal(env.app.pageSwipeAllowed(target('.segments')), false);
+});
+
 test('page swipe peeks at the neighbouring page rendered from cached data', () => {
   const env = setup();
   env.st.member = { id: 'me', household_id: 'home' };
@@ -1136,4 +1217,433 @@ test('profile opens the shared home editor and returns after saving or cancellin
  assert.equal(env.context.State.homeOrder()[0],'categories');
  env.app.startHomeEdit(); env.app.cancelHomeEdit();
  assert.equal(env.app.getRoute().section,'interface'); assert.equal(env.st.homeEdit,false);
+});
+
+function countScreenPaints(env) {
+  const screen = env.nodes.get('#screen');
+  let html = screen.innerHTML, count = 0;
+  Object.defineProperty(screen, 'innerHTML', { get: () => html, set: value => { html = value; count++; } });
+  return () => count;
+}
+
+test('fresh finance cache paints once, equal forced response does not repaint or reset scroll', async () => {
+  const env = setup(undefined, { stubReload: false, api: () => Promise.resolve([]) });
+  env.app.cached('txCache:2026-09', []);
+  const paints = countScreenPaints(env);
+  env.app.openTx(); await settled();
+  assert.equal(paints(), 1); assert.equal(env.apiCalls.length, 0);
+  env.nodes.get('#screen').scrollTop = 200;
+  await env.app.refreshCurrentPage();
+  assert.equal(paints(), 1); assert.equal(env.nodes.get('#screen').scrollTop, 200);
+});
+
+test('expired finance cache is synchronous and a changed response preserves search, focus, scroll and sheet', async () => {
+  const clock = { now: 1000 }, pending = deferred();
+  const env = setup(undefined, { stubReload: false, clock, api: () => pending.promise });
+  env.app.cached('txCache:2026-09', [env.tx]); clock.now += 300001;
+  env.st.txFilter.q = 'old';
+  env.app.openTx();
+  assert.match(env.nodes.get('#screen').innerHTML, /old note/);
+  assert.doesNotMatch(env.nodes.get('#screen').innerHTML, /skeleton/);
+  const screen = env.nodes.get('#screen'); screen.scrollTop = 125;
+  const input = { id: 'tx-search', selectionStart: 1, selectionEnd: 2, focus() { this.focused = true; }, setSelectionRange(a,b) { this.range = [a,b]; } };
+  env.context.document.activeElement = input;
+  screen.querySelector = selector => selector === '#tx-search' ? input : null;
+  env.sheet.hidden = false; env.nodes.get('#sheet-body').innerHTML = 'draft stays';
+  pending.resolve([{ ...env.tx, note: 'old note updated' }]); await settled();
+  assert.match(screen.innerHTML, /old note updated/);
+  assert.equal(screen.scrollTop, 125); assert.equal(env.st.txFilter.q, 'old');
+  assert.equal(input.focused, true); assert.deepEqual(input.range, [1,2]);
+  assert.equal(env.sheet.hidden, false); assert.equal(env.nodes.get('#sheet-body').innerHTML, 'draft stays');
+  assert.equal(screen.classList.contains('screen--instant'), true);
+});
+
+test('modules entry makes no legacy requests and expired categories revalidate', async () => {
+  const clock = { now: 1000 }, categories = deferred();
+  let categoryCalls = 0;
+  const env = setup(undefined, { clock, api: action => {
+    if (action === 'categories') return ++categoryCalls === 1 ? Promise.resolve([{ id: 'old' }]) : categories.promise;
+    return Promise.resolve(action === 'list_plans' ? {} : []);
+  } });
+  env.app.openPlans(); await settled(); env.app.openPlans(); await settled();
+  assert.equal(env.apiCalls.filter(c => c.action === 'list_plans').length, 0);
+  await env.app.loadCategories(true);
+  clock.now += 300001;
+  assert.equal((await env.app.loadCategories())[0].id, 'old');
+  assert.equal(categoryCalls, 2);
+  categories.resolve([{ id: 'new' }]); await settled();
+  assert.equal(env.st.categories[0].id, 'new');
+});
+
+test('rapid home/finance switches and repeated month opens deduplicate active reads', async () => {
+  const rows = deferred(), summary = deferred();
+  const env = setup(undefined, { stubReload: false, api: action => action === 'list_tx' ? rows.promise : action === 'summary' ? summary.promise : Promise.resolve(action === 'list_plans' ? {} : []) });
+  env.app.cached('txCache:2026-09', [env.tx]);
+  env.app.cached('summaryCache:2026-09', { expense: 20, categories: [] });
+  env.app.openSummary(true); env.app.openTx(undefined, true); env.app.openSummary(true); env.app.openTx(undefined, true);
+  await settled();
+  assert.equal(env.apiCalls.filter(c => c.action === 'list_tx').length, 1);
+  assert.equal(env.apiCalls.filter(c => c.action === 'summary').length, 1);
+  rows.resolve([{ ...env.tx, note: 'latest-marker' }]); summary.resolve({ expense: 30, categories: [] }); await settled();
+  assert.match(env.nodes.get('#screen').innerHTML, /latest-marker/);
+  assert.equal(env.app.getRoute().name, 'tx');
+});
+
+test('pull refresh and lifecycle share page reads and lifecycle remains coalesced until data completes', async () => {
+  const rows = deferred(), member = { id: 'me', household_id: 'home' };
+  const env = setup(undefined, { stubReload: false, api: action => action === 'me' ? Promise.resolve({member}) : action === 'list_tx' ? rows.promise : Promise.resolve([]) });
+  env.app.adoptMember(member); env.app.cached('txCache:2026-09', [env.tx]); env.app.openTx(); await settled();
+  const pull = env.app.refreshCurrentPage(); const lifecycle = env.app.refreshOnReturn(); await settled();
+  assert.equal(env.app.refreshOnReturn(), lifecycle);
+  assert.equal(env.apiCalls.filter(c => c.action === 'list_tx').length, 1);
+  assert.equal(env.apiCalls.filter(c => c.action === 'me').length, 1);
+  rows.resolve([{ ...env.tx, note: 'partner-marker' }]); await Promise.all([pull, lifecycle]);
+  assert.match(env.nodes.get('#screen').innerHTML, /partner-marker/);
+});
+
+test('return from background updates finance behind an active edit without changing its draft', async () => {
+  const member = { id: 'me', household_id: 'home' };
+  const env = setup(undefined, { stubReload: false, api: action => Promise.resolve(action === 'me' ? {member} : action === 'categories' ? [{ id: 'food', kind: 'expense' }] : [{ ...env.tx, note: 'partner-change' }]) });
+  env.st.member = member;
+  env.app.cached('txCache:2026-09', [env.tx]); env.app.openTx(); await settled();
+  await open(env);
+  const editing = env.app.getEditing(), draft = env.nodes.get('#sheet-body').innerHTML;
+  await env.app.refreshOnReturn();
+  assert.equal(env.app.getEditing(), editing); assert.equal(env.nodes.get('#sheet-body').innerHTML, draft);
+  assert.equal(env.sheet.hidden, false); assert.equal(env.nodes.get('#screen').inert, true);
+  assert.match(env.nodes.get('#screen').innerHTML, /partner-change/);
+});
+
+test('targeted edit expires both months but leaves other month, plans and categories fresh', async () => {
+  const pending = deferred();
+  const env = setup(() => pending.promise);
+  env.app.cached('txCache:2026-08', []);
+  await env.app.loadPlans(); await env.app.loadCategories(true); await open(env);
+  const before = env.apiCalls.length;
+  env.app.submitEditTx(form()); pending.resolve({ id: 'expense' }); await settled();
+  await env.app.loadTx('2026-08'); await env.app.loadPlans(); await env.app.loadCategories(false);
+  assert.equal(env.apiCalls.length, before);
+  const data = deferred(); const late = env.app.loadResource('txCache:2026-09', () => data.promise, true);
+  const rejected = assert.rejects(late, {code: 'stale_response'}); await settled();
+  env.app.invalidateTransactions(['2026-09']); data.resolve([env.tx]); await rejected;
+  const n = env.apiCalls.length;
+  await env.app.loadTx('2026-09'); await env.app.loadTx('2026-10');
+  assert.equal(env.apiCalls.length - n, 2);
+});
+
+test('confirmed delete rejects pre-delete server response and revalidates partner totals', async () => {
+  const old = deferred(); let reads = 0;
+  const env = setup(undefined, { stubReload: false, api: action => action === 'list_tx' ? (++reads === 1 ? old.promise : Promise.resolve([])) : Promise.resolve(action === 'summary' ? { expense: 0, categories: [], members: [{ id: 'me', share: 0, balance: 0 }] } : action === 'list_plans' ? {} : []) });
+  env.app.cached('txCache:2026-09', [env.tx]); env.app.cached('summaryCache:2026-09', { expense: 20, categories: [] });
+  const request = env.app.loadTx('2026-09', true), rejected = assert.rejects(request, {code:'stale_response'}); await settled();
+  env.app.deleteTx('expense'); env.app.closeDialog(true); await settled();
+  env.queueOps.pop();
+  env.windowEvents.dispatch('queue-sent', { detail: { id: 'op-1', result: {} } });
+  await settled(); old.resolve([env.tx]); await rejected;
+  assert.equal(env.st['txCache:2026-09'].data.length, 0);
+  assert.equal(env.st['summaryCache:2026-09'].data.members[0].share, 0);
+});
+
+test('rolling back one delete preserves a second pending delete and a concurrent add', async () => {
+  const env = setup();
+  const second = { ...env.tx, id: 'second', amount: 10 };
+  env.app.cached('txCache:2026-09', [env.tx, second]);
+  env.app.cached('summaryCache:2026-09', { expense: 30, categories: [{id:'food',fact:30}], members: [] });
+  env.app.deleteTx('expense'); env.app.closeDialog(true); await settled();
+  env.app.deleteTx('second'); env.app.closeDialog(true); await settled();
+  env.app.applyLocalTx({ ...env.tx, id: 'third', amount: 5 });
+  env.windowEvents.dispatch('queue-failed', { detail: { op:env.queueOps[0], error: {code:'forbidden'} } });
+  const rows = env.st['txCache:2026-09'].data;
+  assert.equal(rows.filter(row => row.id === 'expense').length, 1);
+  assert.equal(rows.some(row => row.id === 'second'), false);
+  assert.equal(rows.some(row => row.id === 'third'), true);
+  assert.equal(env.st['summaryCache:2026-09'].data.expense, 25);
+});
+
+test('refresh on a newly opened page does not reuse an obsolete page promise or repaint the old route', async () => {
+  const september = deferred(), october = deferred();
+  const env = setup(undefined, { stubReload:false, api: (_, payload) => payload.month === '2026-09' ? september.promise : october.promise });
+  env.app.openTx(); const first = env.app.refreshCurrentPage();
+  env.st.month = '2026-10'; env.app.openTx(); const second = env.app.refreshCurrentPage();
+  assert.notEqual(first, second);
+  october.resolve([{...env.tx, occurred_on:'2026-10-01', note:'october-only'}]); await second;
+  september.resolve([{...env.tx, note:'september-hidden'}]); await first;
+  assert.match(env.nodes.get('#screen').innerHTML, /october-only/);
+  assert.doesNotMatch(env.nodes.get('#screen').innerHTML, /september-hidden/);
+});
+
+test('failed queued add rolls back only itself without dropping another pending add or unrelated month', async () => {
+  const env = setup();
+  env.app.cached('txCache:2026-08', []);
+  for (const amount of ['5', '7']) {
+    env.app.setAddDraftForTest({ amount, category_id:'food', note:'draft', date:'2026-09-22', is_shared:false, kind:'expense' });
+    env.app.submitAdd({ querySelector: () => ({ disabled:false }) });
+  }
+  assert.equal(env.st['summaryCache:2026-09'].data.expense, 32);
+  env.windowEvents.dispatch('queue-failed', { detail:{op:env.queueOps[0],error:{code:'bad_amount',message:'bad amount'}} });
+  assert.equal(env.st['summaryCache:2026-09'].data.expense, 27);
+  assert.equal(env.st['txCache:2026-09'].data.filter(row => row._local).length, 1);
+  const before = env.apiCalls.length; await env.app.loadTx('2026-08');
+  assert.equal(env.apiCalls.length, before);
+});
+
+test('confirming parallel adds reconciles IDs once and preserves the remaining optimistic row', async () => {
+  const env = setup(undefined, { api: action => Promise.resolve(action === 'list_tx' ? [{ ...env.tx, id:'server-first', amount:5 }] : []) });
+  for (const amount of ['5', '7']) {
+    env.app.setAddDraftForTest({ amount, category_id:'food', note:'draft', date:'2026-09-22', is_shared:false, kind:'expense' });
+    env.app.submitAdd({ querySelector: () => ({ disabled:false }) });
+  }
+  env.windowEvents.dispatch('queue-sent', { detail:{id:env.queueOps[0].id,result:{id:'server-first'}} });
+  assert.equal(env.st['txCache:2026-09'].data.filter(row => row.id === 'server-first').length, 1);
+  assert.equal(env.st['txCache:2026-09'].data.filter(row => row._local).length, 1);
+  const rows = await env.app.loadTx('2026-09');
+  assert.equal(rows.filter(row => row.id === 'server-first').length, 1);
+  assert.equal(rows.filter(row => row._local).length, 1);
+});
+
+test('partner summary and finance updates still paint when optional plans refresh fails', async () => {
+  const member = {id:'me',household_id:'home'};
+  const env = setup(undefined, {stubReload:false,api: action => {
+    if (action === 'me') return Promise.resolve({member});
+    if (action === 'list_plans' || action === 'list_recurring') return Promise.reject(Error('plans offline'));
+    return Promise.resolve(action === 'summary' ? { expense:40,categories:[{id:'food',name:'partner-updated',fact:40}] } : []);
+  }});
+  env.app.adoptMember(member);
+  env.app.cached('summaryCache:2026-09', {expense:20,categories:[]});
+  env.app.cached('txCache:2026-09', []);
+  await env.app.refreshOnReturn();
+  assert.match(env.nodes.get('#screen').innerHTML, /partner-updated/);
+  assert.match(env.nodes.get('#toast').textContent, /Не удалось обновить/);
+});
+
+test('search draft survives a background response before the debounce timer runs', async () => {
+  const next = deferred();
+  const env = setup(undefined, {stubReload:false,api:() => next.promise});
+  env.app.cached('txCache:2026-09', [env.tx]); env.app.openTx(); await settled();
+  env.nodes.get('#screen').dispatch('input', {target:{id:'tx-search',value:'pending text'}});
+  assert.equal(env.st.txFilter.q, 'pending text');
+  const refresh = env.app.refreshCurrentPage();
+  next.resolve([{...env.tx,note:'pending text server'}]); await refresh;
+  assert.match(env.nodes.get('#screen').innerHTML, /value="pending text"/);
+});
+
+test('reference dock bounce animates the button without overriding CSS notch geometry', () => {
+  const env = setup(), tabs = env.nodes.get('#tabs');
+  env.st.member = { id: 'me' };
+  const properties = new Map(), iconProperties = new Map();
+  tabs.style.setProperty = (k, v) => properties.set(k, v);
+  tabs.style.removeProperty = k => properties.delete(k);
+  const icon = { style: { setProperty() {}, removeProperty: k => iconProperties.delete(k),
+    set transform(v) { iconProperties.set('transform', v); }, set opacity(v) { iconProperties.set('opacity', v); } } };
+  const primary = Object.assign(fakeNode(), { contains: () => false });
+  tabs.querySelector = s => s === '.tab--primary .tab__icon' ? icon : s === '.tabs__notch-fill' ? {} : primary;
+  Object.defineProperty(tabs, 'offsetWidth', { get() { throw new Error('forced layout'); } });
+  env.app.setRoute('summary'); env.app.applyRouteUi();
+  const motion = env.app.getDockMotion();
+  for (const [time, y] of [[0, -84], [160, -34], [280, 6], [400, -6]]) {
+    env.frame(time);
+    assert.equal(env.app.getDockState().y, y);
+    assert.match(iconProperties.get('transform'), new RegExp('^translateY\\(' + y));
+    for (const key of ['--dock-notch-height', '--dock-insert-mask', '--dock-contact-edge']) {
+      assert.equal(properties.has(key), false);
+    }
+  }
+  assert.equal(Number(iconProperties.get('opacity')), 1);
+  for (const step of [8, 16, 33, 100]) {
+    let previous = env.app.dockSample(motion, 0);
+    for (let t = step; t <= 800; t += step) {
+      const next = env.app.dockSample(motion, t);
+      assert.ok(Number.isFinite(next.y) && Number.isFinite(next.velocity));
+      if (t <= 160) assert.ok(next.y <= -34);
+      assert.ok(Math.abs(next.y - previous.y) <= step * .8);
+      previous = next;
+    }
+  }
+  for (const t of [160, 280, 400, 500, 620, 720]) {
+    const a = env.app.dockSample(motion, t - .001), b = env.app.dockSample(motion, t + .001);
+    assert.ok(Math.abs(a.y - b.y) < .002);
+    assert.ok(Math.abs(a.velocity - b.velocity) < .001);
+  }
+  env.frame(800);
+  assert.equal(env.frames.size, 0);
+  for (const key of ['--dock-notch-height', '--dock-insert-mask', '--dock-contact-edge']) {
+    assert.equal(properties.has(key), false); // only animation properties are discarded
+  }
+  assert.equal(iconProperties.size, 0);
+  assert.equal(env.app.getDockState().y, 0);
+  assert.equal(tabs.classList.contains('tabs--motion'), false);
+});
+
+test('dock interruption preserves position and velocity, cancels old frames and cleans up', () => {
+  const env = setup(), tabs = env.nodes.get('#tabs'); env.st.member = { id: 'me' };
+  env.app.setRoute('summary'); env.app.applyRouteUi(); env.frame(230);
+  const before = env.app.getDockState();
+  env.app.setRoute('tx'); env.app.applyRouteUi();
+  assert.equal(env.app.getDockState().y, before.y);
+  assert.equal(env.app.getDockMotion().points[0].v, before.velocity);
+  assert.equal(env.frames.size, 1);
+  env.frame(270); const exiting = env.app.getDockState();
+  env.app.setRoute('summary'); env.app.applyRouteUi();
+  assert.equal(env.app.getDockState().y, exiting.y);
+  assert.equal(env.app.getDockMotion().points[0].v, exiting.velocity);
+  assert.equal(env.frames.size, 1);
+  env.windowEvents.dispatch('resize', {});
+  assert.equal(env.frames.size, 1);
+  env.frame(1070);
+  assert.equal(env.frames.size, 0);
+  env.app.applyRouteUi(); assert.equal(env.frames.size, 0);
+  env.app.setRoute('tx'); env.app.applyRouteUi();
+  env.windowEvents.dispatch('pagehide', {});
+  assert.equal(env.frames.size, 0);
+  assert.equal(tabs.classList.contains('tabs--motion'), false);
+  env.app.setRoute('summary'); env.app.applyRouteUi();
+  tabs.isConnected = false; env.frame(1100);
+  assert.equal(env.frames.size, 0);
+  tabs.isConnected = true;
+  env.app.setRoute('tx'); env.app.applyRouteUi();
+  env.context.document.visibilityState = 'hidden';
+  env.context.document.dispatch('visibilitychange', {});
+  assert.equal(env.frames.size, 0);
+});
+
+test('reduced motion uses final dock geometry immediately and cancels active motion on change', () => {
+  let change;
+  const media = { matches: true, addEventListener(name, fn) { change = fn; } };
+  const env = setup(undefined, { motionMedia: media }); env.st.member = { id: 'me' };
+  env.app.setRoute('summary'); env.app.applyRouteUi();
+  assert.equal(env.frames.size, 0); assert.equal(env.app.getDockState().y, 0);
+  media.matches = false;
+  env.app.setRoute('tx'); env.app.applyRouteUi(); env.frame(300);
+  env.app.setRoute('summary'); env.app.applyRouteUi(); env.frame(460);
+  assert.equal(env.frames.size, 1);
+  media.matches = true; change();
+  assert.equal(env.frames.size, 0); assert.equal(env.app.getDockState().y, 0);
+});
+
+test('adding an expense shows a centered success popup and a later message restores the bottom toast', () => {
+  const env = setup();
+  env.app.setAddDraftForTest({ amount: '12', category_id: 'food', note: '', date: '2026-09-22', is_shared: false, kind: 'expense' });
+  env.app.submitAdd({ querySelector: () => ({ disabled: false }) });
+  const toast = env.nodes.get('#toast');
+  assert.equal(toast.hidden, false);
+  assert.equal(toast.textContent, 'Расход добавлен');
+  assert.equal(toast.classList.contains('toast--success'), true);
+  env.app.setAddDraftForTest({ amount: '', category_id: 'food', note: '', date: '2026-09-22', is_shared: false, kind: 'expense' });
+  env.app.submitAdd({ querySelector: () => ({ disabled: false }), elements: { amount: { focus() {} } } });
+  assert.equal(toast.textContent, 'Введите сумму цифрами');
+  assert.equal(toast.classList.contains('toast--success'), false);
+});
+
+test('adding income keeps the regular bottom toast', () => {
+  const env = setup();
+  env.app.setAddDraftForTest({ amount: '50', category_id: 'salary', note: '', date: '2026-09-22', is_shared: false, kind: 'income' });
+  env.app.submitAdd({ querySelector: () => ({ disabled: false }) });
+  const toast = env.nodes.get('#toast');
+  assert.equal(toast.textContent, 'Записано');
+  assert.equal(toast.classList.contains('toast--success'), false);
+});
+
+test('month title opens the monthly overview and loads a summary for every month in the period', async () => {
+  const env = setup(undefined, {
+    stubReload: false,
+    api: action => Promise.resolve(action === 'summary' ? { income: 300, expense: 120, balance: 180 } : action === 'list_plans' ? {} : []),
+  });
+  env.context.Fmt.currentMonth = () => '2026-10';
+  env.st.member = { id: 'me' };
+  clickAction(env, 'open-months');
+  assert.equal(env.app.getRoute().name, 'months');
+  await settled();
+  const months = env.apiCalls.filter(call => call.action === 'summary').map(call => call.payload.month);
+  assert.deepEqual(months.sort(), ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10']);
+  const html = env.nodes.get('#screen').innerHTML;
+  assert.equal((html.match(/data-action="months-select"/g) || []).length, 6);
+  assert.match(html, /Общая сводка/);
+  assert.match(html, /data-period="6"[^>]*aria-pressed="true"/);
+  assert.equal(env.st['summaryCache:2026-05'].data.income, 300);
+  env.context.backHandler();
+  assert.equal(env.app.getRoute().name, 'summary');
+});
+
+test('overview period limits months and selecting one opens its summary', async () => {
+  const env = setup(undefined, {
+    stubReload: false,
+    api: action => Promise.resolve(action === 'summary' ? { income: 300, expense: 120, balance: 180 } : action === 'list_plans' ? {} : []),
+  });
+  env.context.Fmt.currentMonth = () => '2026-10';
+  env.st.member = { id: 'me' };
+  env.app.openMonths();
+  await settled();
+  const callsBefore = env.apiCalls.filter(call => call.action === 'summary').length;
+  clickAction(env, 'months-period', { 'data-period': '3' });
+  const html = env.nodes.get('#screen').innerHTML;
+  assert.equal((html.match(/data-action="months-select"/g) || []).length, 3);
+  assert.match(html, /data-month="2026-08"/);
+  assert.doesNotMatch(html, /data-month="2026-07"/);
+  assert.equal(env.apiCalls.filter(call => call.action === 'summary').length, callsBefore);
+  clickAction(env, 'months-select', { 'data-month': '2026-08' });
+  assert.equal(env.st.month, '2026-08');
+  assert.equal(env.app.getRoute().name, 'summary');
+});
+
+test('overview opened from finances returns to finances', async () => {
+  const env = setup(undefined, { stubReload: false, api: () => Promise.resolve([]) });
+  env.st.member = { id: 'me' };
+  env.app.openTx();
+  await settled();
+  clickAction(env, 'open-months');
+  assert.equal(env.app.getRoute().from, 'tx');
+  await settled();
+  clickAction(env, 'months-back');
+  assert.equal(env.app.getRoute().name, 'tx');
+});
+
+test('overview keeps an older selected month inside the period', async () => {
+  const env = setup(undefined, { stubReload: false, api: () => Promise.resolve({}) });
+  env.st.month = '2025-11';
+  env.app.openMonths();
+  const html = env.nodes.get('#screen').innerHTML;
+  assert.match(html, /data-month="2025-11"/);
+  assert.match(html, /data-month="2025-06"/);
+  assert.doesNotMatch(html, /data-month="2025-05"/);
+  assert.doesNotMatch(html, /data-month="2025-12"/);
+  await settled();
+});
+
+test('failed month summaries show a retry action instead of totals', async () => {
+  const env = setup(undefined, {
+    stubReload: false,
+    api: action => action === 'summary' ? Promise.reject(new Error('offline')) : Promise.resolve([]),
+  });
+  env.app.openMonths();
+  await settled();
+  const html = env.nodes.get('#screen').innerHTML;
+  assert.match(html, /Не удалось загрузить часть месяцев/);
+  assert.match(html, /data-action="months-retry"/);
+  assert.doesNotMatch(html, /months-total__grid/);
+  assert.equal(env.apiCalls.filter(call => call.action === 'summary').length, 6);
+});
+
+
+test('payment confirmation invalidates finance caches and uses one atomic adapter operation', async () => {
+  const env = setup();
+  env.st.member = {id:'me',household_id:'home'};
+  env.context.window.Api.isDemo = () => false;
+  let confirmed = false, confirms = 0;
+  env.context.window.APP_PAYMENTS_ADAPTER = {
+    list: () => Promise.resolve({payments:[],occurrences:confirmed ? [] : [{id:'occurrence',name:'Rent',due_on:'2026-09-30',amount:20,category_id:'food'}]}),
+    confirm: async () => { confirms++; confirmed = true; return {occurrence_id:'occurrence',transaction:{id:'expense-payment'}}; },
+  };
+  await env.app.payments().open();
+  const button = {disabled:false};
+  const f = {isConnected:true, elements:{amount:{value:'15'},paid_on:{value:'2026-09-30'},category_id:{value:'food'}},getAttribute:()=> 'occurrence',setAttribute(){},removeAttribute(){},querySelector: selector => selector==='[type="submit"]' ? button : {textContent:''}};
+  await env.app.payments().submit(f,true);
+  assert.equal(confirms,1);
+  assert.equal(env.st['txCache:2026-09'],undefined);
+  assert.equal(env.st['summaryCache:2026-09'],undefined);
+  assert.equal(env.st.lastSummary,null);
+  assert.equal(env.queueOps.length,0);
+  assert.equal(env.apiCalls.filter(c=>c.action==='add_tx').length,0);
+  assert.equal(button.disabled,false);
+  await env.app.refreshCurrentPage();
+  assert.equal(env.app.getRoute().name,'payments');
 });

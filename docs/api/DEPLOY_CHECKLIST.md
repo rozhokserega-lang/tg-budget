@@ -1,5 +1,7 @@
 # Чеклист деплоя модулей v1
 
+Ниже исходный rollout 1.0.0. Для интеграции клиента 1.1.0 дополнительно нужен GET /payment-templates: порядок и проверки — `docs/payments-adapter.md`. Новых миграций для дополнения нет.
+
 Ветка `feature/modules-v1`, коммит `d64f282`, PR #5. Проект Supabase: `iqbbjkjzxtdqtuwhiadj`.
 Контракт: 22 пути, 34 операции, 42 схемы. Тесты перед деплоем: `node --test tests/*.test.mjs` → 48/48.
 

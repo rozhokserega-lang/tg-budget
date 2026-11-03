@@ -108,3 +108,36 @@ test('rapid month requests retain separate keys and custom TTL, including empty 
   time = 30;
   assert.equal(cache.read('2026-10'), null);
 });
+
+test('zero and empty lists are fresh cache hits', async () => {
+  const { cache } = setup();
+  for (const value of [0, false, '', []]) {
+    cache.write('value', value);
+    assert.equal(await cache.fetch('value', () => { throw Error('unexpected request'); }), value);
+  }
+});
+
+test('targeted invalidation keeps stale data and unrelated fresh resources, rejecting old reads', async () => {
+  const { cache } = setup();
+  cache.write('month', ['old']); cache.write('plans', 0);
+  const old = deferred();
+  const read = cache.fetch('month', () => old.promise, { force: true });
+  const rejected = assert.rejects(read, { code: 'stale_response' });
+  cache.invalidate(['month']);
+  assert.equal(cache.read('month'), null);
+  assert.equal(cache.read('month', true)[0], 'old');
+  assert.equal(await cache.fetch('plans', () => { throw Error('unrelated reload'); }), 0);
+  await cache.fetch('month', () => ['new']);
+  old.resolve(['resurrected']); await rejected;
+  assert.equal(cache.read('month')[0], 'new');
+});
+
+test('equal JSON response reuses data identity and renews TTL', async () => {
+  let time = 0;
+  const { cache } = setup({ ttl: 10, now: () => time });
+  const data = { rows: [], amount: 0 };
+  cache.write('data', data); time = 11;
+  assert.equal(await cache.fetch('data', () => ({ rows: [], amount: 0 })), data);
+  assert.equal(cache.read('data'), data);
+  time = 20; assert.equal(cache.read('data'), data);
+});

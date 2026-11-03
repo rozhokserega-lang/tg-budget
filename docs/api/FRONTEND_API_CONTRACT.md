@@ -1,6 +1,6 @@
 # FRONTEND API CONTRACT — TG Budget v1
 
-Версия контракта: **1.0.0** · Дата: 2026-11-03 · Статус: опубликован для frontend-разработки
+Версия контракта: **1.1.0** · Дата: 2026-11-03 · Статус: опубликован для frontend-разработки
 Канонический источник: `docs/api/openapi.v1.yaml`. При расхождении приоритет у OpenAPI.
 
 > Контракт не меняется без повышения версии. Ломающие изменения — только в `/v2`.
@@ -29,7 +29,7 @@ Authorization: tma <initData>
 - `user_id`, `member_id`, `household_id`, `owner_id` из тела **игнорируются**. Сервер берёт их из подписи.
 
 **CORS**: `GET, POST, PATCH, DELETE, OPTIONS`; заголовки `authorization, content-type, idempotency-key`.
-Ответы содержат `X-Contract-Version: 1.0.0`.
+Ответы содержат `X-Contract-Version: 1.1.0`.
 
 **Общие заголовки запроса**
 
@@ -49,6 +49,7 @@ Authorization: tma <initData>
 
 | Метод | Путь | Назначение |
 |---|---|---|
+| GET | `/payment-templates?limit&cursor` | все неудалённые шаблоны семьи, включая паузы и будущие без начислений |
 | GET | `/payments?from&to&status&templateId&limit&cursor` | календарь начислений (включая просроченные) |
 | GET | `/payments/{id}` | шаблон платежа |
 | POST | `/payments` | создать платёж (разовый или регулярный) |
@@ -58,6 +59,8 @@ Authorization: tma <initData>
 | POST | `/payments/{id}/resume` | возобновить |
 | GET | `/payment-occurrences/{id}` | одно начисление |
 | POST | `/payment-occurrences/{id}/confirm` | подтвердить оплату |
+
+`GET /payment-templates` → `{data: Payment[], pageInfo}`; сортировка по `id`, обычная пагинация. `nextOccurrence` в списке `null`; подробности — через `GET /payments/{id}`. Добавлено в 1.1.0, требуется обновление серверной функции перед публикацией клиента.
 
 `GET /payments`:
 
@@ -555,7 +558,7 @@ PATCH /module-preferences   { "taskSortMode": "manual", "selectedTaskListId": "l
 
 ## 15. Версия контракта
 
-- Текущая: **1.0.0** (2026-11-03).
-- `X-Contract-Version: 1.0.0` во всех ответах.
+- Текущая: **1.1.0** (2026-11-03).
+- `X-Contract-Version: 1.1.0` во всех ответах.
 - Ломающие изменения — только `/v2`; добавление необязательных полей/значений — минорная версия.
 - OpenAPI: `docs/api/openapi.v1.yaml`; TypeScript-типы: `npx -y openapi-typescript@7 docs/api/openapi.v1.yaml -o src/api-types.d.ts` (или `node docs/api/generate-types.mjs`). Референсный вывод: `docs/api/api-types.d.ts`.

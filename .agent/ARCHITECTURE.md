@@ -12,4 +12,6 @@
 - `tests/recurring.test.cjs` — Node test runner: `node --test tests/recurring.test.cjs` из репозитория.
 - `scripts/version-assets.mjs` — версии ресурсов; изменяет HTML, поэтому не запускать для проверки памяти.
 
-Бэкенд Supabase Edge Functions внешен этому checkout: исходник — `../teletreker` (`tg-budget-app`), `supabase/functions/{api,bot,notify,admin}`, миграции `supabase/migrations/001…022`, `docs/PROJECT.md`. Модули v1: `api/v1*.ts` (REST), `api/legacy_sync.ts` (совместимость), `_shared/{recurrence,modules,notification_text}.ts`; контракт и схема — `docs/api/`. README содержит ссылки на отсутствующие здесь `miniapp/` и `../files`; перед применением команд адаптировать пути. Точные API-контракты проверять адресно в коде при соответствующей задаче.
+Бэкенд Supabase Edge Functions внешен этому checkout: исходник — `../teletreker` (`tg-budget-app`), `supabase/functions/{api,bot,notify,admin}`, миграции `supabase/migrations/001…022`, `docs/PROJECT.md`. Модули v1: `api/v1*.ts` (REST, `v1_payments_read.ts` — список шаблонов), `api/legacy_sync.ts` (совместимость), `_shared/{recurrence,modules,notification_text}.ts`; контракт и схема — `docs/api/`. README содержит ссылки на отсутствующие здесь `miniapp/` и `../files`; перед применением команд адаптировать пути. Точные API-контракты проверять адресно в коде при соответствующей задаче.
+
+- `src/payments*.js`, `styles/payments.css` — календарь, API-адаптер, формы и контроллер платежей; интеграция с app cache/scope/router.

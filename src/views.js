@@ -62,7 +62,10 @@
     return (
       '<div class="month-nav">' +
       '<button type="button" class="month-nav__btn" data-action="month-prev" aria-label="' + e(T('Предыдущий месяц')) + '">‹</button>' +
-      '<span class="month-nav__label">' + e(Fmt.monthTitle(month)) + '</span>' +
+      '<button type="button" class="month-nav__label" data-action="open-months" aria-label="' + e(T('Выбрать месяц')) + '">' +
+      e(Fmt.monthTitle(month)) +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>' +
+      '</button>' +
       '<button type="button" class="month-nav__btn" data-action="month-next" aria-label="' + e(T('Следующий месяц')) + '"' +
       (isCurrent ? ' disabled' : '') + '>›</button>' +
       '</div>'
@@ -207,45 +210,7 @@
 
   // Краткая строка о планах на сводке: показываем только если что-то заведено.
   function plansTeaser(plans) {
-    if (!plans) return '';
-    var goals = plans.goals || [], debts = plans.debts || [], wishes = plans.wishes || [];
-    if (!goals.length && !debts.length && !wishes.length) return '';
-    function positive(value) { return Math.max(0, Number(value) || 0); }
-    var target = 0, saved = 0, debtTotal = 0, remaining = 0;
-    goals.forEach(function (goal) {
-      var amount = positive(goal.target);
-      target += amount;
-      saved += Math.min(amount, positive(goal.saved));
-    });
-    debts.forEach(function (debt) {
-      var balance = positive(debt.remaining);
-      debtTotal += Math.max(positive(debt.total), balance);
-      remaining += balance;
-    });
-    var bought = wishes.filter(function (wish) { return wish.purchased; }).length;
-    var wishTotal = wishes.filter(function (wish) { return !wish.purchased; }).reduce(function (sum, wish) {
-      return sum + positive(wish.price);
-    }, 0);
-    function section(tab, title, icon, count, value, caption, done, total, footer) {
-      var pct = total > 0 ? Math.min(100, Math.round(done / total * 100)) : 0;
-      return '<button type="button" class="plans-overview__section plans-overview__section--' + tab + '" data-action="go-plans" data-plans-tab="' + tab + '">' +
-        '<span class="plans-overview__top"><span class="plans-overview__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + icon + '</svg></span>' +
-        '<span class="plans-overview__name">' + e(T(title)) + '</span><span class="plans-overview__count">' + count + '</span><span class="plans-overview__arrow" aria-hidden="true">›</span></span>' +
-        '<span class="plans-overview__amount">' + e(value) + '</span><span class="plans-overview__caption">' + e(caption) + '</span>' +
-        (count && total > 0 ? '<span class="plans-overview__progress" role="progressbar" aria-label="' + e(T(title)) + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '"><span style="width:' + pct + '%"></span></span>' : '') +
-        '<span class="plans-overview__footer"><span>' + e(footer) + '</span>' + (count && total > 0 ? '<strong>' + pct + '%</strong>' : '') + '</span></button>';
-    }
-    return '<section class="plans-overview" aria-label="' + e(T('Планы')) + '"><div class="plans-overview__heading"><h2>' + e(T('Планы')) + '</h2>' +
-      '<button type="button" data-action="go-plans">' + e(T('Все планы')) + ' <span aria-hidden="true">›</span></button></div>' +
-      section('goals', 'Цели', '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
-        goals.length, goals.length ? money(saved) : T('Пока нет целей'), goals.length ? T('Накоплено из {amount}', { amount: money(target) }) : T('Начните копить на важное'),
-        saved, target, goals.length ? T('Осталось {amount}', { amount: money(Math.max(0, target - saved)) }) : T('Добавить цель')) +
-      section('debts', 'Долги', '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 9h18m-6 5h3M6 14h3"/>',
-        debts.length, debts.length ? money(remaining) : T('Долгов нет'), debts.length ? T('Остаток к погашению') : T('Здесь появятся ваши долги'),
-        debtTotal - remaining, debtTotal, debts.length ? T('Погашено {amount}', { amount: money(debtTotal - remaining) }) : T('Добавить долг')) +
-      section('wishes', 'Желания', '<path d="M20 13 12 21 4 13a5 5 0 0 1 8-6 5 5 0 0 1 8 6z"/>',
-        wishes.length, wishes.length ? money(wishTotal) : T('Список пока пуст'), wishes.length ? T('Стоимость оставшихся желаний') : T('Сохраните желанные покупки'),
-        bought, wishes.length, wishes.length ? T('Куплено {done} из {total}', { done: bought, total: wishes.length }) : T('Добавить желание')) + '</section>';
+    return '<section class="plans-overview"><h2>Модули</h2><button type="button" class="btn btn--ghost" data-action="go-plans">Открыть модули</button></section>';
   }
 
   // Ближайший повторяющийся платёж: за день до даты и в сам день — баннер сверху.
@@ -438,16 +403,13 @@
         { id: 'income', label: 'Доход', tone: 'mint', icon: '<path d="M12 20V5m-6 6 6-6 6 6"/>' },
         { id: 'receipt-photo', label: 'Фото чека', tone: 'mint', icon: PHOTO_ICON_PATHS },
         { id: 'recurring-new', label: 'Новый платёж', tone: 'amber', icon: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M12 14v4m-2-2h4"/>' },
-        { id: 'goal-new', label: 'Новая цель', tone: 'violet', icon: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="m15 9 5-5"/>' },
-        { id: 'debt-new', label: 'Новый долг', tone: 'blue', icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/>' },
       ],
       [
         { id: 'transactions', label: 'Финансы', tone: 'blue', icon: '<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>' },
-        { id: 'plans', label: 'Планы', tone: 'violet', icon: '<path d="m3 17 6-6 4 4 8-8M15 7h6v6"/>' },
+        { id: 'plans', label: 'Модули', tone: 'violet', icon: '<path d="m3 17 6-6 4 4 8-8M15 7h6v6"/>' },
         { id: 'recurring-list', label: 'Платежи', tone: 'amber', icon: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9a7 7 0 0 1 11.6-2L20 12M4 12l2.8 5a7 7 0 0 0 11.6-2"/>' },
         { id: 'expense-category', label: 'Категория расхода', tone: 'green', icon: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' },
         { id: 'income-category', label: 'Категория дохода', tone: 'mint', icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v10m-5-5h10"/>' },
-        { id: 'wish-new', label: 'Новое желание', tone: 'pink', icon: '<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>' },
       ],
       [
         { id: 'repeat-last', label: 'Повторить последнюю', tone: 'green', icon: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M16.5 9a5 5 0 0 0-8.6-1.6L4 11M4 13l3.9 3.6A5 5 0 0 0 16.5 15"/>' },
@@ -573,7 +535,7 @@
       balance: 'Карточка бюджета',
       categories: 'Категории',
       forecast: 'Прогноз',
-      plans: 'Планы',
+      plans: 'Модули',
       partners: 'Между партнёрами',
     };
     var order = State.homeOrder ? State.homeOrder() : ['balance', 'categories', 'forecast', 'plans', 'partners'];
@@ -605,8 +567,85 @@
       var content = blockMap[id] || '';
       return edit ? editBlock(id, content, index) : content;
     }).join('');
-    return dueBanner(plans) + monthNav(st.month) + toolbar + body;
+    return monthNav(st.month) + toolbar + body;
 
+  }
+
+  // --- Общая сводка по месяцам ---
+
+  var MONTH_PERIODS = [3, 6, 12];
+
+  // entries: { 'YYYY-MM': summary } — отсутствующий месяц ещё грузится,
+  // null означает, что загрузить его не удалось.
+  function monthSummaryRow(ym, summary, active) {
+    var pending = summary === undefined;
+    var failed = summary === null;
+    var body;
+    if (pending || failed) {
+      body = '<span class="month-row__flow"><span class="muted">' + e(T(pending ? 'Загрузка…' : 'Нет данных')) + '</span></span>' +
+        '<span class="month-row__balance muted">—</span>';
+    } else {
+      var income = Number(summary.income) || 0;
+      var expense = Number(summary.expense) || 0;
+      var balance = Number(summary.balance);
+      if (!isFinite(balance)) balance = income - expense;
+      body = '<span class="month-row__flow">' +
+        '<span class="amount amount--pos">+' + e(money(income)) + '</span>' +
+        '<span class="amount amount--neg">−' + e(money(expense)) + '</span></span>' +
+        '<span class="month-row__balance' + (balance < 0 ? ' amount--neg' : '') + '">' + e(money(balance)) + '</span>';
+    }
+    return '<button type="button" class="month-row' + (active ? ' month-row--active' : '') +
+      '" data-action="months-select" data-month="' + e(ym) + '" aria-pressed="' + (active ? 'true' : 'false') + '"' +
+      (active ? ' aria-current="true"' : '') + '>' +
+      '<span class="month-row__title">' + e(Fmt.monthTitle(ym)) + '</span>' + body + '</button>';
+  }
+
+  function renderMonths(months, entries, period) {
+    var st = State.get();
+    months = Array.isArray(months) ? months : [];
+    entries = entries || {};
+    period = MONTH_PERIODS.indexOf(Number(period)) !== -1 ? Number(period) : 6;
+    var income = 0, expense = 0, ready = 0, failed = 0;
+    months.forEach(function (ym) {
+      var summary = entries[ym];
+      if (summary) {
+        ready++;
+        income += Number(summary.income) || 0;
+        expense += Number(summary.expense) || 0;
+      } else if (summary === null) failed++;
+    });
+    var chips = MONTH_PERIODS.map(function (n) {
+      var active = n === period;
+      return '<button type="button" class="months-range__chip" data-action="months-period" data-period="' + n +
+        '" aria-pressed="' + active + '">' + e(P('months', n)) + '</button>';
+    }).join('');
+    var total;
+    if (ready === months.length && months.length) {
+      var balance = income - expense;
+      total = '<div class="months-total__grid">' +
+        '<div class="months-total__cell"><span class="months-total__label">' + e(T('Доходы')) + '</span>' +
+        '<span class="months-total__value amount--pos">+' + e(money(income)) + '</span></div>' +
+        '<div class="months-total__cell"><span class="months-total__label">' + e(T('Расходы')) + '</span>' +
+        '<span class="months-total__value amount--neg">−' + e(money(expense)) + '</span></div>' +
+        '<div class="months-total__cell"><span class="months-total__label">' + e(T('Остаток')) + '</span>' +
+        '<span class="months-total__value' + (balance < 0 ? ' amount--neg' : '') + '">' + e(money(balance)) + '</span></div>' +
+        '</div>';
+    } else {
+      total = '<p class="months-total__hint">' + e(T(failed ? 'Не удалось загрузить часть месяцев' : 'Загружаем сводку…')) + '</p>' +
+        (failed ? '<button type="button" class="btn btn--sm" data-action="months-retry">' + e(T('Повторить загрузку')) + '</button>' : '');
+    }
+    return '<div class="profile-detail__heading">' +
+      '<button type="button" class="profile-back" data-action="months-back" aria-label="' + e(T('Назад')) + '">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button>' +
+      '<h1>' + e(T('Общая сводка')) + '</h1></div>' +
+      '<div class="months-range" role="group" aria-label="' + e(T('Период')) + '">' +
+      '<span class="months-range__label">' + e(T('Период')) + '</span>' + chips + '</div>' +
+      '<div class="card months-total">' + total + '</div>' +
+      '<div class="section"><div class="section__head"><span class="section__title">' + e(T('По месяцам')) + '</span></div>' +
+      '<div class="card months-list">' + months.map(function (ym) {
+        return monthSummaryRow(ym, entries[ym], ym === st.month);
+      }).join('') + '</div></div>' +
+      '<p class="small muted mt-16">' + e(T('Нажмите на месяц, чтобы открыть его сводку.')) + '</p>';
   }
 
   // --- Траты ---
@@ -756,7 +795,9 @@
       (selects ? '<div class="tx-filters">' + selects + '</div>' : '');
   }
 
-  function txResults(all, filter) {
+  // dayLimit ограничивает историю первыми (самыми свежими) днями.
+  // Остальные дни догружает приложение по мере прокрутки.
+  function txResults(all, filter, dayLimit) {
     var st = State.get();
     var f = filter || {};
     var list = reconcileList(filterTx(all, f)).filter(function (t) {
@@ -774,20 +815,24 @@
     var found = T('Найдено: {records}', { records: P('records', list.length) });
     var count = '<div class="tx-count"><span>' + (kindLabel ? e(kindLabel) + ' · ' : '') + e(found) + '</span>' +
       '<button type="button" class="tx-count__reset" data-action="tx-clear-filter">' + e(T('Сбросить')) + '</button></div>';
+    var groups = groupByDay(list);
+    var shown = dayLimit > 0 ? groups.slice(0, dayLimit) : groups;
+    var more = shown.length < groups.length;
     return (active ? count : '') +
-      groupByDay(list).map(function (g) {
+      shown.map(function (g) {
         return '<div class="tx-group"><div class="tx-group__title">' + e(Fmt.dayLabel(g.day)) + '</div>' + g.items.map(financeHistoryRow).join('') + '</div>';
-      }).join('');
+      }).join('') +
+      (more ? '<button type="button" class="tx-more" id="tx-more" data-action="tx-more">' + e(T('Показать ещё')) + '</button>' : '');
   }
 
-  function renderTxList(all, filter, chartMode) {
+  function renderTxList(all, filter, chartMode, dayLimit) {
     var st = State.get();
     var pending = (root.Queue && Queue.size()) ? '<div class="sync-note">' + e(T('Изменения отправятся, когда появится связь')) + '</div>' : '';
     return '<div class="finance-page">' +
       monthNav(st.month) + pending + financeOverview(all, filter, chartMode) +
       '<div class="finance-ledger">' + txControls(all, filter) +
       '<h2 class="finance-history-title">' + e(T('История')) + '</h2>' +
-      '<div id="tx-results">' + txResults(all, filter) + '</div></div></div>';
+      '<div id="tx-results">' + txResults(all, filter, dayLimit) + '</div></div></div>';
   }
 
   function financeHistoryRow(t) {
@@ -1619,6 +1664,7 @@
     skeletonList: skeletonList,
     categoryTxList: categoryTxList,
     renderSummary: renderSummary,
+    renderMonths: renderMonths,
     renderQuickActions: renderQuickActions,
     renderExportSheet: renderExportSheet,
     renderPlans: renderPlans,

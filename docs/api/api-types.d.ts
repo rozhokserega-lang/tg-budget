@@ -31,12 +31,56 @@ export interface paths {
                             /** @constant */
                             ok: true;
                             /** @constant */
-                            version: "1.0.0";
+                            version: "1.1.0";
                             /** Format: date-time */
                             time?: string;
                         };
                     };
                 };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payment-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Все шаблоны платежей семьи
+         * @description Включает приостановленные и будущие шаблоны без начислений; удалённые исключены. nextOccurrence в списке null; GET /payments/{id} возвращает ближайшее начисление.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: components["parameters"]["Limit"];
+                    cursor?: components["parameters"]["Cursor"];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Страница шаблонов */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PaymentTemplatePage"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                500: components["responses"]["InternalError"];
             };
         };
         put?: never;
@@ -1457,6 +1501,10 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaymentTemplatePage: {
+            data: components["schemas"]["Payment"][];
+            pageInfo: components["schemas"]["PageInfo"];
         };
         PaymentOccurrencePage: {
             data: components["schemas"]["PaymentOccurrence"][];

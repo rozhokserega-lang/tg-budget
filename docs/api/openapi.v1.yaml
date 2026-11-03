@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: TG Budget — Modules API
-  version: 1.0.0
+  version: 1.1.0
   description: |
     API v1 для модулей «Платежи», «Напоминания» и «Трекер задач».
     Авторизация — Telegram WebApp initData в заголовке `Authorization: tma <initData>`.
@@ -41,8 +41,25 @@ paths:
                 required: [ok, version]
                 properties:
                   ok: { type: boolean, const: true }
-                  version: { type: string, const: '1.0.0' }
+                  version: { type: string, const: '1.1.0' }
                   time: { type: string, format: date-time }
+
+  /payment-templates:
+    get:
+      tags: [payments]
+      summary: Все шаблоны платежей семьи
+      description: Включает приостановленные и будущие шаблоны без начислений; удалённые исключены. nextOccurrence в списке null; GET /payments/{id} возвращает ближайшее начисление.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Страница шаблонов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentTemplatePage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /payments:
     get:
@@ -907,6 +924,15 @@ components:
         confirmedBy: { type: [string, 'null'], format: uuid }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
+    PaymentTemplatePage:
+      type: object
+      required: [data, pageInfo]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Payment' }
+        pageInfo: { $ref: '#/components/schemas/PageInfo' }
 
     PaymentOccurrencePage:
       type: object

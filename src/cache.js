@@ -47,6 +47,9 @@
       request.promise = Promise.resolve().then(loader).then(function (data) {
         finish();
         if (obsolete()) throw staleError();
+        // API resources are JSON. Reuse equal data so consumers can skip paints.
+        var previous = entries.get(key);
+        if (previous && JSON.stringify(previous.data) === JSON.stringify(data)) data = previous.data;
         entries.set(key, { data: data, at: now() });
         return data;
       }, function (error) {
@@ -58,7 +61,16 @@
       return request.promise;
     }
 
-    function invalidate() {
+    function invalidate(keys) {
+      if (keys) {
+        keys.forEach(function (key) {
+          versions.set(key, (versions.get(key) || 0) + 1);
+          pending.delete(key);
+          var entry = entries.get(key);
+          if (entry) entry.at = -Infinity;
+        });
+        return;
+      }
       epoch++;
       entries.clear();
       pending.clear();

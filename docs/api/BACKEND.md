@@ -267,3 +267,7 @@ curl -sS "https://<ref>.supabase.co/functions/v1/api/v1/health"
 2. **`is_shared` при подтверждении платежа**: платёж семьи создаёт общий расход (`is_shared = true`).
 3. **Валюта**: берётся из `module_preferences.currency` (настройка пользователя, по умолчанию `RUB`), снимок — в шаблоне и начислении. Конвертации нет.
 
+
+## Дополнение 1.1.0: список шаблонов
+
+`GET /v1/payment-templates?limit&cursor` читает неудалённые `payment_templates` текущей семьи, включая приостановленные и будущие без начислений. Ответ `PaymentTemplatePage`, сортировка по id; `nextOccurrence` в списке null. Реализация `api/v1_payments_read.ts`, маршрутизация после `getContext`. Новых миграций нет. Требуется обновление функции `api` перед публикацией REST-клиента платежей; legacy-протокол сохраняется. Порядок — `docs/payments-adapter.md`.

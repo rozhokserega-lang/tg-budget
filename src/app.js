@@ -38,6 +38,10 @@
   try { if (root.localStorage.getItem('budget.homeCategorySort') === 'amount') st.homeCategorySort = 'amount'; } catch (e) {}
   // Раскрытая категория на сводке: { id, rows } или null.
   var expandedCat = null;
+  // Общая сводка: выбранная длина периода и месяцы, которые не загрузились.
+  var MONTHS_PERIODS = [3, 6, 12];
+  var monthsPeriod = 6;
+  var monthsFailed = {};
   // Сетка/список категорий — выбор запоминается на устройстве.
   var categoryView = 'grid';
   try {
@@ -55,7 +59,10 @@
   var pageSettle = null;
   // При возвращении на главную кнопка «Добавить» падает в вырез.
   var tabsPrimaryVisible = null;
-  var tabsIntroTimer = null;
+  var dockFrame = null;
+  var dockMotion = null;
+  var dockState = { y: -84, velocity: 0, opacity: 0 };
+  var dockReducedMotion = root.matchMedia ? root.matchMedia('(prefers-reduced-motion: reduce)') : null;
   // Категория, из которой открыли форму: после сохранения вернёмся к ней.
   var pendingFromCategory = null;
   var homeScreenCheckSeq = 0;
@@ -68,10 +75,25 @@
     { id: 'summary', icon: ICON('<path d="m3 10 9-7 9 7v10H15v-7H9v7H3z"/>'), label: 'Главная' },
     { id: 'tx', icon: ICON('<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 9h18M16 13h5v4h-5zM6 5V3h12"/>'), label: 'Финансы' },
     { id: 'add', icon: ICON('<path d="M12 5v14M5 12h14"/>'), label: 'Добавить', primary: true },
-    { id: 'plans', icon: ICON('<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>'), label: 'Планы' },
+    { id: 'plans', icon: ICON('<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>'), label: 'Модули' },
     { id: 'settings', icon: ICON('<circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/>'), label: 'Профиль' },
   ];
   var plansTab = 'goals';
+  var paymentsController = null;
+  var paymentBusy = false;
+  function payments() {
+    if (!paymentsController) paymentsController = root.Payments.create({
+      scope: function () { return memberScope(st.member); },
+      active: function () { return route.name === 'payments'; },
+      enter: function () { ++reqSeq; route = { name: 'payments' }; },
+      render: render, load: loadResource, categories: loadCategories, sheet: openSheet,
+      close: function () { var was = paymentBusy; paymentBusy = false; closeSheet(); paymentBusy = was; },
+      lock: function (busy) { paymentBusy = busy; el.tabs.inert = busy; },
+      toast: toast, confirm: dialog, expired: State.isExpired,
+      invalidate: function () { clearCache(); st.plans = null; expandedCat = null; },
+    });
+    return paymentsController;
+  }
   // Порядок основных страниц для горизонтального свайпа. «Добавить» —
   // действие, а не страница, поэтому в навигации не участвует.
   var MAIN_TABS = ['summary', 'tx', 'plans', 'settings'];
@@ -90,15 +112,22 @@
   }
 
   var toastTimer = null;
-  function toast(text) {
+  // opts.success — всплывающий попап по центру с галочкой вместо строки внизу.
+  function toast(text, opts) {
+    var success = !!(opts && opts.success);
+    clearTimeout(toastTimer);
+    el.toast.classList.remove('toast--success');
     el.toast.textContent = text;
     el.toast.hidden = false;
+    if (success) el.toast.classList.add('toast--success');
     requestAnimationFrame(function () { el.toast.classList.add('toast--visible'); });
-    clearTimeout(toastTimer);
     toastTimer = setTimeout(function () {
       el.toast.classList.remove('toast--visible');
-      toastTimer = setTimeout(function () { el.toast.hidden = true; }, 250);
-    }, 2200);
+      toastTimer = setTimeout(function () {
+        el.toast.hidden = true;
+        el.toast.classList.remove('toast--success');
+      }, 250);
+    }, success ? 1700 : 2200);
   }
 
   function dialog(text, okLabel) {
@@ -140,7 +169,7 @@
 
   var sheetTimer = null;
   function closeSheet() {
-    if (editingTx) return;
+    if (editingTx || paymentBusy) return;
     clearTimeout(sheetTimer);
     qaSwipe = null;
     qaMouse = null;
@@ -176,7 +205,7 @@
     el.sheet.classList.remove('sheet--dragging');
   }
   function beginSheetDrag(target, x, y, id) {
-    if (editingTx) return;
+    if (editingTx || el.sheetBody.querySelector('.payment-form')) return;
     var panel = target.closest('.sheet__panel');
     if (!panel || el.sheet.hidden || el.sheet.classList.contains('sheet--closing')) return;
     if (target.closest('input,select,textarea,a,[contenteditable]') || panel.scrollTop > 0) return;
@@ -272,13 +301,103 @@
 
   // Системная «Назад» ведёт из формы добавления на сводку, из остальных мест — недоступна.
   function syncBackButton() {
-    if (editingTx) return root.Tg.backButton(function () {});
+    if (editingTx || paymentBusy) return root.Tg.backButton(function () {});
+    if (!el.sheet.hidden && el.sheetBody.querySelector('.payment-form')) return root.Tg.backButton(closeSheet);
+    if (route.name === 'payments' || route.name === 'module-placeholder') return root.Tg.backButton(function () { openPlans(); });
     if (st.homeEdit) return root.Tg.backButton(cancelHomeEdit);
     if (route.name === 'add') return root.Tg.backButton(goHome);
+    // Общая сводка — подэкран сводки или финансов: «Назад» возвращает туда же.
+    if (route.name === 'months') return root.Tg.backButton(leaveMonths);
     // Лимиты — подэкран настроек: «Назад» возвращает к ним.
     if (route.name === 'limits') return root.Tg.backButton(function () { openSettings('budget'); });
     if (route.name === 'settings' && route.section) return root.Tg.backButton(function () { openSettings(); });
     root.Tg.backButton(null);
+  }
+
+  // Reference demo: Hermite trajectory drives only the button; CSS opens the notch.
+  // The 54px button ends at y=34 relative to the dock; y=-34 is first contact.
+  function dockSample(motion, elapsed) {
+    var points = motion.points;
+    var time = Math.max(0, Math.min(elapsed, motion.duration));
+    var i = 1;
+    while (i < points.length - 1 && time > points[i].t) i++;
+    var a = points[i - 1], b = points[i], span = b.t - a.t;
+    var u = (time - a.t) / span, u2 = u * u, u3 = u2 * u;
+    var y = (2*u3-3*u2+1)*a.y + (u3-2*u2+u)*span*a.v +
+      (-2*u3+3*u2)*b.y + (u3-u2)*span*b.v;
+    var velocity = ((6*u2-6*u)*a.y + (3*u2-4*u+1)*span*a.v +
+      (-6*u2+6*u)*b.y + (3*u2-2*u)*span*b.v) / span;
+    var fade = motion.toOpacity ? Math.min(1, time / 80) :
+      Math.max(0, Math.min(1, (time - motion.duration + 80) / 80));
+    return { y: y, velocity: velocity,
+      opacity: motion.fromOpacity + (motion.toOpacity - motion.fromOpacity) * fade };
+  }
+
+  function paintDock(state) {
+    dockState = state;
+    var contact = Math.max(0, (state.y + 34) / 34);
+    var squash = Math.max(0, contact - 1) * .35;
+    var icon = el.tabs.querySelector('.tab--primary .tab__icon');
+    if (icon) {
+      icon.style.transform = 'translateY(' + state.y + 'px) scale(' + (1 + squash) + ',' + (1 - squash) + ')';
+      icon.style.opacity = String(state.opacity);
+    }
+  }
+
+  function stopDock(settle) {
+    if (dockFrame !== null) cancelAnimationFrame(dockFrame);
+    dockFrame = null;
+    dockMotion = null;
+    el.tabs.classList.remove('tabs--intro', 'tabs--motion');
+    if (settle) {
+      var visible = tabsPrimaryVisible === true;
+      paintDock({ y: visible ? 0 : -84, velocity: 0, opacity: visible ? 1 : 0 });
+      var icon = el.tabs.querySelector('.tab--primary .tab__icon');
+      if (icon) { icon.style.removeProperty('transform'); icon.style.removeProperty('opacity'); }
+    }
+  }
+
+  function animateDock(show) {
+    var now = performance.now();
+    // Sample the interrupted trajectory before replacing it (including its velocity).
+    if (dockMotion) paintDock(dockSample(dockMotion, now - dockMotion.start));
+    stopDock(false);
+    if ((dockReducedMotion && dockReducedMotion.matches) || document.visibilityState === 'hidden') {
+      stopDock(true);
+      return;
+    }
+    var start = { t: 0, y: dockState.y, v: dockState.velocity };
+    var points;
+    if (!show) points = [start, { t: 300, y: -84, v: 0 }];
+    else if (start.y >= -34) points = [start, { t: 180, y: -3, v: 0 }, { t: 300, y: .6, v: 0 }, { t: 420, y: 0, v: 0 }];
+    else points = [start, { t: 160, y: -34, v: .625 }, { t: 280, y: 6, v: 0 },
+      { t: 400, y: -6, v: 0 }, { t: 500, y: 2, v: 0 },
+      { t: 620, y: -.5, v: 0 }, { t: 720, y: .12, v: 0 }, { t: 800, y: 0, v: 0 }];
+    dockMotion = { start: now, points: points, duration: points[points.length - 1].t,
+      fromOpacity: dockState.opacity, toOpacity: show ? 1 : 0 };
+    el.tabs.classList.add('tabs--motion');
+    if (show) el.tabs.classList.add('tabs--intro');
+    var primary = el.tabs.querySelector('.tab--primary');
+    if (primary) primary.classList.remove('tab--jelly');
+    paintDock(dockState);
+    function frame(timestamp) {
+      dockFrame = null;
+      if (!dockMotion) return;
+      if (el.tabs.isConnected === false) { stopDock(true); return; }
+      var elapsed = timestamp - dockMotion.start;
+      paintDock(dockSample(dockMotion, elapsed));
+      if (elapsed >= dockMotion.duration) stopDock(true);
+      else dockFrame = requestAnimationFrame(frame);
+    }
+    dockFrame = requestAnimationFrame(frame);
+  }
+
+  root.addEventListener('pagehide', function () { stopDock(true); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') stopDock(true);
+  });
+  if (dockReducedMotion && dockReducedMotion.addEventListener) {
+    dockReducedMotion.addEventListener('change', function () { if (dockReducedMotion.matches) stopDock(true); });
   }
 
   function applyRouteUi() {
@@ -288,14 +407,16 @@
     el.tabs.hidden = !inApp;
     document.body.classList.toggle('app--has-tabs', inApp);
     if (!inApp) {
-      el.tabs.innerHTML = '';
-      clearTimeout(tabsIntroTimer);
-      el.tabs.classList.remove('tabs--intro', 'tabs--primary-hidden');
       tabsPrimaryVisible = null;
+      stopDock(true);
+      el.tabs.innerHTML = '';
+      el.tabs.classList.remove('tabs--primary-hidden');
       return;
     }
     // «Добавить» — не место, а действие: подсвечиваем вкладку, с которой пришли.
     var active = route.name === 'add' ? 'summary'
+      : route.name === 'months' ? (route.from === 'tx' ? 'tx' : 'summary')
+      : (route.name === 'payments' || route.name === 'module-placeholder') ? 'plans'
       : route.name === 'limits' ? 'settings'
       : route.name;
     // Меню создаём один раз: перерисовка на каждом переходе вызывала мигание иконок.
@@ -327,14 +448,8 @@
     }
     el.tabs.classList.toggle('tabs--primary-hidden', !showPrimary);
     if (showPrimary !== tabsPrimaryVisible) {
-      clearTimeout(tabsIntroTimer);
-      el.tabs.classList.remove('tabs--intro');
-      if (showPrimary) {
-        void el.tabs.offsetWidth;
-        el.tabs.classList.add('tabs--intro');
-        tabsIntroTimer = setTimeout(function () { el.tabs.classList.remove('tabs--intro'); }, 950);
-      }
       tabsPrimaryVisible = showPrimary;
+      animateDock(showPrimary);
     }
     syncBackButton();
   }
@@ -351,7 +466,9 @@
   function screenKey() {
     return route.name + (route.name === 'settings' ? ':' + (route.section || 'home') : route.name === 'plans' ? ':' + plansTab : '');
   }
-  function render(html) {
+  function render(html, preserve) {
+    // Background updates keep the current screen interactive and stationary.
+    if (preserve && screenKey() === lastScreen && el.screen.innerHTML === html) return;
     // Смена экрана: старое содержимое мягко гаснет, потом появляется новое.
     // Мгновенная подмена DOM и анимация только нового и давала «рывок».
     var token = ++renderToken;
@@ -363,19 +480,31 @@
       applyRouteUi();
       fadeTimer = setTimeout(function () {
         el.screen.classList.remove('screen--fading');
-        if (token === renderToken) renderContent(html);
+        if (token === renderToken) renderContent(html, preserve);
       }, 110);
       return;
     }
-    renderContent(html);
+    renderContent(html, preserve);
   }
 
-  function renderContent(html) {
+  function renderContent(html, preserve) {
+    var scroll = preserve && screenKey() === lastScreen ? el.screen.scrollTop : 0;
+    var active = preserve && document.activeElement;
+    var search = active && active.id === 'tx-search' ? active : null;
+    var selection = search ? [search.selectionStart, search.selectionEnd] : null;
     el.screen.innerHTML = html;
-    el.screen.scrollTop = 0;
+    el.screen.scrollTop = scroll;
+    if (search) {
+      var input = el.screen.querySelector('#tx-search');
+      if (input) {
+        input.focus({ preventScroll: true });
+        if (selection[0] !== null && typeof input.setSelectionRange === 'function') input.setSelectionRange(selection[0], selection[1]);
+      }
+    }
     el.screen.classList.remove('screen--fading');
-    var instant = instantRender || Date.now() < instantUntil;
+    var instant = (preserve && screenKey() === lastScreen) || instantRender || Date.now() < instantUntil;
     el.screen.classList.toggle('screen--instant', instant);
+    if (preserve && screenKey() === lastScreen) el.screen.classList.remove('screen--in');
     // Каскад появления — только при смене экрана, не при каждом обновлении данных.
     if (screenKey() !== lastScreen) {
       lastScreen = screenKey();
@@ -389,6 +518,7 @@
     }
     applyRouteUi();
     pendingScrollTxFilter();
+    observeTxMore();
   }
 
   // Предупреждение сверху экрана (подписка и т. п.).
@@ -450,6 +580,7 @@
 
   var resourceCache = BudgetCache.create();
   var dataEpoch = 0;
+  var resourceVersions = {};
   var memberRequest = 0;
   var lifecycleRequest = null;
 
@@ -460,6 +591,10 @@
   function adoptMember(member) {
     if (memberScope(st.member) !== memberScope(member)) {
       memberRequest++;
+      renderToken++;
+      clearTimeout(fadeTimer);
+      el.screen.innerHTML = '';
+      lastScreen = null;
       clearCache();
       st.categories = null;
       st.plans = null;
@@ -468,6 +603,7 @@
       pendingAdds = {};
       deletingTx = {};
       expandedCat = null;
+      monthsFailed = {};
       editingTx = null;
       editSaving = false;
       editGeneration++;
@@ -516,9 +652,9 @@
   }
 
   function loadResource(key, loader, force, commit) {
-    var epoch = dataEpoch;
+    var epoch = dataEpoch, version = resourceVersions[key] || 0;
     return resourceCache.fetch(key, loader, { force: !!force }).then(function (data) {
-      if (epoch !== dataEpoch || resourceCache.read(key, true) !== data) throw obsoleteResponse();
+      if (epoch !== dataEpoch || version !== (resourceVersions[key] || 0) || resourceCache.read(key, true) !== data) throw obsoleteResponse();
       if (commit) commit(data);
       return data;
     }).catch(function (err) { handleAccessFailure(err); throw err; });
@@ -534,19 +670,37 @@
   }
 
   function loadCategories(force) {
-    if (!force && st.categories) return Promise.resolve(st.categories);
-    return loadResource('categories', function () { return Api.call('categories'); }, force, function (list) {
+    var request = loadResource('categories', function () { return Api.call('categories'); }, force, function (list) {
       st.categories = Array.isArray(list) ? list : [];
     }).then(function () { return st.categories; });
+    if (!force && st.categories !== null) {
+      request.catch(function (err) { if (err.code !== 'stale_response') toast(T('Не удалось обновить категории')); });
+      return Promise.resolve(st.categories);
+    }
+    return request;
   }
 
   function clearCache() {
     dataEpoch++;
     resourceCache.invalidate();
+    resourceVersions = {};
     Object.keys(st).forEach(function (k) {
       if (k.indexOf('summaryCache:') === 0 || k.indexOf('txCache:') === 0) delete st[k];
     });
     st.lastSummary = null;
+  }
+
+  // Keep stale snapshots visible, but supersede every older read of these months.
+  function invalidateTransactions(months) {
+    var keys = [];
+    months.forEach(function (month) {
+      ['txCache:', 'summaryCache:'].forEach(function (prefix) {
+        var key = prefix + month;
+        if (keys.indexOf(key) === -1) keys.push(key);
+      });
+    });
+    keys.forEach(function (key) { resourceVersions[key] = (resourceVersions[key] || 0) + 1; });
+    resourceCache.invalidate(keys);
   }
 
   // Stale data remains renderable; TTL only governs ordinary network reads.
@@ -602,7 +756,7 @@
       if (lastPaint && snapshot.every(function (value, index) { return value === lastPaint[index]; })) return;
       lastPaint = snapshot;
       st.lastSummary = summary;
-      render(Views.renderSummary(summary, st.plans, expandedCat, cached('txCache:' + month), categoryView));
+      render(Views.renderSummary(summary, st.plans, expandedCat, cached('txCache:' + month), categoryView), true);
       if (State.isExpired()) banner(T('Пробный период закончился — новые записи недоступны.'));
     }
     if (previous) paint(); else render(Views.skeletonSummary());
@@ -614,7 +768,10 @@
       paint();
       return txRequest.then(function (rows) {
         if (!current()) return;
-        if (expandedCat) expandedCat = { id: expandedCat.id, rows: rows.filter(function (t) { return t.category_id === expandedCat.id; }) };
+        if (expandedCat) {
+          var expandedRows = rows.filter(function (t) { return t.category_id === expandedCat.id; });
+          if (JSON.stringify(expandedCat.rows) !== JSON.stringify(expandedRows)) expandedCat = { id: expandedCat.id, rows: expandedRows };
+        }
         paint();
       });
     }).catch(function (err) {
@@ -644,6 +801,79 @@
     else openSummary();
   }
 
+  // --- Общая сводка по месяцам ---
+
+  function monthsForPeriod(period) {
+    var end = Fmt.currentMonth();
+    // Не теряем выбранный месяц, если пользователь листал более старую историю.
+    if (st.month && st.month < Fmt.shiftMonth(end, -(period - 1))) end = st.month;
+    var list = [];
+    for (var i = period - 1; i >= 0; i--) list.push(Fmt.shiftMonth(end, -i));
+    return list;
+  }
+
+  // Сводки за выбранный период грузятся параллельно и кэшируются по месяцу:
+  // повторное открытие или смена периода не создаёт лишних запросов.
+  function openMonths(force) {
+    var from = route.name === 'months' ? route.from : route.name === 'tx' ? 'tx' : 'summary';
+    route = { name: 'months', from: from };
+    var seq = ++reqSeq;
+    var months = monthsForPeriod(monthsPeriod);
+    function current() { return seq === reqSeq && route.name === 'months'; }
+    function entries() {
+      var map = {};
+      months.forEach(function (ym) {
+        // Сохранённая сводка важнее отметки об ошибке: показываем её, пока
+        // повторная загрузка не удалась.
+        var summary = cached('summaryCache:' + ym);
+        if (summary) map[ym] = summary;
+        else if (monthsFailed[ym]) map[ym] = null;
+      });
+      return map;
+    }
+    function paint() {
+      if (!current()) return;
+      render(Views.renderMonths(months, entries(), monthsPeriod), true);
+    }
+    paint();
+    var toLoad = months.filter(function (ym) {
+      var fresh = resourceCache.read('summaryCache:' + ym);
+      return force ? (!!monthsFailed[ym] || !fresh) : !fresh;
+    });
+    if (!toLoad.length) return;
+    toLoad.forEach(function (ym) { delete monthsFailed[ym]; });
+    Promise.allSettled(toLoad.map(function (ym) {
+      return fetchSummary(ym, force).catch(function (err) {
+        if (err.code !== 'stale_response') monthsFailed[ym] = true;
+      });
+    })).then(paint);
+  }
+
+  function setMonthsPeriod(period) {
+    var next = Number(period);
+    if (MONTHS_PERIODS.indexOf(next) === -1 || next === monthsPeriod) return;
+    monthsPeriod = next;
+    root.Tg.haptic('light');
+    openMonths();
+  }
+
+  function leaveMonths() {
+    if (route.name !== 'months') return;
+    var from = route.from;
+    root.Tg.haptic('light');
+    if (from === 'tx') openTx();
+    else openSummary();
+  }
+
+  function selectMonthsMonth(month) {
+    if (route.name !== 'months') return;
+    var target = String(month || '');
+    if (!/^\d{4}-\d{2}$/.test(target) || target > Fmt.currentMonth()) return;
+    st.month = target;
+    expandedCat = null;
+    leaveMonths();
+  }
+
   function goHome() {
     if (!st.member) return render(Views.renderOnboarding(onboarding));
     openSummary();
@@ -653,6 +883,7 @@
   // Любой явный переход сбрасывает поиск и фильтры участника.
   function openTx(categoryId, force, scrollToFilter) {
     route = { name: 'tx' };
+    resetTxDays();
     if (categoryId !== undefined) st.txFilter = { kind: null, category_id: categoryId || null, member_id: null, q: '' };
     if (!st.txFilter) st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
     if (st.txChart !== 'income' && st.txChart !== 'expense' && st.txChart !== 'balance') st.txChart = 'expense';
@@ -668,11 +899,11 @@
     var month = st.month;
     var previous = cached('txCache:' + month);
     if (scrollToFilter) txFilterScrollPending = true;
-    if (previous) render(Views.renderTxList(previous, st.txFilter, st.txChart)); else render(Views.skeletonList());
+    if (previous) render(Views.renderTxList(previous, st.txFilter, st.txChart, txDayLimit), true); else render(Views.skeletonList());
     pendingScrollTxFilter();
     loadTx(month, force).then(function (all) {
       if (seq !== reqSeq || route.name !== 'tx' || month !== st.month) return;
-      render(Views.renderTxList(all, st.txFilter, st.txChart));
+      if (all !== previous) render(Views.renderTxList(all, st.txFilter, st.txChart, txDayLimit), true);
       pendingScrollTxFilter();
       if (State.isExpired()) banner(T('Пробный период закончился — новые записи недоступны.'));
     }).catch(function (err) {
@@ -1016,19 +1247,11 @@
 
   // --- Планы ---
 
-  function openPlans(tab) {
-    if (tab) plansTab = tab;
+  function openPlans(tab, force) {
+    if (tab === 'recurring') return payments().open();
+    ++reqSeq;
     route = { name: 'plans' };
-    if (st.plans) render(Views.renderPlans(st.plans, plansTab)); else render(Views.skeletonList());
-    var seq = ++reqSeq;
-    loadPlans(true).then(function (plans) {
-      if (seq !== reqSeq || route.name !== 'plans') return;
-      render(Views.renderPlans(plans, plansTab));
-      if (State.isExpired()) banner(T('Пробный период закончился — изменения недоступны.'));
-    }).catch(function (err) {
-      if (seq !== reqSeq || route.name !== 'plans' || err.code === 'stale_response') return;
-      if (st.plans) toast(T('Не удалось обновить — показываем сохранённое')); else fail(err);
-    });
+    render(root.PaymentsViews.modules(), true);
   }
 
   function openPlanForm(kind, current) {
@@ -1258,30 +1481,16 @@
 
   // Убирает запись из кэшей и пересчитывает сводку на месте (без запроса).
   function removeOptimisticTx(tx) {
-    removeLocalTx(tx.id);
     var month = String(tx.occurred_on || '').slice(0, 7);
-    var s = st.lastSummary;
-    if (!s || month !== st.month) return;
-    var isIncome = (tx.categories && tx.categories.kind) === 'income';
-    var next = Object.assign({}, s);
-    next.income = Math.max(0, Number(s.income || 0) - (isIncome ? tx.amount : 0));
-    next.expense = Math.max(0, Number(s.expense || 0) - (isIncome ? 0 : tx.amount));
-    next.balance = next.income - next.expense;
-    next.categories = (s.categories || []).map(function (c) {
-      return c.id === tx.category_id ? Object.assign({}, c, { fact: Math.max(0, Number(c.fact || 0) - tx.amount) }) : c;
-    });
-    cached('summaryCache:' + st.month, next);
-    st.lastSummary = next;
-  }
-
-  // Копия сводки для отката оптимистичного удаления: меняем только те массивы,
-  // которые пересчитываются на клиенте.
-  function cloneSummary(s) {
-    if (!s) return s;
-    return Object.assign({}, s, {
-      categories: (s.categories || []).map(function (c) { return Object.assign({}, c); }),
-      members: (s.members || []).map(function (m) { return Object.assign({}, m); }),
-    });
+    var list = cached('txCache:' + month);
+    if (list) cached('txCache:' + month, list.filter(function (row) { return row.id !== tx.id; }));
+    var summary = cached('summaryCache:' + month);
+    if (summary) {
+      var restored = summaryAfterRemoval(summary, tx);
+      cached('summaryCache:' + month, restored);
+      if (month === st.month) st.lastSummary = restored;
+    }
+    invalidateTransactions([month]);
   }
 
   // Пересчёт сводки без запроса к серверу: убираем сумму записи из итогов,
@@ -1319,9 +1528,10 @@
     var mode = kind === 'income' || kind === 'expense' ? kind : 'balance';
     st.txChart = mode;
     st.txFilter.kind = mode === 'balance' ? null : mode;
+    resetTxDays();
     if (route.name !== 'tx') return;
     var scroll = el.screen.scrollTop;
-    render(Views.renderTxList(cached('txCache:' + st.month) || [], st.txFilter, st.txChart));
+    render(Views.renderTxList(cached('txCache:' + st.month) || [], st.txFilter, st.txChart, txDayLimit));
     el.screen.scrollTop = scroll;
   }
 
@@ -1331,18 +1541,55 @@
     openTx();
   }
 
+  // История показывает порцию последних дней, остальные догружаются
+  // при прокрутке (бесконечная лента). Порция сбрасывается при смене
+  // месяца, фильтра или поиска, чтобы список снова начинался с свежих дней.
+  var TX_DAYS_INITIAL = 3;
+  var TX_DAYS_STEP = 3;
+  var txDayLimit = TX_DAYS_INITIAL;
+  var txMoreObserver = null;
+
+  function resetTxDays() {
+    txDayLimit = TX_DAYS_INITIAL;
+  }
+
+  function loadMoreTxDays() {
+    if (route.name !== 'tx') return;
+    var box = el.screen.querySelector('#tx-results');
+    if (!box || !box.querySelector('#tx-more')) return;
+    txDayLimit += TX_DAYS_STEP;
+    refreshTxResults();
+  }
+
+  // Метка «Показать ещё» у нижней кромки экрана догружает следующую порцию.
+  // Наблюдатель пересоздаётся после каждой перерисовки результатов.
+  function observeTxMore() {
+    if (txMoreObserver) {
+      txMoreObserver.disconnect();
+      txMoreObserver = null;
+    }
+    var sentinel = el.screen.querySelector('#tx-more');
+    if (!sentinel || typeof root.IntersectionObserver !== 'function') return;
+    txMoreObserver = new root.IntersectionObserver(function (entries) {
+      if (entries.some(function (entry) { return entry.isIntersecting; })) loadMoreTxDays();
+    }, { root: el.screen, rootMargin: '240px 0px' });
+    txMoreObserver.observe(sentinel);
+  }
+
   // Перерисовываем только результаты: поле поиска и селекты не теряют фокус.
   function refreshTxResults() {
     if (route.name !== 'tx') return;
     var all = cached('txCache:' + st.month) || [];
     var box = el.screen.querySelector('#tx-results');
     if (!box) return;
-    box.innerHTML = Views.txResults(all, st.txFilter);
+    box.innerHTML = Views.txResults(all, st.txFilter, txDayLimit);
+    observeTxMore();
   }
 
   function clearTxSearch() {
     if (!st.txFilter) return;
     st.txFilter.q = '';
+    resetTxDays();
     var input = el.screen.querySelector('#tx-search');
     if (input) {
       input.value = '';
@@ -1610,25 +1857,33 @@
     var v = formEl.elements;
     var memberName = String(v.member_name.value || '').trim();
     var householdName = String(v.household_name.value || '').trim();
-    if (!memberName) return badInput(T('Введите имя'), v.member_name);
-    if (!householdName) return badInput(T('Введите название'), v.household_name);
     var previous = {
       name: st.member.name,
       household: st.member.households && st.member.households.name,
     };
-    if (memberName === previous.name && householdName === previous.household) {
+    // Сохраняем только изменённые поля. Иначе пустое сохранённое значение
+    // другого поля блокировало бы смену имени или названия семьи.
+    var renameMember = memberName !== String(previous.name || '').trim();
+    var renameHousehold = householdName !== String(previous.household || '').trim();
+    if (!renameMember && !renameHousehold) {
       root.Tg.haptic('light');
       toast(T('Сохранено'));
       return;
     }
+    if (renameMember && !memberName) return badInput(T('Введите имя'), v.member_name);
+    if (renameHousehold && !householdName) return badInput(T('Введите название'), v.household_name);
     var btn = formEl.querySelector('[type="submit"]');
     if (btn) btn.disabled = true;
     // Оптимистично: имя сразу доступно главной и профилю, без ожидания сети.
-    st.member = Object.assign({}, st.member, {
-      name: memberName,
-      households: Object.assign({}, st.member.households, { name: householdName }),
-    });
-    mutate('save_profile', { member_name: memberName, household_name: householdName }).then(function (res) {
+    st.member = Object.assign({}, st.member);
+    if (renameMember) st.member.name = memberName;
+    if (renameHousehold) {
+      st.member.households = Object.assign({}, st.member.households, { name: householdName });
+    }
+    var payload = {};
+    if (renameMember) payload.member_name = memberName;
+    if (renameHousehold) payload.household_name = householdName;
+    mutate('save_profile', payload).then(function (res) {
       if (res && res.member_name) st.member = Object.assign({}, st.member, { name: res.member_name });
       if (res && res.household_name && st.member.households) {
         st.member.households = Object.assign({}, st.member.households, { name: res.household_name });
@@ -1637,10 +1892,11 @@
       toast(T('Сохранено'));
       if (route.name === 'settings') render(Views.renderSettings(route.section));
     }).catch(function (err) {
-      st.member = Object.assign({}, st.member, {
-        name: previous.name,
-        households: Object.assign({}, st.member.households, { name: previous.household }),
-      });
+      st.member = Object.assign({}, st.member);
+      if (renameMember) st.member.name = previous.name;
+      if (renameHousehold) {
+        st.member.households = Object.assign({}, st.member.households, { name: previous.household });
+      }
       if (btn) btn.disabled = false;
       root.Tg.haptic('error');
       toast(err.message || T('Не удалось сохранить'));
@@ -1670,7 +1926,7 @@
 
   function openTab(tab) {
     if (pageSwipe) abortPageSwipe();
-    if (editingTx) return;
+    if (editingTx || paymentBusy) return;
     if (!st.member) return;
     // Переход по вкладке отменяет недоехавший свайп: пользователь выбрал другое.
     if (!instantRender) dropPageSettle();
@@ -1711,8 +1967,12 @@
     if (MAIN_TABS.indexOf(route.name) === -1) return false;
     if (el.sheet && !el.sheet.hidden) return false;
     if (el.dialog && !el.dialog.hidden) return false;
+    // Обычные кнопки (карточки категорий, стат-блоки, пункты профиля) свайп не
+    // глушат: клик после жеста отменяется, а на телефоне они закрывают почти
+    // весь экран. Блокируем только поверхности со своим горизонтальным жестом,
+    // поля ввода и перетаскивание.
     if (target && target.closest &&
-        target.closest('input,textarea,select,button,a,label,[contenteditable],.tx,.cat-tx,.finance-operation,.sheet,.dialog,.quick-actions,details,[draggable="true"],[data-gesture-lock],.segments')) {
+        target.closest('input,textarea,select,a,label,[contenteditable],.tx,.cat-tx,.finance-operation,.sheet,.dialog,.quick-actions,details,[draggable="true"],[data-gesture-lock],.segments')) {
       return false;
     }
     return true;
@@ -1740,9 +2000,9 @@
     if (name === 'tx') {
       var rows = cached('txCache:' + st.month);
       var filter = st.txFilter || { kind: null, category_id: null, member_id: null, q: '' };
-      return rows ? Views.renderTxList(rows, filter, st.txChart || 'expense') : Views.skeletonList();
+      return rows ? Views.renderTxList(rows, filter, st.txChart || 'expense', txDayLimit) : Views.skeletonList();
     }
-    if (name === 'plans') return st.plans ? Views.renderPlans(st.plans, plansTab) : Views.skeletonList();
+    if (name === 'plans') return root.PaymentsViews.modules();
     if (name === 'settings') return Views.renderSettings(null);
     return '';
   }
@@ -1789,7 +2049,9 @@
     if (gesture.dx && gesture.dir && Math.sign(gesture.dx) !== gesture.dir) return false;
     var width = gesture.width || pageSwipeWidth();
     var moved = Math.abs(gesture.shift === undefined ? gesture.dx : gesture.shift);
-    return moved > width / 4 || (!!gesture.fast && moved > 24);
+    // Пятая часть ширины — короче прежней четверти: на узком экране жест
+    // должен срабатывать без длинной протяжки через весь экран.
+    return moved > width / 5 || (!!gesture.fast && moved > 20);
   }
 
   function clearPageSwipeStyles(gesture) {
@@ -2043,20 +2305,8 @@
         repeatLastTx();
         break;
       case 'recurring-new':
-        loadCategories().then(function () {
-          if (el.sheet.classList.contains('sheet--quick-actions')) openPlanForm('recurring');
-        }).catch(fail);
-        break;
-      case 'goal-new':
-        openPlanForm('goals');
-        break;
-      case 'debt-new':
-        openPlanForm('debts');
-        break;
-      case 'wish-new':
-        loadPlans().then(function () {
-          if (el.sheet.classList.contains('sheet--quick-actions')) openPlanForm('wishes');
-        });
+        closeSheet();
+        payments().open().then(function () { payments().action('payment-new', { getAttribute: function () { return null; } }); });
         break;
       case 'transactions':
         closeSheet();
@@ -2068,7 +2318,7 @@
         break;
       case 'recurring-list':
         closeSheet();
-        openPlans('recurring');
+        payments().open();
         break;
       case 'expense-category':
         openCategoryForm(null, 'expense');
@@ -2463,8 +2713,7 @@
     Api.updateTx(payload).then(function (tx) {
       if (request !== editGeneration || scope !== memberScope(st.member) || editingTx !== original) return;
       if (!tx || tx.id !== payload.id) throw new Error(T('Сервер не подтвердил изменение'));
-      clearCache();
-      st.lastSummary = null;
+      invalidateTransactions([String(original.occurred_on).slice(0, 7), date.slice(0, 7)]);
       expandedCat = null;
       editingTx = null;
       el.screen.inert = false;
@@ -2532,7 +2781,8 @@
     form = {};
     btn.disabled = true;
     root.Tg.haptic('success');
-    toast(T('Записано'));
+    if (values.kind === 'income') toast(T('Записано'));
+    else toast(T('Расход добавлен'), { success: true });
     openSummary();
 
     var op = Queue.push('add_tx', Object.assign({ local_id: local.id }, payload));
@@ -2551,7 +2801,11 @@
       if (tx && tx.receipt_key && receiptStore()) {
         receiptStore().remember(scope, tx.receipt_key, { txId: tx.id, date: occurred, sum: amount });
       }
-      clearCache();
+      var rows = cached('txCache:' + occurred.slice(0, 7));
+      if (rows && tx && tx.id) cached('txCache:' + occurred.slice(0, 7), rows.map(function (row) {
+        return row.id === local.id ? Object.assign({}, row, tx, { _local: false }) : row;
+      }));
+      invalidateTransactions([occurred.slice(0, 7)]);
       // Сервер подтвердил — перерисовываем, чтобы убрать «отправляется».
       if (route.name === 'summary') openSummary();
       if (route.name === 'tx') openTx();
@@ -2622,10 +2876,6 @@
       });
 
       var month = removed && removed.occurred_on ? String(removed.occurred_on).slice(0, 7) : st.month;
-      var summarySnapshot = removed ? cloneSummary(cached('summaryCache:' + month)) : null;
-      var expandedSnapshot = expandedCat
-        ? { id: expandedCat.id, rows: expandedCat.rows ? expandedCat.rows.slice() : null }
-        : null;
       deletingTx[id] = true;
 
       if (removed) {
@@ -2660,6 +2910,9 @@
         // Только после подтверждения сервера освобождаем чек: при ошибке
         // запись вернётся, и защита от повторного добавления должна остаться.
         if (removed && receiptStore()) receiptStore().forgetForTx(scope, removed);
+        invalidateTransactions([month]);
+        if (route.name === 'summary') openSummary();
+        else if (route.name === 'tx') openTx();
       });
       root.addEventListener('queue-failed', function onFailed(ev) {
         if (ev.detail.op.id !== op.id) return;
@@ -2668,15 +2921,19 @@
         delete deletingTx[id];
         positions.forEach(function (pos) {
           var current = (cached(pos.key) || []).slice();
-          current.splice(Math.min(pos.index, current.length), 0, pos.tx);
+          if (!current.some(function (row) { return row.id === pos.tx.id; })) current.splice(Math.min(pos.index, current.length), 0, pos.tx);
           cached(pos.key, current);
         });
         pendingRestore.forEach(function (item) { pendingAdds[item.opId] = item.tx; });
-        if (summarySnapshot) {
-          cached('summaryCache:' + month, summarySnapshot);
-          if (month === st.month) st.lastSummary = summarySnapshot;
+        var currentSummary = cached('summaryCache:' + month);
+        if (currentSummary && removed) {
+          var restored = summaryAfterRemoval(currentSummary, Object.assign({}, removed, { amount: -Number(removed.amount) }));
+          cached('summaryCache:' + month, restored);
+          if (month === st.month) st.lastSummary = restored;
         }
-        expandedCat = expandedSnapshot;
+        if (expandedCat && expandedCat.rows && removed && expandedCat.id === removed.category_id) {
+          expandedCat = { id: expandedCat.id, rows: (cached('txCache:' + month) || []).filter(function (row) { return row.category_id === expandedCat.id; }) };
+        }
         root.Tg.haptic('error');
         toast(T('Не удалилось: {error}', { error: (ev.detail.error && ev.detail.error.message) || T('ошибка') }));
         if (route.name === 'tx') openTx();
@@ -2990,6 +3247,17 @@ document.addEventListener('click', function (ev) {
     scrollAtTouch = null;
     if (action === 'toggle-cat' && scrolled) return;
 
+    if (action.indexOf('payment-') === 0) { payments().action(action, actionBtn); return; }
+    if (action === 'modules-home') { openPlans(); return; }
+    if (action === 'module-open') {
+      var moduleName = actionBtn.getAttribute('data-module');
+      if (moduleName === 'payments') payments().open();
+      else if (moduleName === 'reminders' || moduleName === 'tasks') {
+        ++reqSeq; route = { name: 'module-placeholder' };
+        render(root.PaymentsViews.placeholder(moduleName === 'tasks' ? 'Трекер задач' : 'Напоминания'));
+      }
+      return;
+    }
     switch (action) {
       case 'home-edit': startHomeEdit(); break;
       case 'home-edit-save': saveHomeEdit(); break;
@@ -3008,6 +3276,11 @@ document.addEventListener('click', function (ev) {
         break;
       case 'month-prev': changeMonth(-1); break;
       case 'month-next': changeMonth(1); break;
+      case 'open-months': openMonths(); break;
+      case 'months-period': setMonthsPeriod(actionBtn.getAttribute('data-period')); break;
+      case 'months-select': selectMonthsMonth(actionBtn.getAttribute('data-month')); break;
+      case 'months-back': leaveMonths(); break;
+      case 'months-retry': openMonths(true); break;
       case 'go-tx': openTx(null); break;
       case 'go-tx-kind':
         root.Tg.haptic('light');
@@ -3032,6 +3305,7 @@ document.addEventListener('click', function (ev) {
       case 'quick-action': runQuickAction(actionBtn.getAttribute('data-quick')); break;
       case 'tx-clear-filter': clearTxFilter(); break;
       case 'tx-search-clear': clearTxSearch(); break;
+      case 'tx-more': loadMoreTxDays(); break;
 
       case 'toggle-cat': toggleCategory(actionBtn.getAttribute('data-id')); break;
       case 'add-in-cat': openAdd({ category_id: actionBtn.getAttribute('data-id'), kind: 'expense' }); break;
@@ -3148,12 +3422,23 @@ document.addEventListener('click', function (ev) {
     capture: true, passive: false,
   });
 
+  document.addEventListener('change', function (ev) {
+    if (ev.target.matches('[data-payment-unit]')) {
+      ev.target.form.elements.interval.max = ({day:365,week:365,month:12,year:10})[ev.target.value];
+      return;
+    }
+    if (!ev.target.matches('[data-payment-type]')) return;
+    var repeat = ev.target.closest('form').querySelector('.payment-repeat');
+    repeat.hidden = repeat.disabled = ev.target.value !== 'regular';
+  });
+
   document.addEventListener('submit', function (ev) {
     var f = ev.target;
     if (!f.matches('form')) return;
     ev.preventDefault();
     var kind = f.getAttribute('data-form');
-    if (kind === 'add') submitAdd(f);
+    if (kind === 'payment' || kind === 'payment-confirm') payments().submit(f, kind === 'payment-confirm');
+    else if (kind === 'add') submitAdd(f);
     else if (kind === 'edit-tx') submitEditTx(f);
     else if (kind === 'plan') submitPlan(f);
     else if (kind === 'category') submitCategory(f);
@@ -3242,15 +3527,18 @@ document.addEventListener('click', function (ev) {
     var input = ev.target;
     if (!input || input.id !== 'tx-search') return;
     var value = input.value;
+    // Save the draft immediately; only filtering is debounced. A background
+    // render during these 120 ms must use the latest text.
+    if (!st.txFilter) st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
+    st.txFilter.q = value;
     clearTimeout(txSearchTimer);
     txSearchTimer = setTimeout(function () {
       if (route.name !== 'tx') return;
       var current = el.screen.querySelector('#tx-search');
       if (!current || current.value !== value) return;
-      if (!st.txFilter) st.txFilter = { kind: null, category_id: null, member_id: null, q: '' };
-      st.txFilter.q = value;
       var clear = el.screen.querySelector('[data-action="tx-search-clear"]');
       if (clear) clear.hidden = !value;
+      resetTxDays();
       refreshTxResults();
     }, 120);
   });
@@ -3311,7 +3599,7 @@ document.addEventListener('click', function (ev) {
   });
 
   el.sheet.addEventListener('click', function (ev) {
-    if (ev.target.closest('[data-sheet-close]')) closeSheet();
+    if (ev.target.closest('[data-sheet-close]') && !el.sheetBody.querySelector('.payment-form')) closeSheet();
   });
 
   el.sheet.addEventListener('input', function (ev) {
@@ -3724,21 +4012,24 @@ document.addEventListener('click', function (ev) {
   });
 
   // One page recognizer; expense rows and nested gesture surfaces keep priority.
-  var pageGesture = null, pageRefresh = null, refreshPageKey = null, pageSwipeUntil = 0;
+  var pageGesture = null, pageRefresh = null, refreshPageKey = null, refreshContext = null, pageSwipeUntil = 0;
   function pageGestureAxis(dx, dy) {
     if (Math.max(Math.abs(dx), Math.abs(dy)) < 10) return null;
     if (Math.abs(dx) > Math.abs(dy) * 1.5) return 'x';
     if (Math.abs(dy) > Math.abs(dx) * 1.5) return 'y';
     return null;
   }
-  function refreshCurrentPage() {
-    if (pageRefresh) return pageRefresh;
+  function refreshCurrentPage(forcePaint) {
+    if (route.name === 'payments') return payments().refresh();
     var name = route.name, key = screenKey(), month = st.month, seq = reqSeq, scope = memberScope(st.member);
+    var context = key + ':' + month + ':' + seq + ':' + scope;
+    if (pageRefresh && refreshContext === context) return pageRefresh;
+    var before = [cached('summaryCache:' + month), cached('txCache:' + month), st.plans, JSON.stringify(st.member)];
     function current() { return key === screenKey() && month === st.month && seq === reqSeq && scope === memberScope(st.member); }
     var tasks;
     if (name === 'summary') tasks = [loadSummary(month, true), loadTx(month, true), loadPlans(true)];
     else if (name === 'tx') tasks = [loadTx(month, true)];
-    else if (name === 'plans') tasks = [loadPlans(true)];
+    else if (name === 'plans') return Promise.resolve();
     else if (name === 'settings') {
       tasks = [];
       if (!route.section || ['family', 'budget', 'notifications', 'subscription'].indexOf(route.section) !== -1) {
@@ -3749,33 +4040,42 @@ document.addEventListener('click', function (ev) {
     }
     else return Promise.resolve();
     refreshPageKey = key;
+    refreshContext = context;
     el.screen.style.setProperty('--pull-distance', '32px');
     el.screen.classList.add('screen--refreshing');
     el.screen.setAttribute('aria-busy', 'true');
-    pageRefresh = Promise.allSettled(tasks).then(function (results) {
+    var request = Promise.allSettled(tasks).then(function (results) {
       var failure = results.find(function (result) { return result.status === 'rejected'; });
-      if (failure) throw failure.reason;
       if (!current()) return;
+      var unchanged = before[0] === cached('summaryCache:' + month) && before[1] === cached('txCache:' + month) && before[2] === st.plans && before[3] === JSON.stringify(st.member);
+      if (unchanged && !failure && !forcePaint && name !== 'settings') return;
+      if (name === 'summary' && !cached('summaryCache:' + month)) {
+        if (failure) throw failure.reason;
+        return;
+      }
       if (name === 'summary') {
         if (expandedCat) expandedCat.rows = (cached('txCache:' + month) || []).filter(function (t) { return t.category_id === expandedCat.id; });
-        renderSummaryFromCache();
-      } else if (name === 'tx') refreshTxResults();
-      else if (name === 'plans') render(Views.renderPlans(st.plans, plansTab));
+        render(Views.renderSummary(cached('summaryCache:' + month), st.plans, expandedCat, cached('txCache:' + month), categoryView), true);
+      } else if (name === 'tx') render(Views.renderTxList(cached('txCache:' + month) || [], st.txFilter, st.txChart, txDayLimit), true);
+      else if (name === 'plans') render(Views.renderPlans(st.plans, plansTab), true);
       else render(Views.renderSettings(route.section));
+      if (failure) throw failure.reason;
     }).catch(function (err) {
       if (!current() || err.code === 'stale_response') return;
       if (err.code === 'unauthorized' || err.code === 'no_household') return fail(err);
       toast(T('Не удалось обновить — показываем сохранённое'));
     }).finally(function () {
-      pageRefresh = null; refreshPageKey = null;
+      if (pageRefresh !== request) return;
+      pageRefresh = null; refreshPageKey = null; refreshContext = null;
       el.screen.classList.remove('screen--refreshing');
       el.screen.removeAttribute('aria-busy');
       el.screen.style.removeProperty('--pull-distance');
     });
-    return pageRefresh;
+    pageRefresh = request;
+    return request;
   }
   function pageGestureBlocked(target) {
-    if (!el.sheet.hidden || !el.dialog.hidden || !st.member || route.name === 'add' || route.name === 'limits' || st.homeEdit) return true;
+    if (!el.sheet.hidden || !el.dialog.hidden || !st.member || route.name === 'add' || route.name === 'limits' || route.name === 'months' || st.homeEdit) return true;
     if (target.closest('input,textarea,select,button,a,[contenteditable],.tx,.finance-operation,.category-picker,[draggable="true"],[data-gesture-lock],.segments')) return true;
     for (var node = target; node && node !== el.screen; node = node.parentElement) {
       var css = root.getComputedStyle(node);
@@ -3914,16 +4214,15 @@ document.addEventListener('click', function (ev) {
 
   function refreshOnReturn() {
     if (!st.member || lifecycleRequest) return lifecycleRequest;
-    var seq = reqSeq;
+    var seq = reqSeq, previousMember = JSON.stringify(st.member);
     lifecycleRequest = loadMember().then(function (me) {
       if (!me) { reqSeq++; return render(Views.renderOnboarding(onboarding)); }
-      if (editingTx || route.name === 'add') return;
+      if (route.name === 'add' || st.homeEdit) return;
       if (seq !== reqSeq && route.name !== 'summary' && route.name !== 'tx') return;
-      if (route.name === 'summary') openSummary(true);
-      else if (route.name === 'tx') openTx(undefined, true);
-      else if (route.name === 'plans') openPlans();
-      // Categories may have changed on another device; refresh after critical loads start.
-      loadCategories(true).catch(function (err) { if (err.code !== 'stale_response') toast(T('Не удалось обновить категории')); });
+      // Share the page refresh promise with pull-to-refresh until all reads finish.
+      return Promise.all([['summary', 'tx', 'plans', 'payments'].indexOf(route.name) !== -1 ? refreshCurrentPage(previousMember !== JSON.stringify(st.member)) : Promise.resolve(), loadCategories(true).catch(function (err) {
+        if (err.code !== 'stale_response') toast(T('Не удалось обновить категории'));
+      })]);
     }).catch(function (err) { if (err.code !== 'stale_response') toast(T('Не удалось обновить — показываем сохранённое')); })
       .finally(function () { lifecycleRequest = null; });
     return lifecycleRequest;
