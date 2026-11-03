@@ -1,13 +1,13 @@
 (function (root) {
   function validDate(s) { return /^\d{4}-\d{2}-\d{2}$/.test(s) && new Date(s + 'T12:00:00Z').toISOString().slice(0,10) === s; }
   function validate(t) {
-    if (!t.title || !t.title.trim() || t.title.length > 160) throw new Error('Введите название до 160 символов');
-    if ((t.description || '').length > 2000) throw new Error('Описание до 2000 символов');
-    if (t.due_on && !validDate(t.due_on)) throw new Error('Проверьте срок');
+    if (!t.title || !t.title.trim() || t.title.length > 200) throw new Error('Введите название до 200 символов');
+    if ((t.description || '').length > 4000) throw new Error('Описание до 4000 символов');
+    if (t.due_on && (!validDate(t.due_on) || t.due_on < '2000-01-01' || t.due_on > '2100-12-31')) throw new Error('Проверьте срок');
     if (!['normal','important'].includes(t.priority)) throw new Error('Проверьте приоритет');
     var r = t.repeat;
-    if (r && (!t.due_on || !['day','week','month','year'].includes(r.unit) || !Number.isInteger(r.interval) || r.interval < 1 || r.interval > 365 || !Array.isArray(r.weekdays) || r.weekdays.some(function (n) { return !Number.isInteger(n) || n < 1 || n > 7; }) || (r.weekdays.length && r.unit !== 'week'))) throw new Error('Для повторения укажите срок, период и интервал 1–365');
-    if (!Array.isArray(t.reminders) || t.reminders.length > 10 || t.reminders.some(function (n) { return !Number.isInteger(n) || n < 0 || n > 525600; }) || (t.reminders.length && !t.due_on)) throw new Error('Для уведомлений укажите срок и до 10 интервалов в минутах');
+    if (r && (!t.due_on || !['day','week','month','year'].includes(r.unit) || !Number.isInteger(r.interval) || r.interval < 1 || r.interval > ({day:365,week:365,month:12,year:10})[r.unit] || !Array.isArray(r.weekdays) || r.weekdays.some(function (n) { return !Number.isInteger(n) || n < 1 || n > 7; }) || (r.weekdays.length && r.unit !== 'week'))) throw new Error('Для повторения укажите срок, период и интервал 1–365');
+    if (!Array.isArray(t.reminders) || t.reminders.length > 10 || t.reminders.some(function (n) { return !Number.isInteger(n) || n < 0 || n > 43200; }) || (t.reminders.length && !t.due_on)) throw new Error('Для уведомлений укажите срок и до 10 интервалов в минутах');
     return t;
   }
   function nextDate(t) {

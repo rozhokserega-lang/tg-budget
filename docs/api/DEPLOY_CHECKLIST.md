@@ -218,3 +218,13 @@ select count(*) from cron.job where jobname = 'notify-hourly';  -- 1
 | Smoke legacy + v1 | | | |
 | Cron восстановлен | | | |
 | Наблюдение 48 ч | | | |
+
+## Rollout1.2 — выполнен 2026-11-03
+
+- Пользователь разрешил завершение и публикацию.
+- Сохранены локальные резервные копии api20/notify10.
+- Адресно применена только20261103170840_personal_modules_readiness.sql; фактическая версия20261103182305. Bulk db push не выполнялся.
+- Опубликованы api21 (REST1.2.0) и notify11, verify_jwt=false, import_map_path="deno.json". Исходники сверены с deployed files.
+- Cron job3 восстановлен, schedule */5, active=true; прямые grants восьми personal/outbox таблиц отозваны при включённой RLS.
+- Health200,401 без подписи, OPTIONS204 с нужными methods/headers.
+- Проверки и оставшиеся границы доказательств — PERSONAL_MODULES_HANDOFF.md. Реальную доставку Telegram проверять с тестовым пользователем; подписанный fixture не используется в production.

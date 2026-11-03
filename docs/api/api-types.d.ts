@@ -31,7 +31,7 @@ export interface paths {
                             /** @constant */
                             ok: true;
                             /** @constant */
-                            version: "1.1.0";
+                            version: "1.2.0";
                             /** Format: date-time */
                             time?: string;
                         };
@@ -468,10 +468,15 @@ export interface paths {
         /** Календарь напоминаний */
         get: {
             parameters: {
-                query: {
-                    from: components["parameters"]["FromDate"];
-                    /** @description Не больше 370 дней от `from`. */
-                    to: components["parameters"]["ToDate"];
+                query?: {
+                    /** @description Все личные шаблоны, включая паузу и отсутствие событий; from/to не нужны. */
+                    view?: "templates";
+                    /** @description IANA-зона границ календарных дней. */
+                    timezone?: string;
+                    /** @description Обязателен без view=templates. */
+                    from?: string;
+                    /** @description Обязателен без view=templates, диапазон до370 дней. */
+                    to?: string;
                     status?: components["schemas"]["ReminderOccurrenceStatus"];
                     priority?: components["schemas"]["Priority"];
                     limit?: components["parameters"]["Limit"];
@@ -489,7 +494,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ReminderOccurrencePage"];
+                        "application/json": components["schemas"]["ReminderOccurrencePage"] | components["schemas"]["ReminderTemplatePage"];
                     };
                 };
                 401: components["responses"]["Unauthorized"];
@@ -501,7 +506,9 @@ export interface paths {
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    "Idempotency-Key"?: components["parameters"]["IdempotencyKeyOptional"];
+                };
                 path?: never;
                 cookie?: never;
             };
@@ -840,7 +847,9 @@ export interface paths {
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    "Idempotency-Key"?: components["parameters"]["IdempotencyKeyOptional"];
+                };
                 path?: never;
                 cookie?: never;
             };
@@ -992,7 +1001,9 @@ export interface paths {
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    "Idempotency-Key"?: components["parameters"]["IdempotencyKeyOptional"];
+                };
                 path?: never;
                 cookie?: never;
             };
@@ -1081,7 +1092,9 @@ export interface paths {
         patch: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    "Idempotency-Key"?: components["parameters"]["IdempotencyKeyOptional"];
+                };
                 path?: never;
                 cookie?: never;
             };
@@ -1620,6 +1633,10 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        ReminderTemplatePage: {
+            data: components["schemas"]["Reminder"][];
+            pageInfo: components["schemas"]["PageInfo"];
+        };
         ReminderOccurrencePage: {
             data: components["schemas"]["ReminderOccurrence"][];
             pageInfo: components["schemas"]["PageInfo"];
@@ -1751,6 +1768,8 @@ export interface components {
         TaskReorderRequest: {
             /** Format: uuid */
             listId?: string | null;
+            /** @description all, none или UUID личного списка. При наличии сохраняет отдельный порядок представления. */
+            view?: string;
             items: {
                 /** Format: uuid */
                 id: string;
@@ -1759,8 +1778,9 @@ export interface components {
             }[];
         };
         TaskReorderResponse: {
-            data: components["schemas"]["Task"][];
-        };
+            taskOrders?: components["schemas"]["TaskOrders"];
+            data?: components["schemas"]["Task"][];
+        } | unknown | unknown;
         TaskCompleteResponse: {
             task: components["schemas"]["Task"];
             nextTask: components["schemas"]["Task"] | null;
@@ -1772,6 +1792,9 @@ export interface components {
             /** Format: uuid */
             selectedTaskListId: string | null;
             taskSortMode: components["schemas"]["TaskSortMode"];
+            /** @enum {string} */
+            selectedTaskView?: "all" | "none" | "list";
+            taskOrders?: components["schemas"]["TaskOrders"];
             currency: components["schemas"]["Currency"];
             /** Format: date-time */
             updatedAt: string | null;
@@ -1780,7 +1803,14 @@ export interface components {
             /** Format: uuid */
             selectedTaskListId?: string | null;
             taskSortMode?: components["schemas"]["TaskSortMode"];
+            /** @enum {string} */
+            selectedTaskView?: "all" | "none" | "list";
+            taskOrders?: components["schemas"]["TaskOrders"];
             currency?: components["schemas"]["Currency"];
+        };
+        /** @description Ключи all, none или UUID собственного списка. PATCH объединяет только переданные представления. */
+        TaskOrders: {
+            [key: string]: string[];
         };
     };
     responses: {

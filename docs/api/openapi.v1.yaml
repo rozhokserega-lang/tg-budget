@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: TG Budget — Modules API
-  version: 1.1.0
+  version: 1.2.0
   description: |
     API v1 для модулей «Платежи», «Напоминания» и «Трекер задач».
     Авторизация — Telegram WebApp initData в заголовке `Authorization: tma <initData>`.
@@ -41,7 +41,7 @@ paths:
                 required: [ok, version]
                 properties:
                   ok: { type: boolean, const: true }
-                  version: { type: string, const: '1.1.0' }
+                  version: { type: string, const: '1.2.0' }
                   time: { type: string, format: date-time }
 
   /payment-templates:
@@ -234,8 +234,22 @@ paths:
       tags: [reminders]
       summary: Календарь напоминаний
       parameters:
-        - $ref: '#/components/parameters/FromDate'
-        - $ref: '#/components/parameters/ToDate'
+        - name: view
+          in: query
+          schema: { type: string, enum: [templates] }
+          description: Все личные шаблоны, включая паузу и отсутствие событий; from/to не нужны.
+        - name: timezone
+          in: query
+          schema: { type: string }
+          description: IANA-зона границ календарных дней.
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+          description: Обязателен без view=templates.
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+          description: Обязателен без view=templates, диапазон до370 дней.
         - name: status
           in: query
           schema: { $ref: '#/components/schemas/ReminderOccurrenceStatus' }
@@ -249,10 +263,15 @@ paths:
           description: Страница событий
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ReminderOccurrencePage' }
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ReminderOccurrencePage'
+                  - $ref: '#/components/schemas/ReminderTemplatePage'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
     post:
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
       tags: [reminders]
       summary: Создать напоминание
       requestBody:
@@ -395,6 +414,8 @@ paths:
               schema: { $ref: '#/components/schemas/TaskListCollection' }
         '401': { $ref: '#/components/responses/Unauthorized' }
     post:
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
       tags: [task-lists]
       summary: Создать список
       requestBody:
@@ -482,6 +503,8 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
     post:
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
       tags: [tasks]
       summary: Создать задачу
       description: С recurrenceRule создаётся серия и первый экземпляр.
@@ -521,6 +544,8 @@ paths:
 
   /tasks/reorder:
     patch:
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
       tags: [tasks]
       summary: Ручной порядок задач
       requestBody:
@@ -1074,6 +1099,15 @@ components:
         completedAt: { type: [string, 'null'], format: date-time }
         createdAt: { type: string, format: date-time }
 
+    ReminderTemplatePage:
+      type: object
+      required: [data, pageInfo]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Reminder' }
+        pageInfo: { $ref: '#/components/schemas/PageInfo' }
+
     ReminderOccurrencePage:
       type: object
       required: [data, pageInfo]
@@ -1262,6 +1296,9 @@ components:
       required: [items]
       properties:
         listId: { type: [string, 'null'], format: uuid }
+        view:
+          type: string
+          description: 'all, none или UUID личного списка. При наличии сохраняет отдельный порядок представления.'
         items:
           type: array
           minItems: 1
@@ -1277,8 +1314,11 @@ components:
 
     TaskReorderResponse:
       type: object
-      required: [data]
+      anyOf:
+        - required: [data]
+        - required: [taskOrders]
       properties:
+        taskOrders: { $ref: '#/components/schemas/TaskOrders' }
         data:
           type: array
           items: { $ref: '#/components/schemas/Task' }
@@ -1305,6 +1345,8 @@ components:
       properties:
         selectedTaskListId: { type: [string, 'null'], format: uuid }
         taskSortMode: { $ref: '#/components/schemas/TaskSortMode' }
+        selectedTaskView: { type: string, enum: [all, none, list] }
+        taskOrders: { $ref: '#/components/schemas/TaskOrders' }
         currency: { $ref: '#/components/schemas/Currency' }
         updatedAt: { type: [string, 'null'], format: date-time }
 
@@ -1314,4 +1356,18 @@ components:
       properties:
         selectedTaskListId: { type: [string, 'null'], format: uuid }
         taskSortMode: { $ref: '#/components/schemas/TaskSortMode' }
+        selectedTaskView: { type: string, enum: [all, none, list] }
+        taskOrders:
+          allOf:
+            - $ref: '#/components/schemas/TaskOrders'
+          maxProperties: 100
         currency: { $ref: '#/components/schemas/Currency' }
+
+    TaskOrders:
+      type: object
+      description: Ключи all, none или UUID собственного списка. PATCH объединяет только переданные представления.
+      additionalProperties:
+        type: array
+        maxItems: 200
+        uniqueItems: true
+        items: { type: string, format: uuid }

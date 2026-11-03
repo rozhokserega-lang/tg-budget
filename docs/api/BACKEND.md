@@ -271,3 +271,9 @@ curl -sS "https://<ref>.supabase.co/functions/v1/api/v1/health"
 ## Дополнение 1.1.0: список шаблонов
 
 `GET /v1/payment-templates?limit&cursor` читает неудалённые `payment_templates` текущей семьи, включая приостановленные и будущие без начислений. Ответ `PaymentTemplatePage`, сортировка по id; `nextOccurrence` в списке null. Реализация `api/v1_payments_read.ts`, маршрутизация после `getContext`. Новых миграций нет. Требуется обновление функции `api` перед публикацией REST-клиента платежей; legacy-протокол сохраняется. Порядок — `docs/payments-adapter.md`.
+
+## Подготовленное дополнение 1.2 — личные модули
+
+Миграция `20261103170840_personal_modules_readiness.sql` добавляет selected_task_view/task_orders, durable successor_id, интервалы пауз/generation_from и внутренние квитанции одноразовых завершений. CRUD и смена серии выполняются существующим REST API через транзакционные RPC; постановка личных уведомлений проверяет актуальную сущность/правило под блокировкой. Табличные grants anon/authenticated отзываются, RLS остаётся включённой; новые RPC доступны только service_role.
+
+Подготовлено в PR, production не менялся. Передача frontend, согласованные ограничения, примеры и фактический отчёт — `PERSONAL_MODULES_HANDOFF.md`. После отдельного разрешения применять **только** указанную новую миграцию, затем api/notify1.2; не запускать bulk db push: в репозитории есть другие исторические/неприменённые файлы, включая `018_pet_keywords.sql`, которые не входят в эту задачу.

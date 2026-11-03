@@ -1,6 +1,6 @@
 # FRONTEND API CONTRACT — TG Budget v1
 
-Версия контракта: **1.1.0** · Дата: 2026-11-03 · Статус: опубликован для frontend-разработки
+Версия контракта: **1.2.0** · Дата: 2026-11-03 · Статус: 1.2 подготовлен в PR, production пока 1.1.0
 Канонический источник: `docs/api/openapi.v1.yaml`. При расхождении приоритет у OpenAPI.
 
 > Контракт не меняется без повышения версии. Ломающие изменения — только в `/v2`.
@@ -29,7 +29,7 @@ Authorization: tma <initData>
 - `user_id`, `member_id`, `household_id`, `owner_id` из тела **игнорируются**. Сервер берёт их из подписи.
 
 **CORS**: `GET, POST, PATCH, DELETE, OPTIONS`; заголовки `authorization, content-type, idempotency-key`.
-Ответы содержат `X-Contract-Version: 1.1.0`.
+Ответы содержат `X-Contract-Version: 1.2.0`.
 
 **Общие заголовки запроса**
 
@@ -558,7 +558,22 @@ PATCH /module-preferences   { "taskSortMode": "manual", "selectedTaskListId": "l
 
 ## 15. Версия контракта
 
-- Текущая: **1.1.0** (2026-11-03).
-- `X-Contract-Version: 1.1.0` во всех ответах.
+- Текущая: **1.2.0** (2026-11-03).
+- `X-Contract-Version: 1.2.0` во всех ответах.
 - Ломающие изменения — только `/v2`; добавление необязательных полей/значений — минорная версия.
 - OpenAPI: `docs/api/openapi.v1.yaml`; TypeScript-типы: `npx -y openapi-typescript@7 docs/api/openapi.v1.yaml -o src/api-types.d.ts` (или `node docs/api/generate-types.mjs`). Референсный вывод: `docs/api/api-types.d.ts`.
+
+
+## Дополнение 1.2: личные модули
+
+Новых HTTP endpoints нет. `GET /reminders?view=templates&limit&cursor` возвращает `ReminderTemplatePage`, включая паузу и шаблоны без событий; `nextOccurrence=null`. Обычный календарь требует from/to, поддерживает timezone IANA для границ дней и возвращает события, включая просроченные. Для обоих режимов адаптер обязан собрать все страницы.
+
+`ModulePreferences` расширен `selectedTaskView: all|none|list`, `taskOrders: {[all|none|listUuid]: taskUuid[]}`. При list нужен selectedTaskListId. Старый PATCH с selectedTaskListId без нового view сохраняет прежнюю семантику (null→all). Новый PATCH объединяет только переданные представления orders. Каждый id и представление проверяются по владельцу. `PATCH /tasks/reorder` с полем view сохраняет соответствующий массив и возвращает `{taskOrders}`; без view сохраняет старый `{data}`. В frontend snapshot при manual применяется taskOrders выбранного представления, отсутствующие в массиве задачи добавляются в конец; не сортировать по странице до сбора всего snapshot.
+
+POST /tasks, /task-lists, /reminders и PATCH /tasks/reorder принимают необязательный Idempotency-Key. Для создания ключ обязателен на стороне адаптера: при неизвестном результате повторить исходное тело и исходный ключ. В обработке параллельного запроса возможен409 DUPLICATE_REQUEST: повторить позже тот же ключ. Ключи хранятся24ч, они привязаны к участнику, endpoint и телу. Не менять ключ автоматически после таймаута создания.
+
+Выполнение задачи и создание следующего экземпляра теперь одна транзакция с durable successor_id: повтор, restore→complete и параллельные вызовы не создают новый дубликат. Шаг берётся от якоря серии, а не now; экземпляр может лежать дальше30дней. Повтор complete/restore того же состояния успешен. Выполненные удаляются сервером через30дней. Повтор complete удалённого разового напоминания успешен в течение30дней по внутренней квитанции владельца.
+
+Ограничения полей по каноническим схемам сохранены: напоминание120/1000 символов, задача200/4000, список120, даты2000–2100, notificationRules0–43200 минут; интервалы daily/weekly≤365, monthly≤12, yearly≤10. Frontend mock допускает более широкие диапазоны: сузить клиентскую валидацию перед подключением. Таблица мэппинга и примеры — PERSONAL_MODULES_HANDOFF.md.
+
+До применения новой миграции и отдельного подтверждённого деплоя api/notify контракт1.2 не включать в production-клиент. Финансовые endpoints не меняются.
