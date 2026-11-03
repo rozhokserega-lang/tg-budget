@@ -47,3 +47,8 @@
 - [x] Mock/сменный адаптер, инвалидация, защита от дублей и старых ответов, тесты.
 - [ ] Согласованный Backend API, атомарная транзакция, Telegram-уведомления, миграция legacy recurring.
 - [ ] Визуальная проверка Android/iOS Telegram и review перед merge.
+
+## Личный трекер задач — 2026-11-03
+- [x] Frontend и demo-адаптер, формы/сортировка/повторы, интеграция навигации/кэша.
+- [x] Автотесты и требования подключения backend: docs/tasks-adapter.md.
+- [ ] Согласовать backend API и подключить APP_TASKS_ADAPTER; Telegram smoke (touch, уведомления, server purge).

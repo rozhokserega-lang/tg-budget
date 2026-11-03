@@ -124,3 +124,10 @@ E: все 60 тестов проходят (node --test tests/*.test.cjs), synta
 - styles/finance.css: стиль метки для тёмной и светлой темы. src/i18n.js: «Показать ещё» en/es. tests/views.test.cjs: проверка 3/6/7 дней и метки.
 - Ребейз на main 42acf24; конфликт `STATE.md` разрешён, версии ассетов пересчитаны (build f12eb25c6e3d).
 - Проверки: 169/169, `node --check src/app.js`, `git diff --check`. Реальный скролл в Telegram не проверен.
+
+## 2026-11-03 — личный трекер задач
+- Ветка feature/personal-task-tracker от main 4b83c94. Новый контроллер tasks.js, адаптер tasks-api.js, модель/сортировка tasks-model.js, формы/UI tasks-views.js, tasks.css. В app.js подключены маршрут, события, refresh/return, BackButton и нижняя навигация; index.html версии ассетов.
+- Реализованы личные списки/задачи, выполнение/restore, приоритет, сроки, повторения, настройки уведомлений, независимый ручной порядок, HTML drag и touch handle/кнопки. Удаление списка сохраняет задачи.
+- Backend-контракта нет: docs/tasks-adapter.md описывает интерфейс внедрения APP_TASKS_ADAPTER и требования к серверу. Production без адаптера заблокирован, mock только demo. Telegram отправку/30-day purge mock не выполняет. Серверная авторизация/изоляция владельца обязательна.
+- Проверки: полный прогон 186/186. Затем найден и исправлен конфликт имени tasks с локальной переменной refreshCurrentPage, новый интеграционный тест task module: 1/1. Syntax и diff check прошли. Chromium отсутствует; Telegram/touch smoke не выполнен.
+- Следующий шаг: review PR, согласование/подключение backend и Telegram smoke. Merge не запрашивался.

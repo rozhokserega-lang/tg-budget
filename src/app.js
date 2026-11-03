@@ -94,6 +94,20 @@
     });
     return paymentsController;
   }
+  var tasksController = null;
+  function taskTracker() {
+    if (!tasksController) tasksController = root.Tasks.create({
+      scope: function () { return memberScope(st.member); },
+      active: function () { return route.name === 'tasks'; },
+      enter: function () { ++reqSeq; route = { name: 'tasks' }; },
+      render: render, load: loadResource, sheet: openSheet,
+      close: function () { var was = paymentBusy; paymentBusy = false; closeSheet(); paymentBusy = was; },
+      lock: function (busy) { paymentBusy = busy; el.tabs.inert = busy; },
+      toast: toast, confirm: dialog, expired: State.isExpired, home: openPlans,
+      invalidate: function (key) { resourceCache.invalidate([key]); }
+    });
+    return tasksController;
+  }
   // Порядок основных страниц для горизонтального свайпа. «Добавить» —
   // действие, а не страница, поэтому в навигации не участвует.
   var MAIN_TABS = ['summary', 'tx', 'plans', 'settings'];
@@ -303,7 +317,7 @@
   function syncBackButton() {
     if (editingTx || paymentBusy) return root.Tg.backButton(function () {});
     if (!el.sheet.hidden && el.sheetBody.querySelector('.payment-form')) return root.Tg.backButton(closeSheet);
-    if (route.name === 'payments' || route.name === 'module-placeholder') return root.Tg.backButton(function () { openPlans(); });
+    if (route.name === 'payments' || route.name === 'tasks' || route.name === 'module-placeholder') return root.Tg.backButton(function () { openPlans(); });
     if (st.homeEdit) return root.Tg.backButton(cancelHomeEdit);
     if (route.name === 'add') return root.Tg.backButton(goHome);
     // Общая сводка — подэкран сводки или финансов: «Назад» возвращает туда же.
@@ -416,7 +430,7 @@
     // «Добавить» — не место, а действие: подсвечиваем вкладку, с которой пришли.
     var active = route.name === 'add' ? 'summary'
       : route.name === 'months' ? (route.from === 'tx' ? 'tx' : 'summary')
-      : (route.name === 'payments' || route.name === 'module-placeholder') ? 'plans'
+      : (route.name === 'payments' || route.name === 'tasks' || route.name === 'module-placeholder') ? 'plans'
       : route.name === 'limits' ? 'settings'
       : route.name;
     // Меню создаём один раз: перерисовка на каждом переходе вызывала мигание иконок.
@@ -3247,12 +3261,14 @@ document.addEventListener('click', function (ev) {
     scrollAtTouch = null;
     if (action === 'toggle-cat' && scrolled) return;
 
+    if (action.indexOf('task-') === 0) { taskTracker().action(action, actionBtn); return; }
     if (action.indexOf('payment-') === 0) { payments().action(action, actionBtn); return; }
     if (action === 'modules-home') { openPlans(); return; }
     if (action === 'module-open') {
       var moduleName = actionBtn.getAttribute('data-module');
       if (moduleName === 'payments') payments().open();
-      else if (moduleName === 'reminders' || moduleName === 'tasks') {
+      else if (moduleName === 'tasks') taskTracker().open();
+      else if (moduleName === 'reminders') {
         ++reqSeq; route = { name: 'module-placeholder' };
         render(root.PaymentsViews.placeholder(moduleName === 'tasks' ? 'Трекер задач' : 'Напоминания'));
       }
@@ -3422,7 +3438,10 @@ document.addEventListener('click', function (ev) {
     capture: true, passive: false,
   });
 
+  ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'].forEach(function (type) { el.screen.addEventListener(type, function (ev) { taskTracker().touch(ev); }); });
+  ['dragstart', 'dragover', 'drop', 'dragend'].forEach(function (type) { el.screen.addEventListener(type, function (ev) { taskTracker().pointer(ev); }); });
   document.addEventListener('change', function (ev) {
+    if (ev.target.matches('[data-task-select], [data-task-complete]')) { taskTracker().change(ev.target); return; }
     if (!ev.target.matches('[data-payment-type]')) return;
     var repeat = ev.target.closest('form').querySelector('.payment-repeat');
     repeat.hidden = repeat.disabled = ev.target.value !== 'regular';
@@ -3433,7 +3452,8 @@ document.addEventListener('click', function (ev) {
     if (!f.matches('form')) return;
     ev.preventDefault();
     var kind = f.getAttribute('data-form');
-    if (kind === 'payment' || kind === 'payment-confirm') payments().submit(f, kind === 'payment-confirm');
+    if (kind === 'task' || kind === 'task-list') taskTracker().submit(f, kind === 'task-list');
+    else if (kind === 'payment' || kind === 'payment-confirm') payments().submit(f, kind === 'payment-confirm');
     else if (kind === 'add') submitAdd(f);
     else if (kind === 'edit-tx') submitEditTx(f);
     else if (kind === 'plan') submitPlan(f);
@@ -4016,6 +4036,7 @@ document.addEventListener('click', function (ev) {
     return null;
   }
   function refreshCurrentPage(forcePaint) {
+    if (route.name === 'tasks') return taskTracker().refresh();
     if (route.name === 'payments') return payments().refresh();
     var name = route.name, key = screenKey(), month = st.month, seq = reqSeq, scope = memberScope(st.member);
     var context = key + ':' + month + ':' + seq + ':' + scope;
@@ -4216,7 +4237,7 @@ document.addEventListener('click', function (ev) {
       if (route.name === 'add' || st.homeEdit) return;
       if (seq !== reqSeq && route.name !== 'summary' && route.name !== 'tx') return;
       // Share the page refresh promise with pull-to-refresh until all reads finish.
-      return Promise.all([['summary', 'tx', 'plans', 'payments'].indexOf(route.name) !== -1 ? refreshCurrentPage(previousMember !== JSON.stringify(st.member)) : Promise.resolve(), loadCategories(true).catch(function (err) {
+      return Promise.all([['summary', 'tx', 'plans', 'payments', 'tasks'].indexOf(route.name) !== -1 ? refreshCurrentPage(previousMember !== JSON.stringify(st.member)) : Promise.resolve(), loadCategories(true).catch(function (err) {
         if (err.code !== 'stale_response') toast(T('Не удалось обновить категории'));
       })]);
     }).catch(function (err) { if (err.code !== 'stale_response') toast(T('Не удалось обновить — показываем сохранённое')); })
