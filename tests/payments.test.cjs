@@ -72,3 +72,14 @@ test('controller ignores stale months and blocks duplicate submits with stable r
   const a=c.submit(form,true),b=c.submit(form,true);await Promise.all([a,b]);assert.equal(calls.length,1);const key=calls[0].idempotency_key;
   await c.submit(form,true);assert.equal(calls[1].idempotency_key,key);assert.equal(submit.disabled,false);assert.match(formError.textContent,/offline/);
 });
+test('edit keeps the opened version through refresh and rejects a form from another family',async()=>{
+  const {root,payment}=setup();let scope='family-a',version=4,saved=[],error={textContent:''};
+  root.APP_PAYMENTS_ADAPTER={list:async()=>({payments:[{...payment,id:'template',server:{version}}],occurrences:[]}),save:async q=>{saved.push(q);throw Error('offline')}};
+  const c=root.Payments.create({scope:()=>scope,active:()=>true,render(){},enter(){},load:(key,fn)=>fn(),categories:async()=>[],sheet(){},close(){},lock(){},toast(){},expired:()=>false,invalidate(){}});
+  await c.open();await c.action('payment-edit',{getAttribute:()=> 'template'});version=5;await c.refresh();
+  const submit={disabled:false},elements={};
+  for(const [k,v] of Object.entries({name:'Changed',description:'',amount:'100',category_id:'food',date:'2026-01-31',type:'once',reminders:'',overdue_every:''}))elements[k]={value:v};
+  const form={isConnected:true,elements,getAttribute:()=> 'template',querySelector:s=>s==='[type="submit"]'?submit:error,setAttribute(){},removeAttribute(){}};
+  await c.submit(form,false);assert.equal(saved[0].payment.server.version,4);
+  scope='family-b';await c.submit(form,false);assert.equal(saved.length,1);assert.match(error.textContent,/Семья изменилась/);
+});

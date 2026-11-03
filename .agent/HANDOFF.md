@@ -1,133 +1,26 @@
-# 2026-11-03: frontend платежей
+# Передача сессии — 2026-11-03
 
-- Ветка feature/payments-module от main 401379b; main не менялся.
-- Новые src/payments{,-api,-calendar,-views}.js: контроллер/состояние, адаптер/mock, date-only расписания, разметка/формы. styles/payments.css.
-- app.js: существующий router/cache/loadResource/scope, хаб вместо plans, подэкран payments, обработчики форм, lifecycle/pull refresh, инвалидация finance после confirm.
-- views.js: скрыты старые teaser/quick actions/banner; legacy данные не удалены. Напоминания/задачи — отдельные страницы ожидания, отдых — «Скоро».
-- index.html: подключения и версии. docs/payments-adapter.md: предлагаемая локальная граница адаптера, backend-гарантии и блокеры; это НЕ согласованный серверный контракт.
-- Реального нового API нет в доступном backend. APP_PAYMENTS_ADAPTER не задан → production показывает ожидание подключения. Только demo получает mock; записи mock живут до reload. Серверных endpoints не выдумывали.
-- tests/payments.test.cjs: 9/9, включая семейную уникальность confirm, даты, просрочки/паузы, stale ответы и retry keys. tests/app.test.cjs: интеграция finance invalidation и хаб; два старых monthly overview теста получили фиксированный месяц. tests/views.test.cjs: актуальное число quick actions.
-- Полный прогон один раз: 176/179; ошибки — два известных date-dependent теста и старое ожидание quick-actions. После исправлений адресно 5/5 (в т.ч. новый integration), финально payments 9/9. Полный набор повторно не запускался.
-- Browser smoke заблокирован отсутствующим Chromium; Telegram не проверен. Static app без build command, asset versioner и syntax/diff проверены.
-- Дальше: согласование API/семейной timezone/миграции legacy, реальные atomic confirm и notification worker, подключение адаптера, smoke Telegram.
+Цель, состояние и следующий шаг — STATE; очередь — TASKS; устойчивые решения — DECISIONS; карта — ARCHITECTURE.
 
-# 2026-11-02: перенос расхода между категориями
+## Интеграция платежей
 
-- Ветка `fix/edit-expense-category` от main `05bf22f` (PR #13 влит).
-- `src/api.js`: real-mode `Api.updateTx` вызывает `update_tx`; сообщение `update_unsupported` удалено.
-- `tests/edit-api.test.cjs`: mocked real-mode success/error; 5/5.
-- `README.md`: контракт обновлён; `index.html`: build `d8ad8a2ee103`.
-- Полный прогон: 168/170; два старых теста общей сводки зависят от текущего месяца и падают после смены месяца, не связаны с задачей.
-- Backend PR #2 влит в `tg-budget-app`; `api` v16 задеплоен; GitHub Pages run 41398606587 успешен.
-- Production: build `d8ad8a2ee103`, `api.js` содержит `update_tx`; endpoint без initData возвращает 401.
-- Осталось: ручной smoke в Telegram — сменить категорию существующего расхода.
+- Клиент: `codex/payments-v1-integration`, merge локального `248f944` (контракт) и origin/main `4b83c94` (готовый demo frontend). Main не перемещался. До merge изменения анализа двух файлов памяти сохранены stash `codex-analysis-checkpoint`; его сведения учтены здесь, повторно применять не надо.
+- Сервер: `/tmp/tg-budget-v1-server`, ветка `codex/payments-v1-server`, merge `cd540a0` и origin/main `bbc455c`. Обычный pull --ff-only не сработал из-за расхождения; merge в исходном checkout блокировался пользовательскими untracked miniapp/.agent и miniapp/AGENTS.md, поэтому использован отдельный worktree. Пользовательские файлы не менялись.
+- Новое: клиент `src/payments-rest.js`, сервер `supabase/functions/api/v1_payments_read.ts`, маршрут GET /payment-templates, версия контракта 1.1.0. Изменены payments-api/контроллер/views, app change-handler лимитов, index asset versions; docs/api контракт/OpenAPI/типы/BACKEND и docs/payments-adapter.md.
+- Подключены пагинация и tma; сервер сам определяет семью. Confirm не вызывает add_tx. Сохраняются UUID начислений, ключ повторной оплаты, версия формы при открытии и скрытые настройки. Разные валюты не складываются. При изменении содержимого confirm используется новый ключ, серверная уникальность начисления остаётся обязательной.
+- Серверные типы: `bad` и `failDb` переведены в объявления функций с never для корректного narrowing; поведение не менялось.
+- Итоговые проверки: frontend 188/188, miniapp-зеркало 188/188, backend 51/51; syntax всех JS, diff checks чисты, Build f7348b27c77e. Deno и генерация типов доступны через npx с разрешённым сетевым доступом; в обычной среде npm DNS недоступен. openapi-typescript 7.13.0.
+- Browser demo: создать разовый «Тест интеграции» 123, оплатить, календарь пуст, один расход в finance, console errors []. Скриншот: visualizations текущего чата `payments-finance-smoke.jpg`. Локальные серверы 8766/8767 остановлены. Итоговая сборка: открытие/перезагрузка без кэша успешны; с 304 на обычном Python-сервере IAB потерял I18n, причина вне проверенного кода не установлена. Проверка production caching остаётся открытой. Реальный Telegram/production не проверялись.
+- Локальные merge-коммиты сохранены в двух рабочих ветках; push/PR/merge main/deploy не выполнялись. Типы 1.1.0 сгенерированы. Клиент зеркалирован в серверный miniapp.
+- Rollout: сначала api 1.1.0, затем клиент; нового SQL нет. Серверный AGENTS.md §6 требует явного согласования внешних действий. Supabase MCP в этом сеансе отсутствует. Не считать старое разрешение на push/merge разрешением новых публикаций.
 
-# 2026-10-29: общая сводка по месяцам
+## Сохранённые ограничения и история
 
-- `src/views.js`: название месяца в `monthNav` стало кнопкой `open-months`; новый `renderMonths` — период 3/6/12, итог, строки месяцев, состояние загрузки/ошибки.
-- `src/app.js`: route `months` (`from` = summary/tx), `openMonths` через `fetchSummary` с кэшем по месяцу, `setMonthsPeriod`, `selectMonthsMonth`, `leaveMonths`; BackButton/подсветка вкладки/блокировка pull.
-- `styles/app.css`, `styles/finance.css`: кнопка-месяц и стили экрана. `src/i18n.js`: en/es строки. `index.html`: версии ассетов и build. `README.md`: описание.
-- `tests/app.test.cjs`: 5 сценариев (загрузка периода, смена периода/выбор месяца, возврат в финансы, старый выбранный месяц, ошибки/retry). `tests/views.test.cjs`: 3 теста разметки.
-- Проверено: `node --test` 168/168, `node --check src/app.js`, `git diff --check`. Chromium/Telegram нет: визуально мобильная вёрстка и реальный backend не проверены.
-- Ограничения: запросы к `summary` идут параллельно по каждому месяцу периода (до 12), это осознанный компромисс ради точных итогов; при отсутствии сети показываются сохранённые/ошибочные месяцы.
+- Бэкенд принадлежит tg-budget-app, публичный frontend — tg-budget; клиент зеркалируется в miniapp. Ignored supabase/ публичного checkout не добавлять.
+- Прод ранее: миграции 018–022, api v18 и notify v10, cron jobid3, 9/9 legacy-шаблонов/начислений; health200, auth401, notify403, cron200. SQL confirm smoke откатывался, тестовых данных не осталось. Это историческая проверка, не повторная проверка текущего production.
+- Исправление hideTemplate в cd540a0 запоминает id перед удалением legacy recurring, т.к. FK обнуляет legacy_recurring_id. Паузы/оплаты/уведомления реализованы сервером; UI не планирует уведомления самостоятельно.
+- UI v2, SWR, сканер чеков и последующие изменения origin/main сохранены объединением. Реальные Android/iOS, offline/background/safe-area/reduced motion остаются в TASKS; стендовые тесты не доказывают FPS или ускорение сети.
+- Не запускать version-assets только ради памяти. Не коммитить секреты и пользовательский untracked план, если обнаружится. Старые противоречивые записи памяти сжаты; фактические коммиты проверять Git.
 
-# SWR: активная передача 2026-10-26
-
-- Ветка `perf/swr-revalidation`, база main `229bcac`.
-- `src/cache.js`: invalidate(keys) сохраняет stale, версии блокируют старые ответы; одинаковые JSON переиспользуют ссылку.
-- `src/app.js`: TTL/SWR категорий/планов, точечная инвалидация add/edit/delete, независимые откаты, lifecycle/pull coalescing, сохранение scroll/search/sheet.
-- `styles/finance.css`: не перезапускать анимации планов на background repaint.
-- `tests/app.test.cjs`, `tests/cache.test.cjs`, `tests/swr-performance.cjs`: регрессии и измерения VM DOM.
-- Исходно 135/135; итог 152/152 + syntax/diff успешно, before/after benchmark завершён. После указания пользователя выполнен один итоговый запуск.
-- Отчёт: `.agent/SWR_REPORT.md`; локальный коммит/патч без push/merge/deploy. Следующий шаг: code review и ручной Telegram smoke.
-- Реальные Telegram/браузер не проверены. В api.js real updateTx уже заблокирован: не обходить без backend-контракта.
-
----
-Предыдущая передача (другая задача):
-
-# Передача сессии
-
-Контрольная точка E локально: 2026-10-21. Цель/следующий шаг — STATE; очередь — TASKS.
-
-Созданы: `AGENTS.md`, `.agent/{STATE,DECISIONS,TASKS,ARCHITECTURE,HANDOFF}.md`; в родительской папке Finance — короткий `AGENTS.md` для входа из текущего workspace.
-
-На старте реализации: main 6891810; fetch обнаружил b8688cd, выполнен fast-forward и создана feature/expenses-ux-performance. Исходные untracked: AGENTS.md, .agent/, пользовательский tg-budget-codex-final-plan.md. План не изменять/не удалять автоматически.
-
-Восстановление: прочитать инструкции и STATE, затем этот файл; выполнить `git status --short --branch` из репозитория (либо `git -C tg-budget ...` из Finance). Сверить HEAD и изменения, открыть только нужные по следующей задаче участки кода.
-
-Сохранение вручную: попросить «Сохрани контрольную точку» до `/compact`, закрытия чата или перехода в новый. В новом чате: «Восстанови контекст из .agent и продолжи». При аварийном закрытии сохраняется только последняя записанная точка; несохранённую работу проверить через Git.
-
-Изменения B: src/app.js, api.js, demo.js, views.js, styles/finance.css, README; tests/edit-api.test.cjs и views.test.cjs. Тесты: 17/17, syntax/diff check чисты. Browser demo: карандаш → исходные значения → сумма 1500/пустая заметка → success/новые итоги. Серверный update отсутствует в доступном коде: real unsupported, предлагаемый контракт в README.
-
-Локальный сервер тестирования: 127.0.0.1:8766 (exec session 50004 вне sandbox), IAB tab 2; sandbox session 97235 порт 8765 недоступен IAB. Не проверялись реальные Telegram Android/iOS. Viewport override после проверки сброшен.
-
-C: src/cache.js, app/index интеграция; tests/cache.test.cjs и app.test.cjs. Все 39 тестов прошли. SWR memory-only, parallel summary/list_tx, no neighbour prefetch, epochs и scope, return visibility/pageshow. Review выявил deletion invalidation, context overlays и microtask commit race — исправлены; финальный review ещё предстоит.
-Synthetic до/после: два одновременных summary, loader 20мс, performance.now(): старые функции 2 запроса/29,86мс, новый модуль 1/32,44мс; доказана экономия запросов, ускорение не доказано. Реальная сеть не измерялась.
-
-D: styles/finance.css (плавная SVG mask 96×40, background до нижнего края без сдвига +), views/i18n (Финансы en/es). Дополнительно format fallback использует локальный день; tests/format.test.cjs проверяет UTC boundaries. 48/48 проходят. Browser: перенос кофе 350 из октября в 30 сентября подтвердил новые итоги обоих месяцев и сохранность фильтра. Keyboard ArrowLeft открывает edit+delete. При 320×640 DOM: backgroundBottom=640, icon=54×54 центр160, overflow=false; 375×812 визуально проверен. Safe-area на настоящем устройстве ещё не проверена.
-
-E: все 60 тестов проходят (node --test tests/*.test.cjs), syntax всех src/*.js и version script, diff --check пройдены. Build 25ed82430ba2, 16 versioned assets. Нет package.json/сборщика/линтера. Review исправил инвалидацию остальных мутаций, гонку раскрытия месяца, old edit finally, keyboard Escape на кнопках и сброс данных при auth failure. Browser дополнительно: add 123 → confirmed totals → delete → запись отсутствует; sorting/show empty; plans navigation; console errors []. Полный auth проверен mocked fetch, live API/реальные устройства не тестировались.
-
-Коммиты реализации: 4d9d0b2 (API/demo), 7146102 (UI/SWR/tests). Пользовательский план остаётся untracked и не включён. git push отклонён auto-review: sensitive egress private repository на remote без достаточно явного разрешения публикации. PR не создан; не пытаться обходить запрет. После разрешения: push origin feature/expenses-ux-performance, PR в main, attach_artifact, обновить эту точку.
-
-## Сканер чеков (2026-10-22)
-
-Ветка `receipt-scanner` от `01d5ea6`, коммит `633c2c5` (клиент/тесты, без merge/push). Добавлены `src/receipt.js` (разбор QR ФНС), `src/receipt-store.js` (локальные ключи в разрезе member:household), `src/receipt-photo.js` (BarcodeDetector → jsQR, ограниченные попытки), `src/vendor/jsqr.js` + Apache-2.0 license, RU/EN/ES строки, кнопки сканера/чип чека, CSS, demo duplicate/bad_receipt,queue terminal-коды и тесты.
-
-Проверено: 71/71 тестов, syntax всех изменённых JS, `git diff --check`; browser demo на 127.0.0.1:8123 — сумма/дата из QR, дубль, удаление очищает store, повторное добавление, фото-QR через jsQR. Build `c5fd38addff1`; 19 assets. Реальный Telegram/камера и задеплоенный API не проверялись.
-
-Серверные изменения (ignored каталог `supabase/`): `functions/api/receipt.ts`, `functions/api/index.ts` (`add_tx`: server-side `fn:i:fp`, `bad_receipt`, `duplicate_receipt`, вставка `receipt_key` только при наличии ключа), `migrations/20261022073910_receipt_key.sql` (колонка + partial unique index). Rollout: миграция применена, `api` v13 ACTIVE с `verify_jwt=false`, уникальность проверена транзакционным тестом, `SEND_RECEIPT_KEY = true`, Build `bf5a153a7543`. Реальный Telegram/камера ещё не проверены. Ветка `receipt-scanner` отправлена в origin, PR #2 влит в `main` (`a7af83f`), GitHub Pages собрал Build `bf5a153a7543`. Не включать ignored `supabase/` в git без решения пользователя.
-
-## UI/UX v2, 2026-10-26
-
-Пользователь разрешил push и merge main. Реализация baa43ca; origin/main515ac88 добавил собственные editor/swipe/dock, scanner/CSV/theme. При интеграции переиспользованы main editor с входом из profile/interface и возвратом, pointer swipe и постоянный плюс. Наши dropdown и pull-refresh сохранены. Порядок member-scoped с legacy fallback. Конфликтующие тесты актуализированы; browser editor/save/return и console[] проверены. 132/132 теста и syntax всех src прошли; Build02005d2d983b. Следующие шаги — STATE. AGENTS.md и untracked план исходные пользовательские, не добавлять.
-
-Публикация завершена: feature/ui-ux-v2 и main на origin b7bdae6, рабочая ветка main. Build b934973230a9 (после нормализации конечной пустой строки CSS). Пользовательские AGENTS временно stash и восстановлены без конфликтов; исходный untracked план сохранён. Память о публикации обновлена локально без отдельного коммита.
-
-## Исправление home-only dock, 2026-10-26
-
-Пользователь уточнил: плюс скрывать вне summary и показывать с drop при каждом возврате. Ветка fix/home-only-add-dock от b7bdae6. Изменены app.js (route visibility, inert/aria/tabIndex, transfer focus, cancel intro timer, stale add guard), finance.css (5→4 grid tracks, morph40→0, hide transform/opacity/visibility, reduced-motion), app tests, README/index asset versions. 134/134, syntax/diff чисты, Build1c9e4aab9d80. Browser375: четыре области84.25px; 320:70.5px; notch0 вне home/40 на home, no overflow, repeated add-drop, rapid tabs и quick actions, console[]. Светлая/тёмная проверены; theme system и viewport восстановлены. Скриншоты dock-home.png/dock-profile.png в visualizations/2026/10/25/01a174f7-5451-7950-8f12-0c2503bf0331. Изменения без коммита/push; прошлый push/merge уже выполнен, не считать его blanket-разрешением на новые публикации. Настоящие устройства/FPS и reduced-motion environment не проверены.
-
-## 2026-10-26: contact animation
-- Локальная ветка `fix/dock-contact-animation`, база main `3fb0b9e1c3049bb3285ecfaf89a35833f75c8671`.
-- `src/app.js`: одна RAF-модель, координата контакта -34px, сохранение позиции/скорости при прерывании, очистка при pagehide/скрытии/отсоединении DOM, reduced motion.
-- `styles/finance.css`: старые dock-drop/add-drop удалены; исходный SVG-контур масштабируется по глубине. Конечный вырез 96×40px сохранён, иконки панели не деформируются.
-- `tests/app.test.cjs`: управляемый RAF и регрессии контакта/отскока/отмены/reduced motion. `index.html`: обновлены версии ассетов.
-- Один полный прогон: 155 pass / 1 fail из-за неполной DOM-заглушки существующего focus-теста. Заглушка исправлена, адресный повтор этого теста: 1 pass. Syntax и diff-check прошли.
-- Browser smoke не выполнен: Chromium отсутствует; реальные Telegram/FPS/resize визуально не проверены.
-- GitHub create_branch вернул 403 Resource not accessible by integration. Remote не изменён; подготовлен ZIP-патч.
-- Следующий шаг: применить патч, визуально проверить в Telegram и сделать PR.
-
-## 2026-10-26: исправление швов по отзыву пользователя
-- Предыдущая переменная высота SVG с default preserveAspectRatio сужала центральный фрагмент; пользователь сообщил видимые боковые швы.
-- Вырез сохраняет фиксированную геометрию. Временная вставка объединяется с его маской; нет отдельного полупрозрачного прямоугольника/двойной окраски. Вставка деформируется после контакта, к нижней точке удаляется и не появляется при отскоке. Контурная линия следует той же модели.
-- SVG viewport 96×40, preserveAspectRatio=none, фиксированный размер маски. Конечный дизайн прежний.
-- Полный набор: 155 pass/1 fail в новом cleanup-assert (он ошибочно требовал удалить также навигационный --tab-i). Исправлена только проверка; адресный повтор: 1 pass. Syntax/diff-check успешны. Визуальная проверка недоступна, Chromium отсутствует.
-- Архив обновлён: полный patch от исходного main и update-from-v1.patch от предыдущей переданной реализации. GitHub не изменён.
-
-## Публикация исправления
-- По прямой просьбе пользователя создана ветка `fix/dock-insert-seams` от актуального `main` b117c75. Первая версия уже вошла в main через PR #4; ветка исправления содержит только разницу версии 2 и контрольную точку. Доступ записи восстановлен.
-- Итоговые проверки проведены в предыдущем этапе; код при публикации не менялся. Визуальная мобильная проверка остаётся следующим шагом.
-
-
-## 2026-10-28: перенос поведения из демо «Старая (приблизительно)»
-- Ветка fix/dock-demo-bounce от main 3adbd32.
-- src/app.js: сохранены точки/скорости/затухание демо, прерывания, lifecycle и reduced motion; убрана RAF-вставка, которая отличалась от эталона.
-- styles/finance.css: вырез раскрывается CSS-переходом .38s; preserveAspectRatio=none; единый цвет кромки через SVG alpha mask в обеих темах.
-- index.html: новые хеши CSS/JS. tests/app.test.cjs: регрессия проверяет эталонные положения и отсутствие вмешательства JS в геометрию выреза.
-- 160/160 тестов, syntax/diff-check успешно. Chromium отсутствует: визуальная проверка Telegram остаётся открытой.
-
-## 2026-10-30: история по 3 дня с догрузкой
-- Ветка agent/8b26beba-task.
-- src/views.js: `txResults(all, filter, dayLimit)` и `renderTxList(..., dayLimit)` показывают первые N дней; при остатке выводится кнопка-метка `#tx-more[data-action="tx-more"]`.
-- src/app.js: `TX_DAYS_INITIAL/STEP=3`, `txDayLimit`; сброс при `openTx`, смене типа/поиска; `IntersectionObserver` с root `el.screen` догружает порцию, клик по метке — fallback. Лимит прокинут во все повторные отрисовки, включая swipe-preview.
-- styles/finance.css: стиль метки для тёмной и светлой темы. src/i18n.js: «Показать ещё» en/es. tests/views.test.cjs: проверка 3/6/7 дней и метки.
-- Ребейз на main 42acf24; конфликт `STATE.md` разрешён, версии ассетов пересчитаны (build f12eb25c6e3d).
-- Проверки: 169/169, `node --check src/app.js`, `git diff --check`. Реальный скролл в Telegram не проверен.
-
-## 2026-11-03 — личный трекер задач
-- Ветка feature/personal-task-tracker от main 4b83c94. Новый контроллер tasks.js, адаптер tasks-api.js, модель/сортировка tasks-model.js, формы/UI tasks-views.js, tasks.css. В app.js подключены маршрут, события, refresh/return, BackButton и нижняя навигация; index.html версии ассетов.
-- Реализованы личные списки/задачи, выполнение/restore, приоритет, сроки, повторения, настройки уведомлений, независимый ручной порядок, HTML drag и touch handle/кнопки. Удаление списка сохраняет задачи.
-- Backend-контракта нет: docs/tasks-adapter.md описывает интерфейс внедрения APP_TASKS_ADAPTER и требования к серверу. Production без адаптера заблокирован, mock только demo. Telegram отправку/30-day purge mock не выполняет. Серверная авторизация/изоляция владельца обязательна.
-- Проверки: полный прогон 186/186. Затем найден и исправлен конфликт имени tasks с локальной переменной refreshCurrentPage, новый интеграционный тест task module: 1/1. Syntax и diff check прошли. Chromium отсутствует; Telegram/touch smoke не выполнен.
-- Следующий шаг: review PR, согласование/подключение backend и Telegram smoke. Merge не запрашивался.
+## Трекер задач — PR #17
+Пользователь разрешил merge в main. Конфликты с интеграцией REST платежей разрешены с сохранением обеих реализаций. Frontend задач: tasks*.js, tasks.css; mock только demo, production ожидает APP_TASKS_ADAPTER. Требования: docs/tasks-adapter.md. Telegram smoke и backend-интеграция задач остаются.
