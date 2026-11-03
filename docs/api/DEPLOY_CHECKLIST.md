@@ -218,3 +218,11 @@ select count(*) from cron.job where jobname = 'notify-hourly';  -- 1
 | Smoke legacy + v1 | | | |
 | Cron восстановлен | | | |
 | Наблюдение 48 ч | | | |
+
+## Подготовка 1.2 — не выполнять без отдельного подтверждения
+
+- Новая миграция: `20261103170840_personal_modules_readiness.sql`, ещё не применена.
+- Применять адресно только этот файл после сверки actual schema и бэкапа; bulk `db push` для данного дополнения не использовать.
+- Затем обновить `api` и `notify`, сохранив verify_jwt=false и текущие секреты. При MCP с deno.json передавать import_map_path="deno.json" явно.
+- Проверить контракт1.2, REST OPTIONS с authorization/idempotency-key,401 без подписи, личные CRUD для двух тестовых пользователей и существующие платежи.
+- До отдельного разрешения не включать1.2 в production-клиент. Подробный мэппинг/ограничения/результаты — `PERSONAL_MODULES_HANDOFF.md`.
