@@ -79,6 +79,6 @@
     pause:function(q){var p=store(q.scope).reminders.find(function(x){return x.id===q.id;});if(!p)fail('Напоминание не найдено');if(p.paused!==q.paused){if(q.paused)p.skips.push({from:new Date().toISOString(),to:null});else p.skips[p.skips.length-1].to=new Date().toISOString();p.paused=q.paused;}return {ok:true};},
     complete:function(q){var s=store(q.scope);if(s.completed[q.occurrence_id])return {ok:true};var rows=project(s,{from:'1900-01-01',until:q.date,timezone:q.timezone}),o=rows.find(function(x){return x.id===q.occurrence_id;});if(!o)fail('Событие уже изменилось. Обновите список');var p=s.reminders.find(function(x){return x.id===o.reminder_id;});s.completed[o.id]=true;delete s.pending[o.id];if(!p.repeat){s.reminders=s.reminders.filter(function(x){return x.id!==p.id;});Object.keys(s.pending).forEach(function(id){if(s.pending[id].reminder_id===p.id)delete s.pending[id];});}return {ok:true};}
   };
-  function adapter(){return root.APP_REMINDERS_ADAPTER || (root.Api.isDemo()?mock:null);}
+  function adapter(){return root.APP_REMINDERS_ADAPTER || (root.Api.isDemo()?mock:root.RemindersRest);}
   root.RemindersApi={validate:validate,available:function(){return !!adapter();},isMock:function(){return !root.APP_REMINDERS_ADAPTER&&root.Api.isDemo();},invoke:function(method,payload){return Promise.resolve().then(function(){var a=adapter();if(!a||typeof a[method]!=='function')fail('Модуль ожидает подключения серверного API');return a[method](payload);});}};
 })(window);
