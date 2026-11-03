@@ -4,14 +4,14 @@
   function clone(x) { return JSON.parse(JSON.stringify(x)); }
   function fail(message) { throw new Error(message); }
   function validate(p) {
-    if (!p.title || !p.title.trim() || p.title.length > 160) fail('Введите название до 160 символов');
-    if (typeof p.description !== 'string' || p.description.length > 4000) fail('Описание: до 4000 символов');
-    if (!C.valid(p.date) || p.date < '1900-01-01' || p.date > '2100-12-31' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(p.time)) fail('Проверьте дату и время');
+    if (!p.title || !p.title.trim() || p.title.length > 120) fail('Введите название до 120 символов');
+    if (typeof p.description !== 'string' || p.description.length > 1000) fail('Описание: до 1000 символов');
+    if (!C.valid(p.date) || p.date < '2000-01-01' || p.date > '2100-12-31' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(p.time)) fail('Проверьте дату и время');
     try { new Intl.DateTimeFormat('en', {timeZone:p.timezone}).format(); } catch (_) { fail('Проверьте часовой пояс'); }
     if (!['normal','important'].includes(p.priority)) fail('Проверьте приоритет');
     var r = p.repeat;
-    if (r && (!['day','week','month','year'].includes(r.unit) || !Number.isInteger(r.interval) || r.interval < 1 || r.interval > 999 || !Array.isArray(r.weekdays) || r.weekdays.some(function (d) { return !Number.isInteger(d) || d < 1 || d > 7; }) || (r.weekdays.length && r.unit !== 'week'))) fail('Проверьте правило повторения');
-    if (!Array.isArray(p.notifications) || p.notifications.length > 10 || p.notifications.some(function (n) { return !Number.isInteger(n) || n < 0 || n > 525600; })) fail('Укажите до 10 уведомлений от 0 до 525600 минут');
+    if (r && (!['day','week','month','year'].includes(r.unit) || !Number.isInteger(r.interval) || r.interval < 1 || r.interval > ({day:365,week:365,month:12,year:10})[r.unit] || !Array.isArray(r.weekdays) || r.weekdays.some(function (d) { return !Number.isInteger(d) || d < 1 || d > 7; }) || (r.weekdays.length && r.unit !== 'week'))) fail('Проверьте правило повторения');
+    if (!Array.isArray(p.notifications) || p.notifications.length > 10 || p.notifications.some(function (n) { return !Number.isInteger(n) || n < 0 || n > 43200; })) fail('Укажите до 10 уведомлений от 0 до 43200 минут');
     return p;
   }
   function store(scope) { if (!scope) fail('Требуется пользователь'); return stores[scope] || (stores[scope] = { reminders:[], completed:Object.create(null), pending:Object.create(null) }); }

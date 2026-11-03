@@ -35,3 +35,14 @@ test('resume skips paused recurring dates without backlog, one-off stays manuall
  assert.ok(occurrence);await call('complete',{occurrence_id:occurrence.id,date:occurrence.date});
  assert.ok(!(await call('list')).reminders.some(r=>r.id===id));
 });
+test('reminder form keeps original metadata and creation key until a new form is opened',async()=>{
+ const {root,p}=setup();let version=3,captured=[];
+ root.APP_REMINDERS_ADAPTER={list:async()=>({reminders:[{...p,id:'r',server:{version}}],occurrences:[]}),save:async q=>{captured.push(q);throw Error('offline');}};
+ const c=root.Reminders.create({scope:()=> 'owner',active:()=>true,enter(){},render(){},sheet(){},close(){},toast(){},lock(){},expired:()=>false});
+ await c.open();await c.action('reminder-edit',{getAttribute:()=> 'r'});version=4;await c.refresh();
+ const elements={};for(const [k,v] of Object.entries({title:'Changed',description:'',date:'2030-01-31',time:'09:00',timezone:'UTC',priority:'normal',repeat:'once',interval:'1',notifications:''}))elements[k]={value:v};
+ const error={textContent:''},form={elements,isConnected:true,getAttribute:()=> 'r',querySelectorAll:()=>[],querySelector:s=>s==='[type="submit"]'?{disabled:false}:error};
+ await c.submit(form);assert.equal(captured[0].reminder.server.version,3);
+ await c.action('reminder-new',{getAttribute:()=> null});const createForm={...form,getAttribute:()=>''};await c.submit(createForm);await c.submit(createForm);
+ assert.ok(captured[1].idempotency_key);assert.equal(captured[1].idempotency_key,captured[2].idempotency_key);
+});

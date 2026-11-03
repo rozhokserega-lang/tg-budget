@@ -7,13 +7,13 @@
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       data: null, loading: false, error: null
     };
-    var scope = null, generation = 0, busy = false, formScope = null;
+    var scope = null, generation = 0, busy = false, formScope = null, formSnapshot = null, formKey = null;
 
     function reset() {
       var next = host.scope();
       if (next !== scope) {
         scope = next; generation++; s.data = null; s.selected = null;
-        s.month = root.Fmt.todayIso().slice(0, 7); formScope = null;
+        s.month = root.Fmt.todayIso().slice(0, 7); formScope = null; formSnapshot = null; formKey = null;
       }
     }
     function paint() { if (host.active()) host.render(V.page(s), true); }
@@ -80,6 +80,8 @@
         if (host.expired()) return host.toast('Срок доступа закончился');
         if (id && !p) return;
         formScope = scope;
+        formSnapshot = p ? JSON.parse(JSON.stringify(p)) : null;
+        formKey = root.crypto && root.crypto.randomUUID ? root.crypto.randomUUID() : 'reminder-' + Date.now() + '-' + Math.random();
         return host.sheet(V.form(p, s.selected || root.Fmt.todayIso(), s.timezone));
       }
       if (action === 'reminder-complete') {
@@ -120,7 +122,8 @@
           }))) : []
         });
       } catch (err) { form.querySelector('.payment-form-error').textContent = err.message; return; }
-      return mutate('save', { reminder: p }, form);
+      if (formSnapshot && formSnapshot.server) p.server = formSnapshot.server;
+      return mutate('save', { reminder: p, idempotency_key: formKey }, form);
     }
     return { open: function () { host.enter(); reset(); return load(); }, refresh: load, action: action, submit: submit };
   } };

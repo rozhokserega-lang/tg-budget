@@ -219,10 +219,12 @@ select count(*) from cron.job where jobname = 'notify-hourly';  -- 1
 | Cron восстановлен | | | |
 | Наблюдение 48 ч | | | |
 
-## Подготовка 1.2 — не выполнять без отдельного подтверждения
+## Rollout1.2 — выполнен 2026-11-03
 
-- Новая миграция: `20261103170840_personal_modules_readiness.sql`, ещё не применена.
-- Применять адресно только этот файл после сверки actual schema и бэкапа; bulk `db push` для данного дополнения не использовать.
-- Затем обновить `api` и `notify`, сохранив verify_jwt=false и текущие секреты. При MCP с deno.json передавать import_map_path="deno.json" явно.
-- Проверить контракт1.2, REST OPTIONS с authorization/idempotency-key,401 без подписи, личные CRUD для двух тестовых пользователей и существующие платежи.
-- До отдельного разрешения не включать1.2 в production-клиент. Подробный мэппинг/ограничения/результаты — `PERSONAL_MODULES_HANDOFF.md`.
+- Пользователь разрешил завершение и публикацию.
+- Сохранены локальные резервные копии api20/notify10.
+- Адресно применена только20261103170840_personal_modules_readiness.sql; фактическая версия20261103182305. Bulk db push не выполнялся.
+- Опубликованы api21 (REST1.2.0) и notify11, verify_jwt=false, import_map_path="deno.json". Исходники сверены с deployed files.
+- Cron job3 восстановлен, schedule */5, active=true; прямые grants восьми personal/outbox таблиц отозваны при включённой RLS.
+- Health200,401 без подписи, OPTIONS204 с нужными methods/headers.
+- Проверки и оставшиеся границы доказательств — PERSONAL_MODULES_HANDOFF.md. Реальную доставку Telegram проверять с тестовым пользователем; подписанный fixture не используется в production.
