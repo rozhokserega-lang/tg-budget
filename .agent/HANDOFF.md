@@ -1,3 +1,16 @@
+# 2026-11-03: frontend платежей
+
+- Ветка feature/payments-module от main 401379b; main не менялся.
+- Новые src/payments{,-api,-calendar,-views}.js: контроллер/состояние, адаптер/mock, date-only расписания, разметка/формы. styles/payments.css.
+- app.js: существующий router/cache/loadResource/scope, хаб вместо plans, подэкран payments, обработчики форм, lifecycle/pull refresh, инвалидация finance после confirm.
+- views.js: скрыты старые teaser/quick actions/banner; legacy данные не удалены. Напоминания/задачи — отдельные страницы ожидания, отдых — «Скоро».
+- index.html: подключения и версии. docs/payments-adapter.md: предлагаемая локальная граница адаптера, backend-гарантии и блокеры; это НЕ согласованный серверный контракт.
+- Реального нового API нет в доступном backend. APP_PAYMENTS_ADAPTER не задан → production показывает ожидание подключения. Только demo получает mock; записи mock живут до reload. Серверных endpoints не выдумывали.
+- tests/payments.test.cjs: 9/9, включая семейную уникальность confirm, даты, просрочки/паузы, stale ответы и retry keys. tests/app.test.cjs: интеграция finance invalidation и хаб; два старых monthly overview теста получили фиксированный месяц. tests/views.test.cjs: актуальное число quick actions.
+- Полный прогон один раз: 176/179; ошибки — два известных date-dependent теста и старое ожидание quick-actions. После исправлений адресно 5/5 (в т.ч. новый integration), финально payments 9/9. Полный набор повторно не запускался.
+- Browser smoke заблокирован отсутствующим Chromium; Telegram не проверен. Static app без build command, asset versioner и syntax/diff проверены.
+- Дальше: согласование API/семейной timezone/миграции legacy, реальные atomic confirm и notification worker, подключение адаптера, smoke Telegram.
+
 # 2026-11-02: перенос расхода между категориями
 
 - Ветка `fix/edit-expense-category` от main `05bf22f` (PR #13 влит).

@@ -76,8 +76,9 @@ test('home has a square receipt scanner next to the category view toggle', () =>
   const quick = ctx.Views.renderQuickActions(0);
   assert.match(quick, /data-quick="receipt-photo"/);
   assert.match(quick, /Фото чека/);
+  assert.doesNotMatch(quick, /goal-new|debt-new|wish-new/);
   const pages = quick.split('<div class="quick-actions__page"').slice(1);
-  assert.deepEqual(pages.map(page => (page.match(/data-quick=/g) || []).length), [6, 6, 2]);
+  assert.deepEqual(pages.map(page => (page.match(/data-quick=/g) || []).length), [4, 5, 2]);
   assert.match(quick, /data-page="2"/);
   assert.match(quick, /data-quick="settings"/);
   assert.match(quick, /data-quick="repeat-last"/);

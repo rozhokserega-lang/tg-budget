@@ -75,10 +75,25 @@
     { id: 'summary', icon: ICON('<path d="m3 10 9-7 9 7v10H15v-7H9v7H3z"/>'), label: 'Главная' },
     { id: 'tx', icon: ICON('<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 9h18M16 13h5v4h-5zM6 5V3h12"/>'), label: 'Финансы' },
     { id: 'add', icon: ICON('<path d="M12 5v14M5 12h14"/>'), label: 'Добавить', primary: true },
-    { id: 'plans', icon: ICON('<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>'), label: 'Планы' },
+    { id: 'plans', icon: ICON('<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>'), label: 'Модули' },
     { id: 'settings', icon: ICON('<circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/>'), label: 'Профиль' },
   ];
   var plansTab = 'goals';
+  var paymentsController = null;
+  var paymentBusy = false;
+  function payments() {
+    if (!paymentsController) paymentsController = root.Payments.create({
+      scope: function () { return memberScope(st.member); },
+      active: function () { return route.name === 'payments'; },
+      enter: function () { ++reqSeq; route = { name: 'payments' }; },
+      render: render, load: loadResource, categories: loadCategories, sheet: openSheet,
+      close: function () { var was = paymentBusy; paymentBusy = false; closeSheet(); paymentBusy = was; },
+      lock: function (busy) { paymentBusy = busy; el.tabs.inert = busy; },
+      toast: toast, confirm: dialog, expired: State.isExpired,
+      invalidate: function () { clearCache(); st.plans = null; expandedCat = null; },
+    });
+    return paymentsController;
+  }
   // Порядок основных страниц для горизонтального свайпа. «Добавить» —
   // действие, а не страница, поэтому в навигации не участвует.
   var MAIN_TABS = ['summary', 'tx', 'plans', 'settings'];
@@ -154,7 +169,7 @@
 
   var sheetTimer = null;
   function closeSheet() {
-    if (editingTx) return;
+    if (editingTx || paymentBusy) return;
     clearTimeout(sheetTimer);
     qaSwipe = null;
     qaMouse = null;
@@ -190,7 +205,7 @@
     el.sheet.classList.remove('sheet--dragging');
   }
   function beginSheetDrag(target, x, y, id) {
-    if (editingTx) return;
+    if (editingTx || el.sheetBody.querySelector('.payment-form')) return;
     var panel = target.closest('.sheet__panel');
     if (!panel || el.sheet.hidden || el.sheet.classList.contains('sheet--closing')) return;
     if (target.closest('input,select,textarea,a,[contenteditable]') || panel.scrollTop > 0) return;
@@ -286,7 +301,9 @@
 
   // Системная «Назад» ведёт из формы добавления на сводку, из остальных мест — недоступна.
   function syncBackButton() {
-    if (editingTx) return root.Tg.backButton(function () {});
+    if (editingTx || paymentBusy) return root.Tg.backButton(function () {});
+    if (!el.sheet.hidden && el.sheetBody.querySelector('.payment-form')) return root.Tg.backButton(closeSheet);
+    if (route.name === 'payments' || route.name === 'module-placeholder') return root.Tg.backButton(function () { openPlans(); });
     if (st.homeEdit) return root.Tg.backButton(cancelHomeEdit);
     if (route.name === 'add') return root.Tg.backButton(goHome);
     // Общая сводка — подэкран сводки или финансов: «Назад» возвращает туда же.
@@ -399,6 +416,7 @@
     // «Добавить» — не место, а действие: подсвечиваем вкладку, с которой пришли.
     var active = route.name === 'add' ? 'summary'
       : route.name === 'months' ? (route.from === 'tx' ? 'tx' : 'summary')
+      : (route.name === 'payments' || route.name === 'module-placeholder') ? 'plans'
       : route.name === 'limits' ? 'settings'
       : route.name;
     // Меню создаём один раз: перерисовка на каждом переходе вызывала мигание иконок.
@@ -1230,19 +1248,10 @@
   // --- Планы ---
 
   function openPlans(tab, force) {
-    if (tab) plansTab = tab;
+    if (tab === 'recurring') return payments().open();
+    ++reqSeq;
     route = { name: 'plans' };
-    var previous = st.plans;
-    if (previous) render(Views.renderPlans(previous, plansTab), true); else render(Views.skeletonList());
-    var seq = ++reqSeq;
-    loadPlans(force).then(function (plans) {
-      if (seq !== reqSeq || route.name !== 'plans') return;
-      if (plans !== previous) render(Views.renderPlans(plans, plansTab), true);
-      if (State.isExpired()) banner(T('Пробный период закончился — изменения недоступны.'));
-    }).catch(function (err) {
-      if (seq !== reqSeq || route.name !== 'plans' || err.code === 'stale_response') return;
-      if (st.plans) toast(T('Не удалось обновить — показываем сохранённое')); else fail(err);
-    });
+    render(root.PaymentsViews.modules(), true);
   }
 
   function openPlanForm(kind, current) {
@@ -1917,7 +1926,7 @@
 
   function openTab(tab) {
     if (pageSwipe) abortPageSwipe();
-    if (editingTx) return;
+    if (editingTx || paymentBusy) return;
     if (!st.member) return;
     // Переход по вкладке отменяет недоехавший свайп: пользователь выбрал другое.
     if (!instantRender) dropPageSettle();
@@ -1993,7 +2002,7 @@
       var filter = st.txFilter || { kind: null, category_id: null, member_id: null, q: '' };
       return rows ? Views.renderTxList(rows, filter, st.txChart || 'expense', txDayLimit) : Views.skeletonList();
     }
-    if (name === 'plans') return st.plans ? Views.renderPlans(st.plans, plansTab) : Views.skeletonList();
+    if (name === 'plans') return root.PaymentsViews.modules();
     if (name === 'settings') return Views.renderSettings(null);
     return '';
   }
@@ -2296,20 +2305,8 @@
         repeatLastTx();
         break;
       case 'recurring-new':
-        loadCategories().then(function () {
-          if (el.sheet.classList.contains('sheet--quick-actions')) openPlanForm('recurring');
-        }).catch(fail);
-        break;
-      case 'goal-new':
-        openPlanForm('goals');
-        break;
-      case 'debt-new':
-        openPlanForm('debts');
-        break;
-      case 'wish-new':
-        loadPlans().then(function () {
-          if (el.sheet.classList.contains('sheet--quick-actions')) openPlanForm('wishes');
-        });
+        closeSheet();
+        payments().open().then(function () { payments().action('payment-new', { getAttribute: function () { return null; } }); });
         break;
       case 'transactions':
         closeSheet();
@@ -2321,7 +2318,7 @@
         break;
       case 'recurring-list':
         closeSheet();
-        openPlans('recurring');
+        payments().open();
         break;
       case 'expense-category':
         openCategoryForm(null, 'expense');
@@ -3250,6 +3247,17 @@ document.addEventListener('click', function (ev) {
     scrollAtTouch = null;
     if (action === 'toggle-cat' && scrolled) return;
 
+    if (action.indexOf('payment-') === 0) { payments().action(action, actionBtn); return; }
+    if (action === 'modules-home') { openPlans(); return; }
+    if (action === 'module-open') {
+      var moduleName = actionBtn.getAttribute('data-module');
+      if (moduleName === 'payments') payments().open();
+      else if (moduleName === 'reminders' || moduleName === 'tasks') {
+        ++reqSeq; route = { name: 'module-placeholder' };
+        render(root.PaymentsViews.placeholder(moduleName === 'tasks' ? 'Трекер задач' : 'Напоминания'));
+      }
+      return;
+    }
     switch (action) {
       case 'home-edit': startHomeEdit(); break;
       case 'home-edit-save': saveHomeEdit(); break;
@@ -3414,12 +3422,19 @@ document.addEventListener('click', function (ev) {
     capture: true, passive: false,
   });
 
+  document.addEventListener('change', function (ev) {
+    if (!ev.target.matches('[data-payment-type]')) return;
+    var repeat = ev.target.closest('form').querySelector('.payment-repeat');
+    repeat.hidden = repeat.disabled = ev.target.value !== 'regular';
+  });
+
   document.addEventListener('submit', function (ev) {
     var f = ev.target;
     if (!f.matches('form')) return;
     ev.preventDefault();
     var kind = f.getAttribute('data-form');
-    if (kind === 'add') submitAdd(f);
+    if (kind === 'payment' || kind === 'payment-confirm') payments().submit(f, kind === 'payment-confirm');
+    else if (kind === 'add') submitAdd(f);
     else if (kind === 'edit-tx') submitEditTx(f);
     else if (kind === 'plan') submitPlan(f);
     else if (kind === 'category') submitCategory(f);
@@ -3580,7 +3595,7 @@ document.addEventListener('click', function (ev) {
   });
 
   el.sheet.addEventListener('click', function (ev) {
-    if (ev.target.closest('[data-sheet-close]')) closeSheet();
+    if (ev.target.closest('[data-sheet-close]') && !el.sheetBody.querySelector('.payment-form')) closeSheet();
   });
 
   el.sheet.addEventListener('input', function (ev) {
@@ -4001,6 +4016,7 @@ document.addEventListener('click', function (ev) {
     return null;
   }
   function refreshCurrentPage(forcePaint) {
+    if (route.name === 'payments') return payments().refresh();
     var name = route.name, key = screenKey(), month = st.month, seq = reqSeq, scope = memberScope(st.member);
     var context = key + ':' + month + ':' + seq + ':' + scope;
     if (pageRefresh && refreshContext === context) return pageRefresh;
@@ -4009,7 +4025,7 @@ document.addEventListener('click', function (ev) {
     var tasks;
     if (name === 'summary') tasks = [loadSummary(month, true), loadTx(month, true), loadPlans(true)];
     else if (name === 'tx') tasks = [loadTx(month, true)];
-    else if (name === 'plans') tasks = [loadPlans(true)];
+    else if (name === 'plans') return Promise.resolve();
     else if (name === 'settings') {
       tasks = [];
       if (!route.section || ['family', 'budget', 'notifications', 'subscription'].indexOf(route.section) !== -1) {
@@ -4200,7 +4216,7 @@ document.addEventListener('click', function (ev) {
       if (route.name === 'add' || st.homeEdit) return;
       if (seq !== reqSeq && route.name !== 'summary' && route.name !== 'tx') return;
       // Share the page refresh promise with pull-to-refresh until all reads finish.
-      return Promise.all([['summary', 'tx', 'plans'].indexOf(route.name) !== -1 ? refreshCurrentPage(previousMember !== JSON.stringify(st.member)) : Promise.resolve(), loadCategories(true).catch(function (err) {
+      return Promise.all([['summary', 'tx', 'plans', 'payments'].indexOf(route.name) !== -1 ? refreshCurrentPage(previousMember !== JSON.stringify(st.member)) : Promise.resolve(), loadCategories(true).catch(function (err) {
         if (err.code !== 'stale_response') toast(T('Не удалось обновить категории'));
       })]);
     }).catch(function (err) { if (err.code !== 'stale_response') toast(T('Не удалось обновить — показываем сохранённое')); })

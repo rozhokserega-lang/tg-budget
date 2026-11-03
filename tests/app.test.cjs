@@ -78,7 +78,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   if (options.motionMedia) context.window.matchMedia = () => options.motionMedia;
   if (options.covers) context.window.Covers = options.covers;
   Object.assign(context, context.window);
-  for (const file of ['recurring', 'format', 'state', 'views', 'cache']) {
+  for (const file of ['recurring', 'format', 'state', 'views', 'cache', 'payments-calendar', 'payments-api', 'payments-views', 'payments']) {
     runInNewContext(readFileSync(require.resolve(`../src/${file}.js`), 'utf8'), context);
     Object.assign(context, context.window);
   }
@@ -87,7 +87,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   // Keep production event registration and implementations; omit network boot only.
   runInNewContext(source.replace(/\n  boot\(\);/, `
   root.TestApp = {
-    dockSample: dockSample, getDockState: function () { return dockState; }, getDockMotion: function () { return dockMotion; },
+    payments: payments, dockSample: dockSample, getDockState: function () { return dockState; }, getDockMotion: function () { return dockMotion; },
     applyRouteUi: applyRouteUi, setRoute: function (name) { route = {name:name}; },
     pageGestureAxis: pageGestureAxis, refreshCurrentPage: refreshCurrentPage,
     openEditTx: openEditTx, submitEditTx: submitEditTx, cancelEditTx: cancelEditTx,
@@ -525,14 +525,16 @@ test('failed delete restores the record, category totals and member amounts', as
   assert.match(env.nodes.get('#toast').textContent, /Не удалилось/);
 });
 
-test('plan SWR shows cached goals and retains them if background refresh fails', async () => {
+test('modules replaces legacy sections without requesting or deleting old data', async () => {
   const env = setup(undefined, { api: () => Promise.reject(new Error('offline')) });
-  env.st.plans = { goals: [{ id: 'g', name: 'cached-plan-marker', target: 100, saved: 10 }], debts: [], wishes: [], recurring: [] };
+  env.st.plans = { goals: [{ id: 'g', name: 'cached-plan-marker' }], debts: [], wishes: [], recurring: [] };
   env.app.openPlans();
-  assert.match(env.nodes.get('#screen').innerHTML, /cached-plan-marker/);
   await settled();
-  assert.match(env.nodes.get('#screen').innerHTML, /cached-plan-marker/);
-  assert.match(env.nodes.get('#toast').textContent, /Не удалось обновить/);
+  assert.match(env.nodes.get('#screen').innerHTML, /Модули/);
+  assert.match(env.nodes.get('#screen').innerHTML, /data-module="payments"/);
+  assert.doesNotMatch(env.nodes.get('#screen').innerHTML, /cached-plan-marker|Желания|Долги|Цели/);
+  assert.equal(env.st.plans.goals[0].id, 'g');
+  assert.equal(env.apiCalls.length, 0);
 });
 
 test('a delayed plans response does not repaint settings after a quick tab switch', async () => {
@@ -1256,7 +1258,7 @@ test('expired finance cache is synchronous and a changed response preserves sear
   assert.equal(screen.classList.contains('screen--instant'), true);
 });
 
-test('ordinary plans entry respects TTL and expired categories return stale values while revalidating', async () => {
+test('modules entry makes no legacy requests and expired categories revalidate', async () => {
   const clock = { now: 1000 }, categories = deferred();
   let categoryCalls = 0;
   const env = setup(undefined, { clock, api: action => {
@@ -1264,7 +1266,7 @@ test('ordinary plans entry respects TTL and expired categories return stale valu
     return Promise.resolve(action === 'list_plans' ? {} : []);
   } });
   env.app.openPlans(); await settled(); env.app.openPlans(); await settled();
-  assert.equal(env.apiCalls.filter(c => c.action === 'list_plans').length, 1);
+  assert.equal(env.apiCalls.filter(c => c.action === 'list_plans').length, 0);
   await env.app.loadCategories(true);
   clock.now += 300001;
   assert.equal((await env.app.loadCategories())[0].id, 'old');
@@ -1546,6 +1548,7 @@ test('month title opens the monthly overview and loads a summary for every month
     stubReload: false,
     api: action => Promise.resolve(action === 'summary' ? { income: 300, expense: 120, balance: 180 } : action === 'list_plans' ? {} : []),
   });
+  env.context.Fmt.currentMonth = () => '2026-10';
   env.st.member = { id: 'me' };
   clickAction(env, 'open-months');
   assert.equal(env.app.getRoute().name, 'months');
@@ -1566,6 +1569,7 @@ test('overview period limits months and selecting one opens its summary', async 
     stubReload: false,
     api: action => Promise.resolve(action === 'summary' ? { income: 300, expense: 120, balance: 180 } : action === 'list_plans' ? {} : []),
   });
+  env.context.Fmt.currentMonth = () => '2026-10';
   env.st.member = { id: 'me' };
   env.app.openMonths();
   await settled();
@@ -1617,4 +1621,29 @@ test('failed month summaries show a retry action instead of totals', async () =>
   assert.match(html, /data-action="months-retry"/);
   assert.doesNotMatch(html, /months-total__grid/);
   assert.equal(env.apiCalls.filter(call => call.action === 'summary').length, 6);
+});
+
+
+test('payment confirmation invalidates finance caches and uses one atomic adapter operation', async () => {
+  const env = setup();
+  env.st.member = {id:'me',household_id:'home'};
+  env.context.window.Api.isDemo = () => false;
+  let confirmed = false, confirms = 0;
+  env.context.window.APP_PAYMENTS_ADAPTER = {
+    list: () => Promise.resolve({payments:[],occurrences:confirmed ? [] : [{id:'occurrence',name:'Rent',due_on:'2026-09-30',amount:20,category_id:'food'}]}),
+    confirm: async () => { confirms++; confirmed = true; return {occurrence_id:'occurrence',transaction:{id:'expense-payment'}}; },
+  };
+  await env.app.payments().open();
+  const button = {disabled:false};
+  const f = {isConnected:true, elements:{amount:{value:'15'},paid_on:{value:'2026-09-30'},category_id:{value:'food'}},getAttribute:()=> 'occurrence',setAttribute(){},removeAttribute(){},querySelector: selector => selector==='[type="submit"]' ? button : {textContent:''}};
+  await env.app.payments().submit(f,true);
+  assert.equal(confirms,1);
+  assert.equal(env.st['txCache:2026-09'],undefined);
+  assert.equal(env.st['summaryCache:2026-09'],undefined);
+  assert.equal(env.st.lastSummary,null);
+  assert.equal(env.queueOps.length,0);
+  assert.equal(env.apiCalls.filter(c=>c.action==='add_tx').length,0);
+  assert.equal(button.disabled,false);
+  await env.app.refreshCurrentPage();
+  assert.equal(env.app.getRoute().name,'payments');
 });
