@@ -63,7 +63,11 @@
 - [x] Зеркало miniapp, frontend 188/188, backend 51/51, Deno check, browser demo smoke.
 - [ ] Проверка в Telegram и согласованный rollout.
 
+## Личный трекер задач — 2026-11-03
+- [x] Frontend и demo-адаптер, формы/сортировка/повторы, интеграция навигации/кэша.
+- [x] Автотесты и требования подключения backend: docs/tasks-adapter.md.
+- [ ] Согласовать backend API и подключить APP_TASKS_ADAPTER; Telegram smoke (touch, уведомления, server purge).
+
 # Напоминания — PR #16
-- [x] Календарь, личный scope, формы, repeat, уведомления-настройки, pause/resume/complete, demo mock.
-- [ ] Сопоставить предложение docs/reminders-adapter.md с актуальным docs/api и подключить серверный адаптер.
-- [ ] Telegram smoke.
+- [x] Календарь, CRUD, repeat, pause/resume/complete, уведомления-настройки, demo mock.
+- [ ] Production-адаптер с актуальным docs/api и Telegram smoke.
