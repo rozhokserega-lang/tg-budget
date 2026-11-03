@@ -1,11 +1,20 @@
 # Текущее состояние
 
-2026-11-03. Модуль «Платежи», ветка feature/payments-module от main 401379b.
+2026-11-03. «Напоминания», feature/reminders-module от main 4b83c94 (Платежи уже в main).
 
-Реализовано: хаб «Модули», календарь, формы, уведомления-настройки, подтверждение, паузы/возобновление/удаление. API-адаптер сменный, mock только в demo. Старые разделы скрыты, данные не удалялись.
+Реализовано: личный модуль из хаба, компактный календарь, ближайшие/выбранный день,
+CRUD, pause/resume, ручное выполнение occurrence, важность, несколько уведомлений,
+правила day/week/month/year + N + weekdays, IANA timezone. Отдельные API/views/controller.
+Посторонние модули не переписаны, в app только точки интеграции.
 
-Блокер: новый Backend-контракт отсутствует. Проверен API tg-budget-app: только legacy recurring. Production-модуль отключён до подключения согласованного адаптера. Требования интеграции: docs/payments-adapter.md.
+Блокер: серверного контракта нет; docs/reminders-adapter.md — предложение v1,
+требуется согласование backend. APP_REMINDERS_ADAPTER включает production;
+mock только demo, memory-only, без отправки Telegram. Backend отвечает за авторизацию
+и доставку/отмену уведомлений, не клиентский scope.
 
-Проверки: один полный прогон 176/179; затем исправлены два старых теста дат и ожидание старых quick actions. Адресный прогон 5/5 (включая новую интеграцию с finance cache); после уточнения семейного scope payments 9/9. Syntax/diff успешны. Chromium отсутствует, browser/Telegram smoke не выполнен. Сборки нет: static HTML, версии ассетов обновлены.
+Проверки: один полный прогон 187/187. После уточнений DST/редактирования/паузы —
+адресно reminders 9/9. SWR benchmark, syntax и diff-check успешны.
+Chromium отсутствует: browser/Telegram smoke не выполнен.
 
-Следующий шаг: согласовать транспорт с backend и подключить APP_PAYMENTS_ADAPTER, затем Telegram smoke и review PR. Main не изменять без отдельного запроса на merge.
+Следующий шаг: PR review, согласование и подключение backend, Telegram smoke.
+Main не менять без отдельной просьбы merge.

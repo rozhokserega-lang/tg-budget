@@ -15,3 +15,7 @@
 Бэкенд Supabase Edge Functions внешен этому checkout. README содержит ссылки на отсутствующие здесь `miniapp/` и `../files`; перед применением команд адаптировать пути. Точные API-контракты проверять адресно в коде при соответствующей задаче.
 
 - `src/payments*.js`, `styles/payments.css` — новый модуль: date-only календарь, сменный API, UI, контроллер со state; использует существующие app cache/scope/router. `docs/payments-adapter.md` — граница интеграции до согласования API.
+
+- `src/reminders*.js`, `styles/reminders.css` — личные напоминания: API boundary,
+  demo-only projection, views, controller state/scope guards. Production occurrence
+  expansion and Telegram delivery belong to backend; docs/reminders-adapter.md.

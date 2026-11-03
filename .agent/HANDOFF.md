@@ -124,3 +124,13 @@ E: все 60 тестов проходят (node --test tests/*.test.cjs), synta
 - styles/finance.css: стиль метки для тёмной и светлой темы. src/i18n.js: «Показать ещё» en/es. tests/views.test.cjs: проверка 3/6/7 дней и метки.
 - Ребейз на main 42acf24; конфликт `STATE.md` разрешён, версии ассетов пересчитаны (build f12eb25c6e3d).
 - Проверки: 169/169, `node --check src/app.js`, `git diff --check`. Реальный скролл в Telegram не проверен.
+
+## 2026-11-03: Напоминания
+- feature/reminders-module от main 4b83c94. Новый код: src/reminders-api.js,
+  src/reminders-views.js, src/reminders.js, styles/reminders.css, tests/reminders.test.cjs.
+- index.html: подключения и хеши. app.js: route, host, action/submit, back, refresh/lifecycle.
+- docs/reminders-adapter.md: предложенный контракт, не утверждён backend.
+  Production требует APP_REMINDERS_ADAPTER; mock доступен только demo.
+- Полный прогон один раз: 187/187. После крайних случаев адресно reminders: 9/9.
+  SWR benchmark и syntax/diff-check успешны. Browser/Telegram не проверены: нет Chromium.
+- Дальше: review PR, backend integration, Telegram smoke. Не merge без просьбы пользователя.

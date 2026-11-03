@@ -1,0 +1,31 @@
+(function(root){
+  var C=root.PaymentsCalendar;
+  function e(x){return root.Fmt.escapeHtml(String(x==null?'':x));}
+  function b(action,label,attrs){return '<button type="button" class="payment-button" data-action="reminder-'+action+'" '+(attrs||'')+'>'+e(label)+'</button>';}
+  function attrs(id){return 'data-id="'+e(id)+'"';}
+  function field(label,control){return '<label class="payment-field"><span>'+e(label)+'</span>'+control+'</label>';}
+  function input(name,value,type,extra){return '<input class="input" name="'+name+'" value="'+e(value)+'" type="'+(type||'text')+'" '+(extra||'')+'>';}
+  function options(items,value){return items.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===value?' selected':'')+'>'+x[1]+'</option>';}).join('');}
+  function row(o,p){var overdue=Date.parse(o.due_at)<Date.now();return '<article class="payment-row'+(overdue?' payment-row--overdue':'')+(p.priority==='important'?' reminder-important':'')+'"><strong>'+e(p.title)+'</strong>'+(p.priority==='important'?'<span class="reminder-badge">Важное</span>':'')+'<p>'+e(o.date+' · '+o.time)+(overdue?' · Просрочено':'')+(p.paused?' · Приостановлено':'')+'</p>'+(p.description?'<p class="reminder-description">'+e(p.description)+'</p>':'')+'<div class="payment-actions">'+b('complete','Выполнено',attrs(o.id))+b('edit','Открыть',attrs(p.id))+'</div></article>';}
+  function page(s){
+    var data=s.data||{reminders:[],occurrences:[]},defs=data.reminders,rows=data.occurrences;
+    var html='<section class="payments reminders"><button type="button" class="payment-button" data-action="modules-home">← Модули</button><div class="payments-title"><h1>Напоминания</h1>'+b('new','+ Добавить',root.RemindersApi.available()?'':'disabled')+'</div>';
+    if(!root.RemindersApi.available())return html+'<p role="status">Модуль ожидает подключения серверного API.</p></section>';
+    if(root.RemindersApi.isMock())html+='<p class="payments-notice">Демо: данные до перезагрузки. Telegram-уведомления не отправляются.</p>';
+    html+='<p class="reminder-zone">Личные события · '+e(s.timezone)+'</p><div class="payments-month" data-gesture-lock>'+b('month','‹','data-delta="-1" aria-label="Предыдущий месяц"')+'<h2>'+e(new Date(s.month+'-01T12:00:00').toLocaleDateString('ru-RU',{month:'long',year:'numeric'}))+'</h2>'+b('month','›','data-delta="1" aria-label="Следующий месяц"')+'</div><div class="payments-calendar reminder-calendar" data-gesture-lock>';
+    ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].forEach(function(d){html+='<span class="payments-weekday">'+d+'</span>';});
+    C.cells(s.month).forEach(function(day){if(!day){html+='<span></span>';return;}var count=rows.filter(function(o){return o.date===day;}).length;html+='<button type="button" class="payments-day'+(s.selected===day?' payments-day--selected':'')+'" data-action="reminder-day" data-date="'+day+'" aria-label="'+day+', событий: '+count+'" aria-pressed="'+(s.selected===day)+'"'+(day===root.Fmt.todayIso()?' aria-current="date"':'')+'><span>'+Number(day.slice(-2))+'</span><small>'+(count?'● '+count:'&nbsp;')+'</small></button>';});
+    html+='</div>'+b('upcoming','Ближайшие события','aria-pressed="'+!s.selected+'"');
+    if(s.loading)html+='<p role="status">Загрузка напоминаний…</p>';
+    if(s.error)html+='<p role="alert">'+e(s.error)+'</p>'+b('retry','Повторить');
+    var visible=rows.filter(function(o){return !s.selected||o.date===s.selected;}).slice().sort(function(a,b){return a.due_at.localeCompare(b.due_at)||a.id.localeCompare(b.id);});
+    html+='<h2>'+e(s.selected||'Ближайшие и просроченные')+'</h2>'+(visible.length?visible.map(function(o){var p=defs.find(function(p){return p.id===o.reminder_id;});return p?row(o,p):'';}).join(''):'<p>Напоминаний нет</p>');
+    html+='<details><summary>Все расписания · '+defs.length+'</summary>'+defs.map(function(p){return '<article class="payment-row'+(p.priority==='important'?' reminder-important':'')+'"><strong>'+e(p.title)+'</strong><p>'+e(p.date+' · '+p.time+' · '+p.timezone)+(p.paused?' · Приостановлено':'')+'</p><div class="payment-actions">'+b('edit','Открыть / изменить',attrs(p.id))+b('pause',p.paused?'Возобновить':'Приостановить',attrs(p.id))+b('delete','Удалить',attrs(p.id))+'</div></article>';}).join('')+'</details></section>';
+    return html;
+  }
+  function form(p,day,zone){
+    p=p||{};var r=p.repeat||{unit:'day',interval:1,weekdays:[]};
+    return '<form class="payment-form reminder-form" data-form="reminder" data-id="'+e(p.id||'')+'"><h2>'+(p.id?'Напоминание':'Новое напоминание')+'</h2>'+field('Название',input('title',p.title,'text','required maxlength="160"'))+field('Описание','<textarea class="input" name="description" maxlength="4000">'+e(p.description)+'</textarea>')+field('Дата',input('date',p.date||day,'date','required min="1900-01-01" max="2100-12-31"'))+field('Время',input('time',p.time||'09:00','time','required'))+field('Часовой пояс',input('timezone',p.timezone||zone,'text','required'))+field('Повторение','<select class="input" name="repeat">'+options([['once','Разовое событие'],['day','Ежедневно / каждые N дней'],['week','Еженедельно / каждые N недель'],['month','Ежемесячно / каждые N месяцев'],['year','Ежегодно / каждые N лет']],p.repeat?r.unit:'once')+'</select>')+field('Интервал повторения',input('interval',r.interval,'number','min="1" max="999" step="1"'))+'<fieldset><legend>Дни недели (для еженедельного повторения)</legend><div class="reminder-weekdays">'+['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(function(d,i){return '<label><input type="checkbox" name="weekday" value="'+(i+1)+'"'+(r.weekdays.includes(i+1)?' checked':'')+'>'+d+'</label>';}).join('')+'</div></fieldset>'+field('Уведомления: за сколько минут, через запятую',input('notifications',(p.notifications||[]).join(', '),'text','placeholder="1440, 60, 15, 0"'))+'<p>1440 — за день, 60 — за час, 15 — за 15 минут, 0 — в назначенное время. Пустое поле — без уведомлений.</p>'+field('Приоритет','<select class="input" name="priority">'+options([['normal','Обычный'],['important','Важный']],p.priority||'normal')+'</select>')+'<p class="payment-form-error" role="alert"></p><div class="payment-actions"><button class="payment-button" type="submit">Сохранить</button>'+b('cancel','Отмена')+'</div></form>';
+  }
+  root.RemindersViews={page:page,form:form};
+})(window);

@@ -47,3 +47,8 @@
 - [x] Mock/сменный адаптер, инвалидация, защита от дублей и старых ответов, тесты.
 - [ ] Согласованный Backend API, атомарная транзакция, Telegram-уведомления, миграция legacy recurring.
 - [ ] Визуальная проверка Android/iOS Telegram и review перед merge.
+
+# Напоминания (2026-11-03)
+- [x] Frontend, личный scope, календарь, CRUD, repeat, несколько уведомлений, pause/complete.
+- [x] Контрактный demo mock, предложение API, регрессии и полный прогон.
+- [ ] Согласовать docs/reminders-adapter.md, подключить backend и проверить Telegram.
