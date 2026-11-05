@@ -1,29 +1,29 @@
 # Передача
 
-## Текущая задача
+## Статус
 
-Временное отключение подписок/пробного периода. Изменения лежат в ветке `feat/disable-subscriptions-temporarily` публичного клиента и полного репозитория; main и production не менялись.
+Подписки/пробный период временно отключены и выкачены. Ветки PR #21 (клиент) и #9 (сервер) смержены в main; production обновлён.
+
+## Production
+
+- `api` v22 ACTIVE.
+- `bot` v13 ACTIVE.
+- Клиент: GitHub Pages build `4de9ca8c2172`, https://rozhokserega-lang.github.io/tg-budget/.
+- `SUBSCRIPTIONS_ENABLED` в секретах отсутствует → серверный флаг false.
 
 ## Изменённые пути
 
 - Клиент: `src/state.js`, `src/views.js`, `src/app.js`, `src/api.js`, `tests/views.test.cjs`, `index.html`, `README.md`.
 - Сервер: `supabase/functions/api/index.ts`, `supabase/functions/api/v1_http.ts`, `supabase/functions/bot/index.ts`.
-- Документация: `docs/PROJECT.md`; зеркало клиента в `miniapp/`.
+- Документация/зеркало: `docs/PROJECT.md`, `miniapp/`.
 
 ## Проверки
 
-- `node --check` всех `src/*.js` — OK.
-- `node --test tests/*.test.cjs` — 213/213.
-- `node --test miniapp/tests/*.test.cjs` — 213/213.
-- `node --test tests/*.test.mjs` — 58/58.
-- `npx -y deno check supabase/functions/{api,bot,notify,admin}/index.ts` — OK.
-- `node scripts/version-assets.mjs` — build `4de9ca8c2172`.
+- Клиент: syntax OK, 213/213.
+- Backend: 58/58, Deno check api/bot/notify/admin OK.
+- Деплой: `api` и `bot` ACTIVE; Pages отдаёт `app-build=4de9ca8c2172`.
+- Не проверено: Telegram smoke с истёкшим `plan_until` и `/промо`.
 
-## Решение
+## Откат/включение
 
-Флаг `SUBSCRIPTIONS_ENABLED` выключен по умолчанию. Данные `plan_until`, тарифы, промокоды и платежи не удаляются. Рекуррентные платежи и напоминания не затронуты.
-
-## Не закрыто
-
-- Merge и деплой не выполнены: нужно явное подтверждение.
-- После деплоя нужен Telegram smoke: запись при истёкшем `plan_until`, скрытый раздел подписки, `/промо` и обычная запись в боте.
+Включить подписки: `SUBSCRIPTIONS_ENABLED=true` в секретах `api`/`bot`, задеплоить обе функции, затем `SUBSCRIPTIONS_ENABLED = true` в `src/state.js` и опубликовать клиент. Данные и таблицы не удалялись.
