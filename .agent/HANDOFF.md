@@ -13,7 +13,7 @@
 
 ## Изменённые пути
 
-- Текущая задача (плашка предстоящих платежей): `src/views.js` — вернули `dueBanner(plans)` в `renderSummary`; `tests/views.test.cjs` — регрессионный тест и подключение `recurring.js` в setup.
+- Текущая задача (плашка предстоящих платежей): `src/views.js` — вернули `dueBanner(plans)` в `renderSummary`; `tests/views.test.cjs` — регрессионный тест и подключение `recurring.js` в setup; `index.html` — пересчитаны версии ассетов (build `80f1232195eb`).
 - Клиент: `src/state.js`, `src/views.js`, `src/app.js`, `src/api.js`, `tests/views.test.cjs`, `index.html`, `README.md`.
 - Сервер: `supabase/functions/api/index.ts`, `supabase/functions/api/v1_http.ts`, `supabase/functions/bot/index.ts`.
 - Документация/зеркало: `docs/PROJECT.md`, `miniapp/`.
