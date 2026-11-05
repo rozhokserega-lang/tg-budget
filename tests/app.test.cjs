@@ -935,28 +935,28 @@ test('profile form saves member and household names and rolls back on failure', 
 
 test('home edit reorders blocks, persists on save, resets and cancels', () => {
   const env = setup();
-  const defaults = ['balance', 'categories', 'forecast', 'plans', 'partners'];
+  const defaults = ['balance', 'categories', 'forecast', 'partners'];
   env.app.startHomeEdit();
   assert.equal(env.st.homeEdit, true);
   assert.match(env.nodes.get('#screen').innerHTML, /data-action="home-edit-save"/);
 
   env.app.moveHomeBlock('categories', 'up');
-  assert.deepEqual(Array.from(env.st.homeDraft), ['categories', 'balance', 'forecast', 'plans', 'partners']);
+  assert.deepEqual(Array.from(env.st.homeDraft), ['categories', 'balance', 'forecast', 'partners']);
   assert.deepEqual(Array.from(env.st.homeOrder), defaults);
 
   env.app.saveHomeEdit();
   assert.equal(env.st.homeEdit, false);
   assert.equal(env.st.homeDraft, null);
-  assert.deepEqual(Array.from(env.st.homeOrder), ['categories', 'balance', 'forecast', 'plans', 'partners']);
+  assert.deepEqual(Array.from(env.st.homeOrder), ['categories', 'balance', 'forecast', 'partners']);
   assert.equal(JSON.parse(env.storage.get('budget.homeOrder.' + (env.st.member && env.st.member.id)))[0], 'categories');
 
   const reloaded = setup(undefined, { storage: env.storage });
-  assert.deepEqual(Array.from(reloaded.context.State.homeOrder()), ['categories', 'balance', 'forecast', 'plans', 'partners']);
+  assert.deepEqual(Array.from(reloaded.context.State.homeOrder()), ['categories', 'balance', 'forecast', 'partners']);
 
   env.app.startHomeEdit();
-  env.app.moveHomeBlock('plans', 'up');
+  env.app.moveHomeBlock('forecast', 'up');
   env.app.cancelHomeEdit();
-  assert.deepEqual(Array.from(env.st.homeOrder), ['categories', 'balance', 'forecast', 'plans', 'partners']);
+  assert.deepEqual(Array.from(env.st.homeOrder), ['categories', 'balance', 'forecast', 'partners']);
   assert.equal(JSON.parse(env.storage.get('budget.homeOrder.' + (env.st.member && env.st.member.id)))[0], 'categories');
 
   env.app.startHomeEdit();
@@ -1650,6 +1650,63 @@ test('payment confirmation invalidates finance caches and uses one atomic adapte
   assert.equal(env.app.getRoute().name,'payments');
 });
 
+
+test('home plans load REST occurrences for the payment banner', async () => {
+  const env = setup();
+  env.st.member = {id:'me',household_id:'home'};
+  env.context.window.Api.isDemo = () => false;
+  env.context.window.Api.url = 'https://api.example/functions/v1/api';
+  let seen = null;
+  env.context.window.APP_PAYMENTS_ADAPTER = {
+    list: async q => {
+      seen = q;
+      return {
+        payments: [{id:'template',name:'Rent',amount:20,category_id:'food',reminders:[1]}],
+        occurrences: [{id:'occurrence',payment_id:'template',due_on:'2026-09-30',amount:20,name:'Rent',category_id:'food'}],
+      };
+    },
+  };
+  await env.app.loadPlans();
+  assert.equal(seen.scope, 'me:home');
+  assert.equal(seen.month, env.context.Fmt.currentMonth());
+  assert.equal(env.st.plans.restPayments.payments[0].id, 'template');
+  assert.equal(env.st.plans.restPayments.occurrences[0].id, 'occurrence');
+});
+
+test('home banner pays a REST occurrence through the payments adapter', async () => {
+  const env = setup();
+  env.st.member = {id:'me',household_id:'home'};
+  env.context.window.Api.isDemo = () => false;
+  env.st.plans = {
+    recurring: [],
+    restPayments: {
+      payments: [{id:'template',name:'Rent',amount:20,category_id:'food',reminders:[1]}],
+      occurrences: [{id:'occurrence',payment_id:'template',due_on:'2026-09-30',amount:20,name:'Rent',category_id:'food'}],
+    },
+  };
+  let payloads = [];
+  env.context.window.APP_PAYMENTS_ADAPTER = {
+    confirm: async q => { payloads.push(q); return {occurrence_id:q.occurrence_id}; },
+  };
+  const button = {
+    disabled: false,
+    getAttribute: name => name === 'data-action' ? 'pay-due' : name === 'data-id' ? 'occurrence' : name === 'data-source' ? 'rest' : null,
+    hasAttribute: () => false, setAttribute() {}, removeAttribute() {},
+    closest: selector => selector === '[data-action]' ? button : null,
+  };
+  env.context.document.dispatch('click', {target: button});
+  await settled();
+  await settled();
+  assert.equal(payloads.length, 1);
+  assert.equal(payloads[0].occurrence_id, 'occurrence');
+  assert.equal(payloads[0].amount, 20);
+  assert.equal(payloads[0].category_id, 'food');
+  assert.equal(payloads[0].paid_on, env.context.Fmt.todayIso());
+  assert.ok(payloads[0].idempotency_key);
+  assert.equal(env.st.plans, null);
+  assert.equal(env.st.lastSummary, null);
+  assert.equal(env.context.window.routeReloaded, 'summary');
+});
 
 test('task module opens in app, refreshes and invalidates task cache after preference changes', async () => {
   const env = setup();

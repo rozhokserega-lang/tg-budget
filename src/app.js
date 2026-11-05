@@ -747,11 +747,30 @@
     }).catch(function (err) { handleAccessFailure(err); throw err; });
   }
 
+  function loadRestPayments() {
+    var empty = { payments: [], occurrences: [] };
+    if (!root.PaymentsApi || !root.PaymentsApi.available()) return Promise.resolve(empty);
+    var mock = typeof root.PaymentsApi.isMock === 'function' && root.PaymentsApi.isMock();
+    if (!mock && !(root.Api && root.Api.url)) return Promise.resolve(empty);
+    return root.PaymentsApi.invoke('list', {
+      scope: memberScope(st.member), month: Fmt.currentMonth(),
+    }).then(function (data) {
+      return data && Array.isArray(data.payments) && Array.isArray(data.occurrences) ? data : empty;
+    }).catch(function () {
+      // Баннер не должен ломать главную, если новый модуль временно недоступен.
+      return empty;
+    });
+  }
+
   function loadPlans(force) {
     return loadResource('plans', function () {
-      return Promise.all([Api.call('list_plans'), Api.call('list_recurring')]).then(function (res) {
+      return Promise.all([Api.call('list_plans'), Api.call('list_recurring'), loadRestPayments()]).then(function (res) {
         var p = res[0] || {};
-        return { goals: p.goals || [], debts: p.debts || [], wishes: p.wishes || [], recurring: res[1] || [] };
+        var rest = res[2] || { payments: [], occurrences: [] };
+        return {
+          goals: p.goals || [], debts: p.debts || [], wishes: p.wishes || [], recurring: res[1] || [],
+          restPayments: { payments: rest.payments || [], occurrences: rest.occurrences || [] },
+        };
       });
     }, force, function (plans) { st.plans = plans; });
   }
@@ -3279,14 +3298,53 @@ document.addEventListener('click', function (ev) {
   // Крестик на баннере платежа: скрываем до конца дня и убираем узел без
   // перерисовки экрана, чтобы не сбить прокрутку.
   var duePayments = {};
+  function restDue(id) {
+    var data = st.plans && st.plans.restPayments;
+    return ((data && data.occurrences) || []).find(function (o) {
+      return o && o.id === id;
+    }) || null;
+  }
+
+  function payRestDue(occurrence) {
+    var data = st.plans && st.plans.restPayments;
+    var def = ((data && data.payments) || []).find(function (p) {
+      return p && p.id === occurrence.payment_id;
+    });
+    var categoryId = occurrence.category_id || (def && def.category_id);
+    var amount = Number(occurrence.amount);
+    if (!root.PaymentsApi || !root.PaymentsApi.available()) {
+      return Promise.reject(new Error(T('Модуль платежей временно недоступен')));
+    }
+    if (!categoryId) return Promise.reject(new Error(T('Выберите категорию в платежах')));
+    if (!(amount > 0)) return Promise.reject(new Error(T('Не удалось определить сумму платежа')));
+    var key = root.crypto && root.crypto.randomUUID
+      ? root.crypto.randomUUID()
+      : 'banner-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    return root.PaymentsApi.invoke('confirm', {
+      occurrence_id: occurrence.id,
+      amount: amount,
+      paid_on: Fmt.todayIso(),
+      category_id: categoryId,
+      idempotency_key: key,
+    });
+  }
+
   function payDue(button) {
     var id = button.getAttribute('data-id');
     if (!id || duePayments[id]) return;
+    var source = button.getAttribute('data-source');
+    var occurrence = source === 'rest' ? restDue(id) : null;
+    if (source === 'rest' && !occurrence) {
+      toast(T('Платёж не найден. Обновите главную'));
+      return;
+    }
     duePayments[id] = true;
     button.disabled = true;
     button.setAttribute('aria-busy', 'true');
-    mutate('pay_recurring', { id: id }).then(function () {
+    var request = source === 'rest' ? payRestDue(occurrence) : mutate('pay_recurring', { id: id });
+    request.then(function () {
       clearCache();
+      st.plans = null;
       st.lastSummary = null;
       root.Tg.haptic('success');
       toast(T('Оплата записана'));

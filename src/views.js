@@ -208,27 +208,74 @@
       '</div>';
   }
 
-  // Ближайший повторяющийся платёж: за день до даты и в сам день — баннер сверху.
-  // Показываем только первый, остальные — в «Планы → Платежи».
+  // Краткая строка о планах на сводке: показываем только если что-то заведено.
+  function plansTeaser(plans) {
+    return '<section class="plans-overview"><h2>Модули</h2><button type="button" class="btn btn--ghost" data-action="go-plans">Открыть модули</button></section>';
+  }
+
+  // Ближайший платёж: за день до даты и в сам день — баннер сверху.
+  // Читаем и legacy list_recurring, и новые REST-платежи (платежи/напоминания).
+  // Показываем только первый, остальные — в «Модули → Платежи».
   // Крестик скрывает баннер до конца дня (State.dismissDue).
   function dueBanner(plans) {
     if (State.isDueDismissed()) return '';
+    var today = Fmt.todayIso();
     var list = (plans && plans.recurring) || [];
+    var rest = plans && plans.restPayments;
     var cache = State.get()['txCache:' + Fmt.currentMonth()];
     var transactions = (cache && cache.data) || [];
     var now = new Date();
-    var soon = list.filter(function (r) {
+    var definitions = Object.create(null);
+    ((rest && rest.payments) || []).forEach(function (p) {
+      if (p && p.id) definitions[p.id] = p;
+    });
+    function dayDiff(iso) {
+      var due = Date.parse(String(iso || '').slice(0, 10) + 'T12:00:00Z');
+      var base = Date.parse(today + 'T12:00:00Z');
+      return isNaN(due) || isNaN(base) ? NaN : Math.round((due - base) / 86400000);
+    }
+    function key(name, amount, date) {
+      return String(name || '').trim().toLowerCase() + '|' +
+        Number(amount || 0).toFixed(2) + '|' + String(date || '').slice(0, 10);
+    }
+    var soon = [];
+    var restKeys = Object.create(null);
+
+    // Сначала новые платежи: у occurrence точная дата и оплата по occurrence.
+    ((rest && rest.occurrences) || []).forEach(function (o) {
+      if (!o || !o.due_on || o.status === 'paid') return;
+      var def = definitions[o.payment_id];
+      if ((def && def.paused) || o.status === 'paused') return;
+      var diff = dayDiff(o.due_on);
+      if (!(diff >= 0)) return;
+      var reminders = def && Array.isArray(def.reminders) ? def.reminders : [];
+      var windowDays = reminders.length ? Math.max.apply(null, reminders) : 0;
+      if (diff > Math.max(1, windowDays)) return;
+      restKeys[key(o.name, o.amount, o.due_on)] = true;
+      soon.push({ r: {
+        id: o.id, name: o.name, amount: o.amount,
+        category_id: o.category_id || (def && def.category_id),
+        source: 'rest', occurrence_id: o.id, due_on: o.due_on,
+      }, diff: diff });
+    });
+
+    // Legacy list_recurring: старые данные, которые ещё не переехали в REST.
+    // Совпавший платёж уже показан из REST, чтобы не задвоить и не оплатить дважды.
+    list.filter(function (r) {
       if (r.active === false) return false;
       return !transactions.some(function (tx) {
         return String(tx.note || '').trim().toLowerCase() === String(r.name || '').trim().toLowerCase() &&
           Math.abs(Number(tx.amount) - Number(r.amount)) < 0.005 &&
           (!r.category_id || tx.category_id === r.category_id);
       });
-    }).map(function (r) {
+    }).forEach(function (r) {
       var due = Recurring.upcoming(r, now);
-      return { r: r, diff: due.diff, visible: due.visible };
-    }).filter(function (x) { return x.visible; })
-      .sort(function (a, b) { return a.diff - b.diff; });
+      if (!due.visible) return;
+      if (restKeys[key(r.name, r.amount, due.date)]) return;
+      soon.push({ r: r, diff: due.diff });
+    });
+
+    soon.sort(function (a, b) { return a.diff - b.diff; });
     if (!soon.length) return '';
     var x = soon[0];
     var more = soon.length - 1;
@@ -243,7 +290,7 @@
       '<span class="due__hint">' + (more > 0 ? e(T('и ещё {n} · ', { n: more })) : '') + e(T('Все платежи')) + ' <span aria-hidden="true">›</span></span>' +
       '</span>' +
       '</button>' +
-      '<button type="button" class="due__pay" data-action="pay-due" data-id="' + e(x.r.id) + '" aria-label="' + e(T('Отметить оплату') + ': ' + x.r.name) + '" title="' + e(T('Отметить оплату')) + '">' +
+      '<button type="button" class="due__pay" data-action="pay-due" data-id="' + e(x.r.id) + '" data-source="' + (x.r.source === 'rest' ? 'rest' : 'legacy') + '" aria-label="' + e(T('Отметить оплату') + ': ' + x.r.name) + '" title="' + e(T('Отметить оплату')) + '">' +
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></button>' +
       '<button type="button" class="due__close" data-action="dismiss-due" aria-label="' + e(T('Скрыть напоминание')) + '">' +
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>' +

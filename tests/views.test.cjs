@@ -70,6 +70,44 @@ test('home shows the upcoming payment banner for a due recurring payment', () =>
   assert.match(html, /data-action="pay-due" data-id="rent"/);
   assert.match(html, /data-action="dismiss-due"/);
 });
+test('home shows the upcoming payment banner for a REST module occurrence', () => {
+  const ctx = setup();
+  const today = ctx.Fmt.todayIso();
+  const plans = {
+    recurring: [],
+    restPayments: {
+      payments: [{ id: 'internet', name: 'Интернет', amount: 500, category_id: 'net', reminders: [1] }],
+      occurrences: [{ id: 'occurrence-1', payment_id: 'internet', due_on: today, amount: 500, name: 'Интернет', category_id: 'net' }],
+    },
+  };
+  const html = ctx.Views.renderSummary({ categories: [], income: 0, expense: 0, balance: 0 }, plans, null, [], 'list');
+  assert.match(html, /<div class="due">/);
+  assert.match(html, /Интернет/);
+  assert.match(html, /data-action="pay-due" data-id="occurrence-1" data-source="rest"/);
+});
+
+test('home REST banner prefers the newer occurrence and skips paused payments', () => {
+  const ctx = setup();
+  const today = ctx.Fmt.todayIso();
+  const plans = {
+    recurring: [{ id: 'old', name: 'Интернет', amount: 500, day_of_month: new Date().getDate(), reminder_days: 1, active: true }],
+    restPayments: {
+      payments: [
+        { id: 'internet', name: 'Интернет', amount: 500, category_id: 'net', reminders: [1] },
+        { id: 'paused', name: 'Пауза', amount: 100, category_id: 'net', reminders: [1], paused: true },
+      ],
+      occurrences: [
+        { id: 'occurrence-1', payment_id: 'internet', due_on: today, amount: 500, name: 'Интернет', category_id: 'net' },
+        { id: 'occurrence-2', payment_id: 'paused', due_on: today, amount: 100, name: 'Пауза', category_id: 'net' },
+      ],
+    },
+  };
+  const html = ctx.Views.renderSummary({ categories: [], income: 0, expense: 0, balance: 0 }, plans, null, [], 'list');
+  assert.match(html, /data-action="pay-due" data-id="occurrence-1" data-source="rest"/);
+  assert.doesNotMatch(html, /data-id="old"/);
+  assert.doesNotMatch(html, /Пауза/);
+});
+
 test('home income and expense cards open the matching add form', () => {
   const ctx = setup();
   const html = home(ctx);
@@ -449,15 +487,15 @@ test('home edit mode shows every block with keyboard reorder controls and inert 
   assert.doesNotMatch(normal, /data-home-block=/);
 
   ctx.State.get().homeEdit = true;
-  ctx.State.get().homeDraft = ['categories', 'balance', 'partners', 'forecast', 'plans'];
+  ctx.State.get().homeDraft = ['categories', 'balance', 'partners', 'forecast'];
   const html = home(ctx);
   const ids = [...html.matchAll(/data-home-block="([^"]+)"/g)].map(m => m[1]);
-  assert.deepEqual(ids, ['categories', 'balance', 'partners', 'forecast', 'plans']);
+  assert.deepEqual(ids, ['categories', 'balance', 'partners', 'forecast']);
   assert.match(html, /data-action="home-edit-save"/);
   assert.match(html, /data-action="home-edit-cancel"/);
   assert.match(html, /data-action="home-edit-reset"/);
   assert.match(html, /data-action="home-move" data-home-edit data-id="categories" data-dir="up"[^>]*disabled/);
-  assert.match(html, /data-action="home-move" data-home-edit data-id="plans" data-dir="down"[^>]*disabled/);
+  assert.match(html, /data-action="home-move" data-home-edit data-id="forecast" data-dir="down"[^>]*disabled/);
   assert.match(html, /class="home-block__content" inert/);
   assert.match(html, /Переместить «Категории» выше/);
   assert.match(html, /Между партнёрами/);
