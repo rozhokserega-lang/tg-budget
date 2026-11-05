@@ -254,6 +254,17 @@ test('shared edit form preserves values, escapes user text and offers explicit s
   assert.doesNotMatch(html, /\smax=|data-sheet-close|<script>/);
 });
 
+test('subscription settings are hidden while subscriptions are disabled', () => {
+  const ctx = setup();
+  ctx.State.setMember({ id: 'm1', name: 'Тест', households: { name: 'Семья', plan_until: '2000-01-01T00:00:00.000Z' } });
+  assert.equal(ctx.State.subscriptionsEnabled(), false);
+  assert.equal(ctx.State.isExpired(), false);
+  const home = ctx.Views.renderSettings();
+  assert.doesNotMatch(home, /Подписка и промокоды/);
+  const subscription = ctx.Views.renderSettings('subscription');
+  assert.doesNotMatch(subscription, /Продлить за звёзды|Промокод/);
+});
+
 test('interface settings persist block order per member and render home in that order', () => {
   const ctx = setup(), stored = new Map();
   ctx.window.localStorage = { getItem: k => stored.get(k), setItem: (k,v) => stored.set(k,v) };

@@ -20,6 +20,11 @@
     homeDraft: null,
   };
 
+  // Временно отключаем платный доступ на время теста: пробный период
+  // не блокирует записи, а раздел подписки не показывается.
+  // Для возврата включите флаг здесь и SUBSCRIPTIONS_ENABLED на сервере.
+  var SUBSCRIPTIONS_ENABLED = false;
+
   // Порядок блоков главной. Хранится только на устройстве: у каждого
   // участника может быть свой удобный экран.
   var HOME_ORDER_KEY = 'budget.homeOrder';
@@ -76,8 +81,13 @@
 
   // Сравниваем точное время, а не дни: Math.ceil съедает до суток.
   function isExpired() {
+    if (!SUBSCRIPTIONS_ENABLED) return false;
     var until = state.member && state.member.households && state.member.households.plan_until;
     return !!until && new Date(until).getTime() < Date.now();
+  }
+
+  function subscriptionsEnabled() {
+    return SUBSCRIPTIONS_ENABLED;
   }
 
   // Режим «только я»: семья без партнёра, блок расчёта и приглашение скрыты.
@@ -138,6 +148,7 @@
     isSolo: isSolo,
     planDaysLeft: planDaysLeft,
     isExpired: isExpired,
+    subscriptionsEnabled: subscriptionsEnabled,
     splitModeLabel: splitModeLabel,
     isDueDismissed: isDueDismissed,
     dismissDue: dismissDue,
