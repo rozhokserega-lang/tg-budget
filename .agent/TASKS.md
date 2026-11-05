@@ -77,3 +77,8 @@
 # Напоминания — PR #16
 - [x] Календарь, CRUD, repeat, pause/resume/complete, уведомления-настройки, demo mock.
 - [ ] Production-адаптер с актуальным docs/api и Telegram smoke.
+
+# Задачи на сегодня (2026-11-05)
+- [x] Аудит, карточка на главной, единый контроллер/API/cache, прогресс, повторы, защита от гонок, ошибки и смена дня.
+- [x] Node 217/217, JS syntax, asset versioning, diff.
+- [ ] Telegram/mobile visual smoke (Chromium socket permission в среде), PR review и merge.

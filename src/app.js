@@ -100,7 +100,7 @@
       scope: function () { return memberScope(st.member); },
       active: function () { return route.name === 'tasks'; },
       enter: function () { ++reqSeq; route = { name: 'tasks' }; },
-      render: render, load: loadResource, sheet: openSheet,
+      render: render, load: loadResource, sheet: openSheet, paintHome: paintTodayTasks, animateComplete: animateTodayComplete,
       close: function () { var was = paymentBusy; paymentBusy = false; closeSheet(); paymentBusy = was; },
       lock: function (busy) { paymentBusy = busy; el.tabs.inert = busy; },
       toast: toast, confirm: dialog, expired: State.isExpired, home: openPlans,
@@ -108,6 +108,35 @@
     });
     return tasksController;
   }
+  function animateTodayComplete(id) {
+    if (route.name !== 'summary' || (dockReducedMotion && dockReducedMotion.matches)) return;
+    var inputs = el.screen.querySelectorAll('[data-today-tasks] [data-task-complete]');
+    var input = Array.prototype.find.call(inputs, function (n) { return n.getAttribute('data-task-complete') === id; });
+    if (!input || !input.parentElement.animate) return;
+    return input.parentElement.animate([{opacity:1},{opacity:0,transform:'translateX(6px)'}],{duration:140,fill:'forwards'}).finished.catch(function () {});
+  }
+  function paintTodayTasks() {
+    if (route.name !== 'summary') return;
+    var node = el.screen.querySelector('[data-today-tasks]');
+    if (!node) return;
+    var html = taskTracker().homeHtml();
+    if (node.innerHTML === html) return;
+    var before = node.querySelector('.today-tasks__progress span');
+    var width = before && before.style.width;
+    var focus = document.activeElement, focused = focus && node.contains(focus);
+    var oldHeight = node.getBoundingClientRect().height;
+    node.innerHTML = html;
+    var newHeight = node.getBoundingClientRect().height;
+    if (oldHeight && oldHeight !== newHeight && node.animate && !(dockReducedMotion && dockReducedMotion.matches)) node.animate([{height:oldHeight + 'px'},{height:newHeight + 'px'}],{duration:180,easing:'ease-out'});
+    var after = node.querySelector('.today-tasks__progress span');
+    if (after && width && after.style.width !== width && after.animate && !(dockReducedMotion && dockReducedMotion.matches)) after.animate([{width:width},{width:after.style.width}],{duration:180,easing:'ease-out'});
+    if (focused) { var next = node.querySelector('input:not(:disabled),button'); if (next) next.focus({preventScroll:true}); }
+  }
+  var todayTasksDay = Fmt.todayIso();
+  root.setInterval(function () {
+    var day = Fmt.todayIso();
+    if (day !== todayTasksDay) { todayTasksDay = day; if (st.member && route.name === 'summary') taskTracker().loadHome(true); }
+  }, 30000);
   var remindersController = null;
   function reminders() {
     if (!remindersController) remindersController = root.Reminders.create({
@@ -520,6 +549,7 @@
     var search = active && active.id === 'tx-search' ? active : null;
     var selection = search ? [search.selectionStart, search.selectionEnd] : null;
     el.screen.innerHTML = html;
+    paintTodayTasks();
     el.screen.scrollTop = scroll;
     if (search) {
       var input = el.screen.querySelector('#tx-search');
@@ -770,6 +800,7 @@
 
   function openSummary(force) {
     route = { name: 'summary' };
+    taskTracker().loadHome(false);
     var seq = ++reqSeq;
     var month = st.month;
     var previous = cached('summaryCache:' + month);
@@ -4064,7 +4095,7 @@ document.addEventListener('click', function (ev) {
     var before = [cached('summaryCache:' + month), cached('txCache:' + month), st.plans, JSON.stringify(st.member)];
     function current() { return key === screenKey() && month === st.month && seq === reqSeq && scope === memberScope(st.member); }
     var tasks;
-    if (name === 'summary') tasks = [loadSummary(month, true), loadTx(month, true), loadPlans(true)];
+    if (name === 'summary') tasks = [loadSummary(month, true), loadTx(month, true), loadPlans(true), taskTracker().loadHome(true)];
     else if (name === 'tx') tasks = [loadTx(month, true)];
     else if (name === 'plans') return Promise.resolve();
     else if (name === 'settings') {
