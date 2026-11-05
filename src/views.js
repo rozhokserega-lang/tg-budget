@@ -208,11 +208,6 @@
       '</div>';
   }
 
-  // Краткая строка о планах на сводке: показываем только если что-то заведено.
-  function plansTeaser(plans) {
-    return '<section class="plans-overview"><h2>Модули</h2><button type="button" class="btn btn--ghost" data-action="go-plans">Открыть модули</button></section>';
-  }
-
   // Ближайший повторяющийся платёж: за день до даты и в сам день — баннер сверху.
   // Показываем только первый, остальные — в «Планы → Платежи».
   // Крестик скрывает баннер до конца дня (State.dismissDue).
@@ -528,17 +523,15 @@
       balance: heroBlock,
       categories: categoriesBlock,
       forecast: forecastCard(s, plans),
-      plans: plansTeaser(plans),
       partners: partnersBlock,
     };
     var blockLabels = {
       balance: 'Карточка бюджета',
       categories: 'Категории',
       forecast: 'Прогноз',
-      plans: 'Модули',
       partners: 'Между партнёрами',
     };
-    var order = State.homeOrder ? State.homeOrder() : ['balance', 'categories', 'forecast', 'plans', 'partners'];
+    var order = State.homeOrder ? State.homeOrder() : ['balance', 'categories', 'forecast', 'partners'];
     function editBlock(id, content, index) {
       var label = T(blockLabels[id]);
       var emptyText = T('Нет данных для этого блока');

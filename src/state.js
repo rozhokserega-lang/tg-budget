@@ -28,7 +28,7 @@
   // Порядок блоков главной. Хранится только на устройстве: у каждого
   // участника может быть свой удобный экран.
   var HOME_ORDER_KEY = 'budget.homeOrder';
-  var DEFAULT_HOME_ORDER = ['balance', 'categories', 'forecast', 'plans', 'partners'];
+  var DEFAULT_HOME_ORDER = ['balance', 'categories', 'forecast', 'partners'];
 
   function normalizeHomeOrder(list) {
     var seen = {};
