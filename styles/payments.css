@@ -1,5 +1,7 @@
 .payments{padding:16px 16px 32px;color:var(--c-text)}
 .payments h1{font-size:26px;margin:18px 0}.payments h2{font-size:17px;margin:20px 0 12px}
+/* The screen container already supplies the shared horizontal page padding. */
+.payments.modules{padding-left:0;padding-right:0}
 .modules__header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
 .modules__header h1{min-width:0;margin:12px 0}
 .modules-view{display:flex;flex-shrink:0;padding:3px;border:1px solid var(--c-border);border-radius:15px;background:var(--c-card)}
