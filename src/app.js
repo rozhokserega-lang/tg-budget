@@ -3372,6 +3372,7 @@ document.addEventListener('click', function (ev) {
 
   // Делегирование на document: кнопки часто перерисовываются самим обработчиком,
   // и слушатель, привязанный к контейнеру экрана, может не дожить до клика.
+  document.addEventListener('input', function(ev){if(ev.target.matches('[data-task-select="query"]'))taskTracker().change(ev.target);});
   document.addEventListener('click', function (ev) {
     var tabBtn = ev.target.closest('[data-tab]');
     if (tabBtn) {
@@ -4426,3 +4427,4 @@ document.addEventListener('click', function (ev) {
 
   boot();
 })(window);
+
