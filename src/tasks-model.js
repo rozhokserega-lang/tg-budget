@@ -39,5 +39,23 @@
       return n || a.id.localeCompare(b.id);
     });
   }
-  root.TasksModel = {validate:validate, nextDate:nextDate, overdue:overdue, rows:rows};
+  // Count plan occurrences by their original due date, never completion date.
+  function todayPlan(data, today) {
+    var seen = Object.create(null), plan = [], active = [];
+    ((data && data.tasks) || []).forEach(function(t) {
+      if (seen[t.id] || !t.due_on || t.deleted_at || (t.server && t.server.deletedAt)) return;
+      seen[t.id] = true;
+      if (t.due_on === today) plan.push(t);
+      if (!t.completed_at && t.due_on <= today) active.push(t);
+    });
+    active.sort(function(a,b) {
+      var ga = a.due_on < today ? 0 : a.priority === 'important' ? 1 : 2;
+      var gb = b.due_on < today ? 0 : b.priority === 'important' ? 1 : 2;
+      return ga - gb || a.due_on.localeCompare(b.due_on) ||
+        String(a.server && a.server.dueAt || '').localeCompare(String(b.server && b.server.dueAt || '')) || a.id.localeCompare(b.id);
+    });
+    var done = plan.filter(function(t) { return !!t.completed_at; }).length;
+    return {rows:active, total:plan.length, done:done, percent:plan.length ? Math.round(done / plan.length * 100) : 0};
+  }
+  root.TasksModel = {validate:validate, nextDate:nextDate, overdue:overdue, rows:rows, todayPlan:todayPlan};
 })(window);

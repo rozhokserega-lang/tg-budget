@@ -47,6 +47,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
   const context = { document, console, performance: { now: () => frameTime }, setTimeout: fn => { timers.set(++timerId, fn); return timerId; }, clearTimeout: id => timers.delete(id), requestAnimationFrame: fn => { frames.set(++frameId, fn); return frameId; }, cancelAnimationFrame: id => frames.delete(id) };
   if (options.clock) context.Date = class extends Date { static now() { return options.clock.now; } };
   context.window = {
+    setInterval() { return 0; },
     localStorage: {
       getItem: key => storage.has(key) ? storage.get(key) : null,
       setItem: (key, value) => { storage.set(key, String(value)); },
@@ -66,6 +67,7 @@ function setup(updateTx = () => Promise.reject(new Error('server unsupported')),
     },
     I18n: { t: s => s, locale: () => 'ru', plural: (_, n) => String(n), locales: [{ code: 'ru', name: 'Русский' }] },
     Api: {
+      isDemo: () => false,
       updateTx: payload => { calls.push(payload); return updateTx(payload); },
       call(action, payload) {
         apiCalls.push({ action, payload });

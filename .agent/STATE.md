@@ -12,3 +12,5 @@
 Не закрыто: Telegram smoke на семье с истёкшим `plan_until` (запись должна проходить), проверка скрытого раздела подписки и ответа `/промо`; Telegram smoke плашки (напоминание за N дней/в день платежа, крестик, кнопка оплаты).
 
 Включение обратно: задать `SUBSCRIPTIONS_ENABLED=true` в секретах проекта, задеплоить `api` и `bot`, поставить `SUBSCRIPTIONS_ENABLED = true` в `src/state.js` и опубликовать клиент.
+
+2026-11-05. «Задачи на сегодня»: реализована карточка после финансовых блоков в `feat/home-today-tasks`. Общие Tasks controller/cache/API, до 4 строк, сегодняшний прогресс без просрочки, завершение повторов существующим complete. Проверки: 217/217 Node tests; syntax и diff OK. Browser smoke заблокирован запуском Chromium (`socket() Operation not permitted`); Telegram/mobile visual smoke остаётся. Следующий шаг: PR в main, без слияния.

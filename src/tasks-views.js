@@ -3,6 +3,26 @@
   function button(action,label,id){return '<button class="payment-button" type="button" data-action="task-'+action+'"'+(id?' data-id="'+e(id)+'"':'')+'>'+e(label)+'</button>';}
   function options(items,value){return items.map(function(x){return '<option value="'+e(x[0])+'"'+(x[0]===value?' selected':'')+'>'+e(x[1])+'</option>';}).join('');}
   function lists(data,value,all){return options((all?[['all','Все задачи']]:[]).concat(data.lists.map(function(l){return [l.id,l.name];}),[['none','Без списка']]),value||'none');}
+  function today(s, busy) {
+    var title = '<div class="today-tasks__head"><h2 class="section__title">Задачи на сегодня</h2>';
+    var m = root.TasksModel.todayPlan(s.data, root.Fmt.todayIso());
+    var remaining = m.total - m.done;
+    var html = title + (s.data ? '<span class="today-tasks__count">Осталось ' + remaining + ' из ' + m.total + '</span>' : '') + '</div>';
+    if (!s.data) return html + '<p class="muted" role="status">' + (s.error ? 'Не удалось загрузить задачи' : 'Загружаем задачи…') + '</p>' + (s.error ? button('retry','Повторить') : '');
+    html += '<div class="today-tasks__progress" role="progressbar" aria-label="Выполнение сегодняшнего плана" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + m.percent + '"><span style="width:' + m.percent + '%"></span></div>';
+    if (s.error) html += '<p class="muted" role="status">Не удалось обновить задачи</p>' + button('retry','Повторить');
+    if (m.total && !remaining) html += '<p class="today-tasks__empty" role="status">Все задачи на сегодня выполнены!</p>';
+    else if (!m.rows.length) html += '<p class="today-tasks__empty" role="status">На сегодня всё свободно ✓</p>';
+    html += '<div class="today-tasks__list">';
+    m.rows.slice(0,4).forEach(function(t) {
+      var late = t.due_on < root.Fmt.todayIso(), time = '';
+      if (t.server && t.server.dueAt) {
+        try { time = new Intl.DateTimeFormat('ru-RU', {hour:'2-digit',minute:'2-digit',timeZone:t.server.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}).format(new Date(t.server.dueAt)); } catch (_) {}
+      }
+      html += '<label class="today-tasks__row' + (late ? ' today-tasks__row--late' : '') + '"><input type="checkbox" data-task-complete="' + e(t.id) + '" aria-label="Выполнить: ' + e(t.title) + '"' + (busy ? ' disabled' : '') + '><span class="today-tasks__text"><span class="today-tasks__title">' + e(t.title) + '</span><small>' + (late ? 'Просрочена · ' + e(t.due_on) : 'Сегодня') + (time && time !== '00:00' ? ' · ' + e(time) : '') + '</small></span>' + (t.priority === 'important' ? '<span class="task-important" aria-label="Важная">★</span>' : '') + '</label>';
+    });
+    return html + '</div><button type="button" class="today-tasks__all" data-action="module-open" data-module="tasks">Все задачи' + (m.rows.length ? ' (' + m.rows.length + ')' : '') + ' →</button>';
+  }
   function page(s){
     var html='<section class="payments tasks">'+button('home','← Модули')+'<h1>Трекер задач</h1>';
     if(!root.TasksApi.available())return html+'<p role="status">Модуль ожидает подключения серверного API.</p></section>';
@@ -26,5 +46,5 @@
     return '<form class="payment-form" data-form="task" data-id="'+e(t.id||'')+'" data-key="'+e(key)+'"><h2>'+(t.id?'Изменить задачу':'Новая задача')+'</h2>'+field('Название',input('title',t.title||'','text','required maxlength="200"'))+field('Описание','<textarea class="input" name="description" maxlength="4000">'+e(t.description||'')+'</textarea>')+field('Список','<select class="input" name="list_id">'+lists(s.data,t.list_id||(s.selected==='all'?null:s.selected),false)+'</select>')+field('Срок выполнения',input('due_on',t.due_on||'','date','min="2000-01-01" max="2100-12-31"'))+(t.server&&t.server.seriesId?field('Применить изменения','<select class="input" name="edit_scope">'+options([['series','Эту и будущие задачи'],['instance','Только эту задачу']],'series')+'</select>'):'')+field('Приоритет','<select class="input" name="priority">'+options([['normal','Обычный'],['important','Важный']],t.priority||'normal')+'</select>')+field('Повторение','<select class="input" name="unit">'+options([['','Не повторять'],['day','Дни'],['week','Недели'],['month','Месяцы'],['year','Годы']],r.unit||'')+'</select>')+field('Каждые N периодов (1 — ежедневно / еженедельно / ежемесячно / ежегодно)',input('interval',r.interval||1,'number','min="1" max="365" step="1"'))+'<fieldset><legend>Дни недели (для недельного повторения)</legend><div class="task-weekdays">'+['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(function(d,i){return '<label><input name="weekday" type="checkbox" value="'+(i+1)+'"'+((r.weekdays||[]).includes(i+1)?' checked':'')+'>'+d+'</label>';}).join('')+'</div></fieldset>'+field('Уведомления за N минут до начала дня срока (через запятую)',input('reminders',(t.reminders||[]).join(', '),'text','placeholder="1440, 60"'))+'<p>Интервал: дни/недели до 365, месяцы до 12, годы до 10. Уведомления — до 43200 минут. Для повторения и уведомлений нужен срок. Уведомления отправляет Telegram-бот в часовом поясе профиля.</p><p class="task-form-error" role="alert"></p><button class="btn btn--primary" type="submit">Сохранить</button>'+button('cancel','Отмена')+'</form>';
   }
   function listForm(l){return '<form class="payment-form" data-form="task-list" data-id="'+e(l&&l.id||'')+'"><h2>Список</h2>'+field('Название',input('name',l&&l.name||'','text','required maxlength="120"'))+'<p class="task-form-error" role="alert"></p><button class="btn btn--primary" type="submit">Сохранить</button>'+button('cancel','Отмена')+'</form>';}
-  root.TasksViews={page:page,form:form,listForm:listForm};
+  root.TasksViews={today:today,page:page,form:form,listForm:listForm};
 })(window);

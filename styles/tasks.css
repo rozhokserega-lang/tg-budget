@@ -1,3 +1,22 @@
 .task-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}.task-toolbar label{min-width:0}.task-toolbar select{width:100%;margin-top:6px}.task-row__main{display:flex;gap:12px;align-items:flex-start}.task-row__main>div{min-width:0;overflow-wrap:anywhere}.task-row__main>input{width:24px;height:24px;flex-shrink:0;accent-color:var(--accent,#34b77c)}.task-row--overdue{border-left:3px solid var(--danger,#c93843)}.task-row--overdue .task-row__main p{color:var(--danger,#c93843)}.task-important{color:var(--accent,#248d60);font-size:12px}.task-weekdays{display:flex;flex-wrap:wrap;gap:12px}.task-row[draggable=true]{cursor:grab}.tasks .payment-actions{flex-wrap:wrap}.tasks .payment-row{margin-top:12px}@media(max-width:360px){.task-toolbar{grid-template-columns:1fr}}
 
 [data-task-drag]{touch-action:none;cursor:grab;min-width:44px;min-height:44px}
+
+/* Compact dashboard projection of the shared tracker. */
+.today-tasks{padding:16px;min-width:0;overflow:hidden}
+.today-tasks__head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.today-tasks__head h2{margin:0;font-size:16px}
+.today-tasks__count{font-size:12px;color:var(--c-hint,var(--tg-hint));font-variant-numeric:tabular-nums}
+.today-tasks__progress{height:4px;border-radius:4px;background:var(--tg-separator);overflow:hidden;margin:14px 0 8px}
+.today-tasks__progress span{display:block;height:100%;border-radius:inherit;background:var(--c-accent,var(--tg-button));transition:width 180ms ease}
+.today-tasks__row{display:flex;align-items:center;gap:10px;min-height:58px;cursor:pointer;border-bottom:1px solid var(--tg-separator)}
+.today-tasks__row input{width:22px;height:22px;flex:none;margin:11px;accent-color:var(--c-accent,var(--tg-button))}
+.today-tasks__row:has(input:checked){opacity:.45;transition:opacity 150ms ease}
+.today-tasks__text{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+.today-tasks__title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.today-tasks__text small{font-size:11px;color:var(--tg-hint)}
+.today-tasks__row--late small{color:var(--tg-destructive)}
+.today-tasks__row--late small:before{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;background:currentColor;margin-right:5px;vertical-align:middle}
+.today-tasks__all{display:block;min-height:44px;width:100%;border:0;background:transparent;color:var(--c-accent,var(--tg-link));font:inherit;font-size:13px;cursor:pointer;margin-top:6px}
+.today-tasks__empty{font-size:13px;color:var(--tg-hint);padding:8px 0}
+@media(prefers-reduced-motion:reduce){.today-tasks *, .today-tasks__row:has(input:checked){transition:none!important;animation:none!important}}

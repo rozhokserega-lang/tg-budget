@@ -28,3 +28,9 @@
 ## Откат/включение
 
 Включить подписки: `SUBSCRIPTIONS_ENABLED=true` в секретах `api`/`bot`, задеплоить обе функции, затем `SUBSCRIPTIONS_ENABLED = true` в `src/state.js` и опубликовать клиент. Данные и таблицы не удалялись.
+
+## «Задачи на сегодня» (2026-11-05)
+- Ветка `feat/home-today-tasks`: src/app.js, tasks-model.js, tasks-views.js, tasks.js, views.js; styles/tasks.css, index.html, tests/tasks.test.cjs, tests/app.test.cjs, README.md.
+- Карточка внизу дашборда, общий контроллер и BudgetCache, существующий complete с ключом повтора; прогресс по исходному due_on сегодня, просрочка отдельно в списке. Нового API/хранилища нет.
+- 217/217 Node tests после исправления timer/API stubs тестовой среды; JS syntax и diff OK. Версии ресурсов пересчитаны.
+- Browser/Telegram smoke не выполнен: Chromium в среде не запускается (socket permission). Проверить 320/375 px, анимации, реальные backend complete/restore, смену дня и фон.
