@@ -567,7 +567,7 @@
       var content = blockMap[id] || '';
       return edit ? editBlock(id, content, index) : content;
     }).join('');
-    return monthNav(st.month) + toolbar + body;
+    return dueBanner(plans) + monthNav(st.month) + toolbar + body;
 
   }
 
