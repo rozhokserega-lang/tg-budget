@@ -3,7 +3,7 @@
 [data-task-drag]{touch-action:none;cursor:grab;min-width:44px;min-height:44px}
 
 /* Compact dashboard projection of the shared tracker. */
-.today-tasks{padding:16px;min-width:0;overflow:hidden}
+.today-tasks{margin-top:var(--gap);padding:16px;min-width:0;overflow:hidden}
 .today-tasks__head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .today-tasks__head h2{margin:0;font-size:16px}
 .today-tasks__count{font-size:12px;color:var(--c-hint,var(--tg-hint));font-variant-numeric:tabular-nums}
