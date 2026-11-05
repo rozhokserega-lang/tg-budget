@@ -48,6 +48,36 @@
     var savedCategoryView = root.localStorage.getItem('budget.categoryView');
     if (savedCategoryView === 'grid' || savedCategoryView === 'list') categoryView = savedCategoryView;
   } catch (e) {}
+  var modulesView = 'grid';
+  try {
+    var savedModulesView = root.localStorage.getItem('tg-budget-modules-view');
+    if (savedModulesView === 'grid' || savedModulesView === 'list') modulesView = savedModulesView;
+  } catch (e) {}
+  function changeModulesView(view) {
+    if ((view !== 'grid' && view !== 'list') || view === modulesView) return;
+    var grid = el.screen.querySelector('[data-modules-view]');
+    if (!grid) return;
+    var cards = Array.prototype.slice.call(grid.children);
+    var before = cards.map(function (card) { return card.getBoundingClientRect(); });
+    cards.forEach(function (card) { if (card.modulesMotion) card.modulesMotion.cancel(); });
+    modulesView = view;
+    try { root.localStorage.setItem('tg-budget-modules-view', view); } catch (e) {}
+    grid.classList.toggle('module-grid--list', view === 'list');
+    grid.classList.toggle('module-grid--grid', view === 'grid');
+    grid.setAttribute('data-modules-view', view);
+    el.screen.querySelectorAll('[data-action="modules-view"]').forEach(function (button) {
+      button.setAttribute('aria-pressed', String(button.getAttribute('data-view') === view));
+    });
+    if (dockReducedMotion && dockReducedMotion.matches) return;
+    var after = cards.map(function (card) { return card.getBoundingClientRect(); });
+    cards.forEach(function (card, index) {
+      if (!card.animate) return;
+      card.modulesMotion = card.animate([
+        { transform: 'translate(' + (before[index].left - after[index].left) + 'px,' + (before[index].top - after[index].top) + 'px)', opacity: 0.65 },
+        { transform: 'none', opacity: 1 }
+      ], { duration: 180, easing: 'ease-out' });
+    });
+  }
   var quickActionsPage = 0;
   var QUICK_PAGES = 3;
   // Палец на странице быстрых действий: { x, y, dx, axis } или null.
@@ -1311,7 +1341,7 @@
     if (tab === 'recurring') return payments().open();
     ++reqSeq;
     route = { name: 'plans' };
-    render(root.PaymentsViews.modules(), true);
+    render(root.PaymentsViews.modules(modulesView), true);
   }
 
   function openPlanForm(kind, current) {
@@ -2063,7 +2093,7 @@
       var filter = st.txFilter || { kind: null, category_id: null, member_id: null, q: '' };
       return rows ? Views.renderTxList(rows, filter, st.txChart || 'expense', txDayLimit) : Views.skeletonList();
     }
-    if (name === 'plans') return root.PaymentsViews.modules();
+    if (name === 'plans') return root.PaymentsViews.modules(modulesView);
     if (name === 'settings') return Views.renderSettings(null);
     return '';
   }
@@ -3311,6 +3341,7 @@ document.addEventListener('click', function (ev) {
     if (action.indexOf('task-') === 0) { taskTracker().action(action, actionBtn); return; }
     if (action.indexOf('reminder-') === 0) { reminders().action(action, actionBtn); return; }
     if (action.indexOf('payment-') === 0) { payments().action(action, actionBtn); return; }
+    if (action === 'modules-view') { changeModulesView(actionBtn.getAttribute('data-view')); return; }
     if (action === 'modules-home') { openPlans(); return; }
     if (action === 'module-open') {
       var moduleName = actionBtn.getAttribute('data-module');

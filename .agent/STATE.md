@@ -14,3 +14,5 @@
 Включение обратно: задать `SUBSCRIPTIONS_ENABLED=true` в секретах проекта, задеплоить `api` и `bot`, поставить `SUBSCRIPTIONS_ENABLED = true` в `src/state.js` и опубликовать клиент.
 
 2026-11-05. «Задачи на сегодня»: реализована карточка после финансовых блоков в `feat/home-today-tasks`. Общие Tasks controller/cache/API, до 4 строк, сегодняшний прогресс без просрочки, завершение повторов существующим complete. Проверки: 217/217 Node tests; syntax и diff OK. Browser smoke заблокирован запуском Chromium (`socket() Operation not permitted`); Telegram/mobile visual smoke остаётся. Следующий шаг: PR в main, без слияния.
+
+2026-11-05. Страница «Модули»: добавлены сетка/список, SVG-переключатель и четыре SVG-иконки. Выбор хранится локально в `tg-budget-modules-view`, применяется до отрисовки; переключение на существующих DOM-узлах с transform/opacity 180 мс и reduced-motion. Изменены app.js, payments-views.js, payments.css и версии ассетов index.html. Тесты и браузерные проверки не запускались по указанию пользователя. Следующий шаг: пользовательская проверка в Telegram.
