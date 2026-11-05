@@ -583,7 +583,7 @@
         text: T('В index.html укажите APP_API_URL — адрес Edge Function `api`.'),
         retry: false,
       };
-    } else if (code === 'subscription_expired') {
+    } else if (code === 'subscription_expired' && State.subscriptionsEnabled()) {
       opts = {
         icon: '⌛',
         title: T('Пробный период закончился'),
@@ -1211,7 +1211,8 @@
     // Смена экрана отменяет ответы от предыдущей страницы (например, планов),
     // иначе они дорисуются поверх настроек.
     ++reqSeq;
-    var allowed = ['family', 'budget', 'interface', 'appearance', 'notifications', 'subscription', 'about'];
+    var allowed = ['family', 'budget', 'interface', 'appearance', 'notifications', 'about'];
+    if (State.subscriptionsEnabled()) allowed.push('subscription');
 
     route = { name: 'settings', section: allowed.indexOf(section) !== -1 ? section : null };
     render(Views.renderSettings(route.section));
@@ -1225,6 +1226,7 @@
   }
 
   function loadTariffs() {
+    if (!State.subscriptionsEnabled()) return Promise.resolve();
     return Api.call('plans').then(function (list) {
       st.tariffs = Array.isArray(list) ? list : [];
     }).catch(function () {
@@ -1237,7 +1239,7 @@
   // Покупка доступа за Telegram Stars: счёт создаёт сервер, оплату открывает Telegram,
   // доступ продлевает бот по successful_payment — здесь только ждём и обновляем.
   function buyTariff(code) {
-    if (st.buying) return;
+    if (!State.subscriptionsEnabled() || st.buying) return;
     st.buying = true;
     render(Views.renderSettings(route.section));
     Api.call('create_invoice', { plan: code }).then(function (res) {
@@ -1934,6 +1936,7 @@
   // --- Промокод ---
 
   function redeemPromo(code) {
+    if (!State.subscriptionsEnabled()) return;
     code = String(code || '').trim();
     if (!code) return toast(T('Введите промокод'));
     return Api.call('redeem_promo', { code: code }).then(function (res) {
@@ -4070,7 +4073,7 @@ document.addEventListener('click', function (ev) {
         tasks.push(loadMember().then(function (member) { if (!member && route.name === 'settings') render(Views.renderOnboarding(onboarding)); }));
       }
       if (route.section === 'budget') tasks.push(loadCategories(true));
-      if (route.section === 'subscription') tasks.push(loadResource('tariffs', function () { return Api.call('plans'); }, true, function (list) { st.tariffs = Array.isArray(list) ? list : []; }));
+      if (route.section === 'subscription' && State.subscriptionsEnabled()) tasks.push(loadResource('tariffs', function () { return Api.call('plans'); }, true, function (list) { st.tariffs = Array.isArray(list) ? list : []; }));
     }
     else return Promise.resolve();
     refreshPageKey = key;

@@ -1,21 +1,11 @@
 # Текущее состояние
 
-2026-11-03. Цель — интеграция существующего frontend платежей с REST v1. Клиент в `codex/payments-v1-integration`, локальный main `248f944` сохранён. Fetch выполнен, origin/main `4b83c94` объединён в рабочую ветку.
+2026-11-05. Цель — временно отключить подписки и пробный период на время теста, чтобы не пугать пользователей. Ветки `feat/disable-subscriptions-temporarily` в публичном клиенте и полном репозитории. Main и production не менялись.
 
-Реализовано: `src/payments-rest.js` (tma, пагинация, преобразования, confirm одним запросом), ограничения и сохранение исходной версии/скрытых настроек формы, защита смены семьи, отдельные итоги валют. Контракт 1.1.0 дополняет API `GET /payment-templates`; типы сгенерированы.
+Клиент: `src/state.js` — `SUBSCRIPTIONS_ENABLED = false`, `isExpired()` всегда false, `subscriptionsEnabled()`; `src/views.js` скрывает «Подписка и промокоды»; `src/app.js` — guard настроек, paywall, покупки и промокода; `src/api.js` — ошибка `subscriptions_disabled`. Регрессионный тест в `tests/views.test.cjs`. Проверки: syntax OK, 213/213, сборка `4de9ca8c2172`. Зеркало `miniapp/` синхронизировано.
 
-Сервер: изолированный worktree `/tmp/tg-budget-v1-server`, ветка `codex/payments-v1-server`: API v1 `cd540a0` объединён с origin/main `bbc455c`; добавлен семейный список шаблонов и исправлены ошибки проверки типов. Исходный `../teletreker` с пользовательскими untracked miniapp-файлами сохранён. Клиент синхронизирован в miniapp worktree; проверки обеих копий прошли. Изменения сохранены локальными merge-коммитами в двух рабочих ветках; main и production не менялись.
+Сервер: `api/index.ts` — env `SUBSCRIPTIONS_ENABLED` (по умолчанию false) отключает проверку `plan_until`, `plans` возвращает `[]`, `create_invoice`/`redeem_promo` — 403; `v1_http.ts` — `canWrite` всегда true; `bot/index.ts` — без trial-гейта, `/промо` отключён, `/start` без промо-команды; `successful_payment` оставлен для старых счетов. Проверки: miniapp 213/213, backend 58/58, Deno check api/bot/notify/admin OK.
 
-Итог: frontend 188/188 и его miniapp-зеркало 188/188; backend 51/51; syntax всех src и diff checks чисты; Deno check api/bot/notify/admin успешен. Browser demo: создать 123 → оплатить → начисления нет → один расход в финансах; console errors []. Итоговая сборка запускается и перезагружается на localhost без кэша. При 304 на обычном Python-сервере встроенный браузер терял I18n; причина вне проверенного кода не установлена, production caching не проверен. Telegram и текущий production не проверялись.
+Блокер: merge и деплой требуют явного подтверждения. Порядок: api → bot → публикация клиента. Включение: `SUBSCRIPTIONS_ENABLED=true` в секретах `api`/`bot` и флаг `SUBSCRIPTIONS_ENABLED = true` в `src/state.js`.
 
-История production (ранее зафиксировано): миграции 018–022 применены, api v18/notify v10, cron */5 восстановлен, 9 legacy-шаблонов перенесены, SQL confirm smoke с откатом успешен. Подробности модели/деплоя — docs/api/BACKEND.md и DEPLOY_CHECKLIST.md. Smoke старого UI и наблюдение 48 ч остаются незакрытыми (TASKS).
-
-Блокер публикации: требуется сначала обновить сервер api до 1.1.0, затем клиент. Supabase-инструменты в текущем сеансе не обнаружены. По серверному AGENTS.md §6 публикация/деплой требуют явного подтверждения. Новых миграций для интеграции нет.
-
-Следующий шаг: получить явное подтверждение публикации (ветки/PR → сервер api 1.1.0 → клиент), затем выполнить Telegram smoke. Напоминания/задачи пока заглушки.
-
-## Трекер задач — PR #17
-Пользователь разрешил merge в main. Конфликты с интеграцией REST платежей разрешены с сохранением обеих реализаций. Frontend задач: tasks*.js, tasks.css; mock только demo, production ожидает APP_TASKS_ADAPTER. Требования: docs/tasks-adapter.md. Telegram smoke и backend-интеграция задач остаются.
-
-## Напоминания — PR #16
-Пользователь разрешил merge. Совмещены платежи REST и трекер задач из main 173edb1. Напоминания работают через demo mock; APP_REMINDERS_ADAPTER ещё требуется сопоставить с актуальным docs/api. Telegram smoke остаётся.
+Следующий шаг: получить подтверждение, смержить PR, задеплоить `api` и `bot`, опубликовать клиент, проверить Telegram smoke.

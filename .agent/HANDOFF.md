@@ -1,33 +1,29 @@
-# Передача сессии — 2026-11-03
+# Передача
 
-Цель, состояние и следующий шаг — STATE; очередь — TASKS; устойчивые решения — DECISIONS; карта — ARCHITECTURE.
+## Текущая задача
 
-## Интеграция платежей
+Временное отключение подписок/пробного периода. Изменения лежат в ветке `feat/disable-subscriptions-temporarily` публичного клиента и полного репозитория; main и production не менялись.
 
-- Клиент: `codex/payments-v1-integration`, merge локального `248f944` (контракт) и origin/main `4b83c94` (готовый demo frontend). Main не перемещался. До merge изменения анализа двух файлов памяти сохранены stash `codex-analysis-checkpoint`; его сведения учтены здесь, повторно применять не надо.
-- Сервер: `/tmp/tg-budget-v1-server`, ветка `codex/payments-v1-server`, merge `cd540a0` и origin/main `bbc455c`. Обычный pull --ff-only не сработал из-за расхождения; merge в исходном checkout блокировался пользовательскими untracked miniapp/.agent и miniapp/AGENTS.md, поэтому использован отдельный worktree. Пользовательские файлы не менялись.
-- Новое: клиент `src/payments-rest.js`, сервер `supabase/functions/api/v1_payments_read.ts`, маршрут GET /payment-templates, версия контракта 1.1.0. Изменены payments-api/контроллер/views, app change-handler лимитов, index asset versions; docs/api контракт/OpenAPI/типы/BACKEND и docs/payments-adapter.md.
-- Подключены пагинация и tma; сервер сам определяет семью. Confirm не вызывает add_tx. Сохраняются UUID начислений, ключ повторной оплаты, версия формы при открытии и скрытые настройки. Разные валюты не складываются. При изменении содержимого confirm используется новый ключ, серверная уникальность начисления остаётся обязательной.
-- Серверные типы: `bad` и `failDb` переведены в объявления функций с never для корректного narrowing; поведение не менялось.
-- Итоговые проверки: frontend 188/188, miniapp-зеркало 188/188, backend 51/51; syntax всех JS, diff checks чисты, Build f7348b27c77e. Deno и генерация типов доступны через npx с разрешённым сетевым доступом; в обычной среде npm DNS недоступен. openapi-typescript 7.13.0.
-- Browser demo: создать разовый «Тест интеграции» 123, оплатить, календарь пуст, один расход в finance, console errors []. Скриншот: visualizations текущего чата `payments-finance-smoke.jpg`. Локальные серверы 8766/8767 остановлены. Итоговая сборка: открытие/перезагрузка без кэша успешны; с 304 на обычном Python-сервере IAB потерял I18n, причина вне проверенного кода не установлена. Проверка production caching остаётся открытой. Реальный Telegram/production не проверялись.
-- Локальные merge-коммиты сохранены в двух рабочих ветках; push/PR/merge main/deploy не выполнялись. Типы 1.1.0 сгенерированы. Клиент зеркалирован в серверный miniapp.
-- Rollout: сначала api 1.1.0, затем клиент; нового SQL нет. Серверный AGENTS.md §6 требует явного согласования внешних действий. Supabase MCP в этом сеансе отсутствует. Не считать старое разрешение на push/merge разрешением новых публикаций.
+## Изменённые пути
 
-## Сохранённые ограничения и история
+- Клиент: `src/state.js`, `src/views.js`, `src/app.js`, `src/api.js`, `tests/views.test.cjs`, `index.html`, `README.md`.
+- Сервер: `supabase/functions/api/index.ts`, `supabase/functions/api/v1_http.ts`, `supabase/functions/bot/index.ts`.
+- Документация: `docs/PROJECT.md`; зеркало клиента в `miniapp/`.
 
-- Бэкенд принадлежит tg-budget-app, публичный frontend — tg-budget; клиент зеркалируется в miniapp. Ignored supabase/ публичного checkout не добавлять.
-- Прод ранее: миграции 018–022, api v18 и notify v10, cron jobid3, 9/9 legacy-шаблонов/начислений; health200, auth401, notify403, cron200. SQL confirm smoke откатывался, тестовых данных не осталось. Это историческая проверка, не повторная проверка текущего production.
-- Исправление hideTemplate в cd540a0 запоминает id перед удалением legacy recurring, т.к. FK обнуляет legacy_recurring_id. Паузы/оплаты/уведомления реализованы сервером; UI не планирует уведомления самостоятельно.
-- UI v2, SWR, сканер чеков и последующие изменения origin/main сохранены объединением. Реальные Android/iOS, offline/background/safe-area/reduced motion остаются в TASKS; стендовые тесты не доказывают FPS или ускорение сети.
-- Не запускать version-assets только ради памяти. Не коммитить секреты и пользовательский untracked план, если обнаружится. Старые противоречивые записи памяти сжаты; фактические коммиты проверять Git.
+## Проверки
 
-## Трекер задач — PR #17
-Пользователь разрешил merge в main. Конфликты с интеграцией REST платежей разрешены с сохранением обеих реализаций. Frontend задач: tasks*.js, tasks.css; mock только demo, production ожидает APP_TASKS_ADAPTER. Требования: docs/tasks-adapter.md. Telegram smoke и backend-интеграция задач остаются.
+- `node --check` всех `src/*.js` — OK.
+- `node --test tests/*.test.cjs` — 213/213.
+- `node --test miniapp/tests/*.test.cjs` — 213/213.
+- `node --test tests/*.test.mjs` — 58/58.
+- `npx -y deno check supabase/functions/{api,bot,notify,admin}/index.ts` — OK.
+- `node scripts/version-assets.mjs` — build `4de9ca8c2172`.
 
-## PR #16: Напоминания
-- Пользователь разрешил merge. Сохранены платежи REST (#18) и личный трекер (#17).
-- Конфликты app.js/index.html разрешены с подключением всех трёх модулей. Память актуального main сохранена.
-- Напоминания: reminders*.js, reminders.css, reminders.test.cjs. Demo mock; production-адаптер ещё требуется.
-- docs/reminders-adapter.md — исходное предложение до появления docs/api; интеграция должна учитывать актуальные контракты.
-- Итоговое объединение с трекером: 204/204, syntax/diff чистые. На предыдущем прогоне старый tasks-тест retention отличился на 1 ms; адресный 6/6 и итоговый полный прогон успешны, код tasks не менялся.
+## Решение
+
+Флаг `SUBSCRIPTIONS_ENABLED` выключен по умолчанию. Данные `plan_until`, тарифы, промокоды и платежи не удаляются. Рекуррентные платежи и напоминания не затронуты.
+
+## Не закрыто
+
+- Merge и деплой не выполнены: нужно явное подтверждение.
+- После деплоя нужен Telegram smoke: запись при истёкшем `plan_until`, скрытый раздел подписки, `/промо` и обычная запись в боте.
