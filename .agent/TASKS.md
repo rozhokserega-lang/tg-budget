@@ -68,6 +68,12 @@
 - [x] Автотесты и требования подключения backend: docs/tasks-adapter.md.
 - [ ] Согласовать backend API и подключить APP_TASKS_ADAPTER; Telegram smoke (touch, уведомления, server purge).
 
+# Плашка предстоящих платежей — 2026-11-05
+- [x] Вернуть вызов `dueBanner(plans)` в `renderSummary` (потерян в 28985c4).
+- [x] Регрессионный тест в `tests/views.test.cjs`; 214/214.
+- [x] Пересчитать `?v=` ассетов (build `80f1232195eb`).
+- [ ] Telegram smoke: окно `reminder_days`, день платежа, крестик до завтра, кнопка оплаты.
+
 # Напоминания — PR #16
 - [x] Календарь, CRUD, repeat, pause/resume/complete, уведомления-настройки, demo mock.
 - [ ] Production-адаптер с актуальным docs/api и Telegram smoke.

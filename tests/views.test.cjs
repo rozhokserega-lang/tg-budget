@@ -8,7 +8,7 @@ function setup() {
   context.window.localStorage = { getItem: () => null };
   context.window.I18n = { t: (s, args) => s.replace(/\{(\w+)\}/g, (_, k) => args?.[k] ?? k), locale: () => 'ru', plural: (_, n) => String(n), locales: [{ code: 'ru', name: 'Русский' }] };
   context.I18n = context.window.I18n;
-  for (const file of ['format', 'state', 'views']) {
+  for (const file of ['format', 'state', 'recurring', 'views']) {
     runInNewContext(readFileSync(require.resolve(`../src/${file}.js`), 'utf8'), context);
     Object.assign(context, context.window);
   }
@@ -55,6 +55,20 @@ test('all-zero month has empty state and reveal; month sums determine new order'
   assert.match(home(ctx, categories.filter(c => c.fact === 0)), /Расходов за этот месяц нет/);
   assert.deepEqual(renderedCategoryIds(home(ctx, [{ id: 'equal-b', fact: 90 }, { id: 'max', fact: 5 }])), ['equal-b', 'max']);
   assert.doesNotMatch(home(ctx, [{ id: 'only', fact: 10 }]), /data-action="home-empty-toggle"/);
+});
+test('home shows the upcoming payment banner for a due recurring payment', () => {
+  const ctx = setup();
+  const plans = {
+    recurring: [{
+      id: 'rent', name: 'Аренда', amount: 1234,
+      day_of_month: new Date().getDate(), reminder_days: 1, active: true,
+    }],
+  };
+  const html = ctx.Views.renderSummary({ categories: [], income: 0, expense: 0, balance: 0 }, plans, null, [], 'list');
+  assert.match(html, /<div class="due">/);
+  assert.match(html, /Аренда/);
+  assert.match(html, /data-action="pay-due" data-id="rent"/);
+  assert.match(html, /data-action="dismiss-due"/);
 });
 test('home income and expense cards open the matching add form', () => {
   const ctx = setup();
