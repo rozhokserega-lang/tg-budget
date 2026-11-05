@@ -82,3 +82,8 @@
 - [x] Аудит, карточка на главной, единый контроллер/API/cache, прогресс, повторы, защита от гонок, ошибки и смена дня.
 - [x] Node 217/217, JS syntax, asset versioning, diff.
 - [ ] Telegram/mobile visual smoke (Chromium socket permission в среде), PR review и merge.
+
+# Редизайн напоминаний — 2026-11-05
+- [x] Calendar & Timeline, палитра приложения, неделя/месяц, фильтры и дата, стабильный FAB, частичный рендер; существующие формы/API сохранены.
+- [x] Регрессии reminders/modules-rest 19/19, syntax/diff; исходный сбой теста трекера подтверждён отдельно (см. HANDOFF).
+- [ ] Telegram visual smoke 320/360/390/430 px и production CRUD/complete.

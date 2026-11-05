@@ -34,3 +34,10 @@
 - Карточка внизу дашборда, общий контроллер и BudgetCache, существующий complete с ключом повтора; прогресс по исходному due_on сегодня, просрочка отдельно в списке. Нового API/хранилища нет.
 - 217/217 Node tests после исправления timer/API stubs тестовой среды; JS syntax и diff OK. Версии ресурсов пересчитаны.
 - Browser/Telegram smoke не выполнен: Chromium в среде не запускается (socket permission). Проверить 320/375 px, анимации, реальные backend complete/restore, смену дня и фон.
+
+## Редизайн «Напоминания» — 2026-11-05
+- Пути: src/reminders-views.js, src/reminders.js, styles/reminders.css, src/app.js (только host/рендер напоминаний), index.html (версии 4 ресурсов), tests/reminders.test.cjs.
+- Календарь: неделя по умолчанию, месяц раскрывается; смена недели/месяца, сохранение даты, индикаторы серверных occurrences. Фильтры today/upcoming/overdue; выбор дня — явный date-режим без активного сегмента. Upcoming ограничен существующим горизонтом загрузки (год вперёд), расчёт повторов остаётся на сервере.
+- Частичное обновление регионов сохраняет FAB/scroll/details; подтверждение показывает галочку после успеха, защищено busy/idempotency. Расписания и pause/resume/delete доступны из details и формы; paused исключены из активной просрочки.
+- Проверки: общий прогон 220/221; единственный сбой task module opens in app… (/value="manual" selected/) воспроизведён на исходном src/app.js main. Итоговый полный прогон после новых тестов: 223/224, тот же исходный сбой. Адресный прогон reminders/modules-rest: 19/19; JS syntax и diff check OK.
+- Chromium не запускается: socket() Operation not permitted. Визуальный/интерактивный Telegram smoke 320/360/390/430 px, safe area, реальный backend и reduced motion остаются непроверенными. Backend/API/DB не менялись.

@@ -173,12 +173,55 @@
       scope: function () { return memberScope(st.member); },
       active: function () { return route.name === 'reminders'; },
       enter: function () { ++reqSeq; route = { name: 'reminders' }; },
-      render: render, sheet: openSheet,
+      render: renderReminders, animateComplete: animateReminderComplete, sheet: openSheet,
       close: function () { var was = paymentBusy; paymentBusy = false; closeSheet(); paymentBusy = was; },
       lock: function (busy) { paymentBusy = busy; el.tabs.inert = busy; },
       toast: toast, confirm: dialog, expired: State.isExpired,
     });
     return remindersController;
+  }
+  // Keep the page, FAB and unchanged regions mounted during date/filter updates.
+  function renderReminders(html, preserve) {
+    var page = el.screen.querySelector('.reminders');
+    if (!page || lastScreen !== 'reminders' || !preserve) return render(html, preserve);
+    var template = document.createElement('template'); template.innerHTML = html;
+    var next = template.content.querySelector('.reminders');
+    if (!next || !next.querySelector('[data-reminder-region]')) return render(html, preserve);
+    var scroll = el.screen.scrollTop, focused = document.activeElement;
+    var focusAction = focused && focused.getAttribute('data-action');
+    var focusDate = focused && focused.getAttribute('data-date');
+    var focusFilter = focused && focused.getAttribute('data-filter');
+    page.querySelectorAll('[data-reminder-region]').forEach(function (region) {
+      var replacement = next.querySelector('[data-reminder-region="' + region.getAttribute('data-reminder-region') + '"]');
+      if (!replacement || replacement.innerHTML === region.innerHTML) return;
+      var calendar = region.getAttribute('data-reminder-region') === 'calendar';
+      var before = calendar ? region.getBoundingClientRect().height : 0;
+      region.innerHTML = replacement.innerHTML;
+      var after = calendar ? region.getBoundingClientRect().height : 0;
+      if (before && before !== after && region.animate && !(dockReducedMotion && dockReducedMotion.matches)) {
+        region.animate([{height:before + 'px'}, {height:after + 'px'}], {duration:220, easing:'ease-out'});
+      }
+    });
+    el.screen.scrollTop = scroll;
+    if (focused && !focused.isConnected && focusAction) {
+      var candidates = page.querySelectorAll('[data-action]');
+      for (var i = 0; i < candidates.length; i++) {
+        var candidate = candidates[i];
+        if (candidate.getAttribute('data-action') === focusAction && candidate.getAttribute('data-date') === focusDate && candidate.getAttribute('data-filter') === focusFilter) { candidate.focus({preventScroll:true}); break; }
+      }
+    }
+  }
+  function animateReminderComplete(id) {
+    var buttons = el.screen.querySelectorAll('[data-action="reminder-complete"]');
+    for (var i = 0; i < buttons.length; i++) {
+      if (buttons[i].getAttribute('data-id') === id) {
+        buttons[i].classList.add('is-complete'); buttons[i].disabled = true;
+        buttons[i].setAttribute('aria-label', 'Выполнено');
+        if (dockReducedMotion && dockReducedMotion.matches) return Promise.resolve();
+        return new Promise(function (resolve) { setTimeout(resolve, 220); });
+      }
+    }
+    return Promise.resolve();
   }
   // Порядок основных страниц для горизонтального свайпа. «Добавить» —
   // действие, а не страница, поэтому в навигации не участвует.

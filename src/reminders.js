@@ -3,7 +3,7 @@
   root.Reminders = { create: function (host) {
     var C = root.PaymentsCalendar, V = root.RemindersViews;
     var s = {
-      month: root.Fmt.todayIso().slice(0, 7), selected: null,
+      month: root.Fmt.todayIso().slice(0, 7), selected: root.Fmt.todayIso(), filter: 'today', expanded: false,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       data: null, loading: false, error: null
     };
@@ -12,7 +12,7 @@
     function reset() {
       var next = host.scope();
       if (next !== scope) {
-        scope = next; generation++; s.data = null; s.selected = null;
+        scope = next; generation++; s.data = null; s.selected = root.Fmt.todayIso(); s.filter = 'today'; s.expanded = false;
         s.month = root.Fmt.todayIso().slice(0, 7); formScope = null; formSnapshot = null; formKey = null;
       }
     }
@@ -26,7 +26,7 @@
       var until = C.end(C.shift(root.Fmt.todayIso().slice(0, 7), 12));
       if (C.end(s.month) > until) until = C.end(s.month);
       return root.RemindersApi.invoke('list', {
-        scope: owner, from: s.month + '-01', until: until, timezone: s.timezone
+        scope: owner, from: C.shift(s.month, -1) + '-01', until: until, timezone: s.timezone
       }).then(function (data) {
         if (gen !== generation || owner !== host.scope()) return;
         s.data = data; s.loading = false; paint();
@@ -48,8 +48,9 @@
       return root.RemindersApi.invoke(method, payload).then(function () {
         if (owner !== host.scope()) return;
         generation++; s.data = null;
-        if (form) host.close();
+        if (form || method === 'pause' || method === 'remove') host.close();
         host.toast(method === 'complete' ? 'Выполнено' : 'Сохранено');
+        if (method === 'complete' && host.animateComplete) return host.animateComplete(payload.occurrence_id).then(function () { if (owner === host.scope()) return load(); });
         return load();
       }).catch(function (err) {
         if (owner !== host.scope()) return;
@@ -67,14 +68,30 @@
       var p = s.data && s.data.reminders.find(function (x) { return x.id === id; });
       if (action === 'reminder-cancel') return host.close();
       if (action === 'reminder-retry') return load();
-      if (action === 'reminder-day') { s.selected = node.getAttribute('data-date'); return paint(); }
-      if (action === 'reminder-upcoming') {
-        s.selected = null; s.month = root.Fmt.todayIso().slice(0, 7); return load();
+      if (action === 'reminder-day') { s.selected = node.getAttribute('data-date'); s.filter = 'date'; s.month = s.selected.slice(0, 7); return paint(); }
+      if (action === 'reminder-expand') { s.expanded = !s.expanded; return paint(); }
+      if (action === 'reminder-filter' || action === 'reminder-upcoming') {
+        s.filter = action === 'reminder-upcoming' ? 'upcoming' : node.getAttribute('data-filter');
+        if (!['today', 'upcoming', 'overdue'].includes(s.filter)) return;
+        if (s.filter === 'today' || s.filter === 'upcoming') {
+          s.selected = root.Fmt.todayIso();
+          if (s.month !== s.selected.slice(0, 7)) { s.month = s.selected.slice(0, 7); return load(); }
+        }
+        return paint();
       }
-      if (action === 'reminder-month') {
-        var month = C.shift(s.month, Number(node.getAttribute('data-delta')));
-        if (month < '1900-01' || month > '2100-12') return;
-        s.month = month; s.selected = month + '-01'; s.data = null; return load();
+      if (action === 'reminder-week' || action === 'reminder-month') {
+        var delta = Number(node.getAttribute('data-delta')), day = new Date(s.selected + 'T12:00:00Z');
+        if (action === 'reminder-week') day.setUTCDate(day.getUTCDate() + delta * 7);
+        else {
+          var month = C.shift(s.month, delta), anchor = day.getUTCDate();
+          day = new Date(month + '-01T12:00:00Z');
+          day.setUTCDate(Math.min(anchor, Number(C.end(month).slice(-2))));
+        }
+        var selected = day.toISOString().slice(0, 10), nextMonth = selected.slice(0, 7);
+        if (nextMonth < '2000-01' || nextMonth > '2100-12') return;
+        var changed = s.month !== nextMonth;
+        s.month = nextMonth; s.selected = selected; s.filter = 'date';
+        return changed ? load() : paint();
       }
       if (action === 'reminder-new' || action === 'reminder-edit') {
         if (host.expired()) return host.toast('Срок доступа закончился');

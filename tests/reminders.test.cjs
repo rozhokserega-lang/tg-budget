@@ -46,3 +46,36 @@ test('reminder form keeps original metadata and creation key until a new form is
  await c.action('reminder-new',{getAttribute:()=> null});const createForm={...form,getAttribute:()=>''};await c.submit(createForm);await c.submit(createForm);
  assert.ok(captured[1].idempotency_key);assert.equal(captured[1].idempotency_key,captured[2].idempotency_key);
 });
+
+test('timeline filters use instants, exclude paused overdue and keep calendar date explicit',()=>{
+ const {root,p}=setup(Date.parse('2026-11-03T12:00:00Z')); const day='2026-11-03';
+ const data={reminders:[{...p,id:'active'},{...p,id:'paused',paused:true}],occurrences:[
+ {id:'late',reminder_id:'active',date:day,time:'09:00',due_at:day+'T09:00:00Z'},
+ {id:'next',reminder_id:'active',date:day,time:'19:00',due_at:day+'T19:00:00Z'},
+ {id:'paused-late',reminder_id:'paused',date:day,time:'08:00',due_at:day+'T08:00:00Z'}]};
+ const state={month:'2026-11',selected:day,timezone:'UTC',data};
+ const late=root.RemindersViews.page({...state,filter:'overdue'});
+ assert.ok(late.includes('data-id="late"'));assert.ok(!late.includes('data-id="next"'));assert.ok(!late.includes('data-id="paused-late"'));
+ const future=root.RemindersViews.page({...state,filter:'upcoming'});
+ assert.ok(future.includes('data-id="next"'));assert.ok(!future.includes('data-id="late"'));
+ const selected=root.RemindersViews.page({...state,filter:'date'});
+ assert.ok(selected.includes('data-id="paused-late"'));assert.equal((selected.match(/data-filter="[^"]+" aria-pressed="true"/g)||[]).length,0);
+ assert.equal((selected.match(/data-action="reminder-day"/g)||[]).length,7);
+ assert.equal((root.RemindersViews.page({...state,expanded:true}).match(/data-action="reminder-day"/g)||[]).length,30);
+});
+test('calendar preserves selection through expansion and clamps month navigation at month end',async()=>{
+ const {root}=setup();let html='';root.APP_REMINDERS_ADAPTER={list:async()=>({reminders:[],occurrences:[]})};
+ const c=root.Reminders.create({scope:()=> 'owner',active:()=>true,enter(){},render:h=>html=h});
+ const node=attrs=>({getAttribute:k=>attrs[k]||null});
+ await c.open();c.action('reminder-day',node({'data-date':'2026-01-31'}));c.action('reminder-expand',node({}));
+ assert.match(html,/data-date="2026-01-31" aria-pressed="true"/);
+ await c.action('reminder-month',node({'data-delta':'1'}));assert.match(html,/data-date="2026-02-28" aria-pressed="true"/);
+ c.action('reminder-expand',node({}));assert.equal((html.match(/data-action="reminder-day"/g)||[]).length,7);
+ assert.match(html,/data-date="2026-02-28" aria-pressed="true"/);
+});
+test('rapid timeline completion sends only one request',async()=>{
+ const {root,p}=setup();let finish,calls=0;
+ root.APP_REMINDERS_ADAPTER={list:async()=>({reminders:[{...p,id:'r'}],occurrences:[{id:'o',reminder_id:'r',date:p.date,time:p.time,due_at:p.date+'T09:00:00Z'}]}),complete:()=>{calls++;return new Promise(r=>finish=r);}};
+ const c=root.Reminders.create({scope:()=> 'owner',active:()=>true,enter(){},render(){},lock(){},toast(){},expired:()=>false});await c.open();
+ const node={getAttribute:()=> 'o'};const pending=c.action('reminder-complete',node);c.action('reminder-complete',node);await Promise.resolve();assert.equal(calls,1);finish({ok:true});await pending;
+});
