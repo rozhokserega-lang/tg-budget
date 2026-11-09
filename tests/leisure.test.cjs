@@ -27,3 +27,21 @@ test('production uses authenticated backend and ignores a stale response after a
 test('production escapes source text and never substitutes demo venues on backend errors',async()=>{
  const a=setup(true);a.open();a.reply({preferences:{city:{name:'<script>',timezone:'Europe/Moscow'},categories:['park']},daily:{date:'2026-11-09',timezone:'Europe/Moscow',places:[{id:'osm:node:1',name:'<img src=x>',category:'park'}]},saved:[],categories:[]});await tick();assert(!a.html.includes('<img src=x>'));assert(a.html.includes('&lt;img src=x&gt;'));
 });
+
+async function configuredDemo(){const a=setup();a.open();await tick();a.action('leisure-search');await tick();a.action('leisure-city',{'data-id':'524901'});a.setForm({elements:{exclude:{checked:true}}});a.handlers.submit({target:{matches:()=>true},preventDefault(){}});await tick();return a;}
+test('mixed design switches deck/list/map locally without replacing daily recommendations',async()=>{
+ const a=await configuredDemo();const first=a.html.match(/<h2>(Демо[^<]+)/)[1];
+ assert.match(a.html,/leisure-card--hero/);assert.match(a.html,/Подборки для настроения/);
+ a.action('leisure-next');assert.notEqual(a.html.match(/<h2>(Демо[^<]+)/)[1],first);
+ a.action('leisure-view',{'data-view':'list'});assert(!a.html.includes('leisure-card--hero'));assert.equal((a.html.match(/<article /g)||[]).length,3);
+ a.action('leisure-view',{'data-view':'map'});assert.match(a.html,/Расположение мест · схема без улиц/);assert.match(a.html,/Открыть карту города/);
+ a.action('leisure-tab',{'data-tab':'today'});a.action('leisure-view',{'data-view':'cards'});a.action('leisure-slide',{'data-index':'0'});assert.equal(a.html.match(/<h2>(Демо[^<]+)/)[1],first);assert.equal(a.calls.length,0);
+});
+test('category filters and mood collections use known places; plans expose a working calendar',async()=>{
+ const a=await configuredDemo();a.action('leisure-filter',{'data-id':'museum'});assert.match(a.html,/Пока нет подходящих мест/);
+ a.action('leisure-collection',{'data-id':'outdoors'});assert.match(a.html,/На свежем воздухе/);assert(!a.html.includes('leisure-card--hero'));
+ a.action('leisure-tab',{'data-tab':'plans'});assert.match(a.html,/Календарь впечатлений/);assert.match(a.html,/leisure-calendar__days/);
+ a.action('leisure-date',{'data-date':'2027-01-15'});assert.match(a.html,/Показать все планы/);
+ a.action('leisure-month',{'data-step':'1'});a.action('leisure-all-dates');assert(!a.html.includes('Показать все планы'));
+ a.action('leisure-tab',{'data-tab':'today'});a.action('leisure-plan-focus',{'data-id':a.html.match(/data-action="leisure-fav" data-id="([^"]+)"/)[1]});assert.match(a.html,/<details open>/);
+});

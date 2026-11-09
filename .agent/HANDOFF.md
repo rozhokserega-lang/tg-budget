@@ -60,3 +60,12 @@
 - В БД1203 real Voronezh POI,1203unique city-place links, справочник пока1city. Персональные данные не менялись, rollback tests реальной БД PASS; отсутствие авторизации401, catalog GET200; RLS/grants проверены.
 - Синхронизировать canonical backend migration filename с actual20261109121747 (старый20261109120000 не применять). Пакет tools/leisure/migrations/001 остаётся копией SQL для тестов.
 - Блокер только server/SSH для cron worker + full GeoNames registry; Telegram end-to-end не проверен, frontend main не публиковать без отдельного разрешения. Подробности docs/leisure.md.
+
+### Публикация завершена
+- Явное разрешение «Запускай все в продакшн»: PR22 backend и PR26 frontend merged в main; frontend f07456d, backend e925349.
+- Pages run42617519559 success; live index leisure JS/CSS присутствуют, catalog API200. Production rollout выполнен для Воронежа.
+- Нужны пользовательский Telegram smoke и existing host/SSH для регулярного импорта + полный registry; source-refresh пока не автоматизирован. Daily recommendation rotation SQL от этого не зависит.
+
+### Leisure UI: A–D mix
+- src/leisure.js, styles/leisure.css, tests/leisure.test.cjs, index.html assets, docs/leisure.md. Новые локальные view/filter/deck/calendar состояния; API без изменений. Категорийные SVG-сцены подписаны «Иллюстрация». D — честная координатная схема, без имитации улиц/платных tiles, external Yandex link.
+- Leisure6/6 PASS. Cloud Browser localhost не увидел приложение: invalid bearer token; CUA завершён. Visual Telegram smoke нужен.
