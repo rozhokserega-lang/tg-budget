@@ -1,0 +1,24 @@
+(function(root){
+  'use strict';
+  // Small, explicitly curated starter catalog. No third-party API or image scraping.
+  var catalog=[
+    {id:'voronezh-sails',city:'Воронеж',name:'Парк «Алые паруса»',category:'Парки',emoji:'🌳',description:'Прогулка у водохранилища'},
+    {id:'voronezh-admiralty',city:'Воронеж',name:'Адмиралтейская площадь',category:'Прогулки',emoji:'⛵',description:'Набережная и исторический центр'},
+    {id:'voronezh-central',city:'Воронеж',name:'Воронежский центральный парк',category:'Парки',emoji:'🌿',description:'Прогулки и отдых на природе'}
+  ];
+  var city='Воронеж',tab='today',interests=['Парки','Прогулки'];
+  function esc(s){return root.Fmt.escapeHtml(String(s==null?'':s));}
+  function scope(){var m=root.State.get().member;return m&&m.id?String(m.id):'demo';}
+  function key(s){return 'tg-budget-leisure.'+scope()+'.'+s;}
+  function read(s,fallback){try{var v=JSON.parse(root.localStorage.getItem(key(s)));return v==null?fallback:v;}catch(e){return fallback;}}
+  function write(s,v){try{root.localStorage.setItem(key(s),JSON.stringify(v));}catch(e){}}
+  function today(){var d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
+  function url(p){return 'https://yandex.ru/maps/?text='+encodeURIComponent(p.name+' '+p.city);}
+  function places(){return catalog.filter(function(p){return p.city===city&&interests.indexOf(p.category)!==-1;});}
+  function picks(){var list=places().slice(),seed=today()+city;var hash=0;for(var i=0;i<seed.length;i++)hash=(hash*31+seed.charCodeAt(i))|0;list.sort(function(a,b){function score(x){var n=hash;for(var j=0;j<x.id.length;j++)n=(n*33+x.id.charCodeAt(j))|0;return n>>>0;}return score(a)-score(b);});return list.slice(0,3);}
+  function card(p,favs){var selected=favs.indexOf(p.id)!==-1;return '<article class="leisure-card"><div class="leisure-card__art" aria-hidden="true">'+p.emoji+'</div><div class="leisure-card__content"><span class="leisure-card__tag">'+esc(p.category)+'</span><h2>'+esc(p.name)+'</h2><p>'+esc(p.description)+'</p><p class="leisure-card__meta">📍 '+esc(p.city)+' · Средний чек: нет данных</p><div class="leisure-card__actions"><a class="leisure-card__link" href="'+esc(url(p))+'" target="_blank" rel="noopener noreferrer">Подробнее в Яндекс Картах ↗</a><button type="button" data-action="leisure-fav" data-id="'+esc(p.id)+'" aria-pressed="'+selected+'" aria-label="'+(selected?'Удалить из избранного':'Добавить в избранное')+'">'+(selected?'♥':'♡')+'</button></div></div></article>';}
+  function render(){var favs=read('favorites',[]);if(!Array.isArray(favs))favs=[];var list=tab==='favorites'?catalog.filter(function(p){return favs.indexOf(p.id)!==-1;}):picks();var html='<section class="leisure"><header class="leisure__header"><button type="button" data-action="modules-home" class="leisure__back">← Модули</button><h1>Развлечения и отдых</h1><p>Три идеи для вашего дня</p></header><div class="leisure__filters"><label>Город <select data-leisure-city><option value="Воронеж">Воронеж</option></select></label><span>Другие города добавим после подключения каталога</span></div><div class="leisure__tabs"><button data-action="leisure-tab" data-tab="today" aria-pressed="'+(tab==='today')+'">Сегодня</button><button data-action="leisure-tab" data-tab="favorites" aria-pressed="'+(tab==='favorites')+'">Избранное</button></div><div class="leisure__interests"><span>Интересы:</span>'+['Парки','Прогулки'].map(function(x){return '<button type="button" data-action="leisure-interest" data-interest="'+esc(x)+'" aria-pressed="'+(interests.indexOf(x)!==-1)+'">'+esc(x)+'</button>';}).join('')+'</div><div class="leisure__cards">'+(list.length?list.map(function(p){return card(p,favs);}).join(''):'<p class="leisure__empty">Пока нет мест для выбранных интересов. Измените фильтры или сохраните место в избранное.</p>')+'</div><p class="leisure__notice">Первая версия: небольшой проверяемый каталог Воронежа. Фотографии, рейтинги и цены не выдумываем. Подробности — на Яндекс Картах. Избранное пока хранится только на этом устройстве.</p></section>';return html;}
+  function open(){tab='today';interests=read('interests',['Парки','Прогулки']);if(!Array.isArray(interests))interests=['Парки','Прогулки'];return render();}
+  function action(name,node){if(name==='leisure-tab')tab=node.getAttribute('data-tab')==='favorites'?'favorites':'today';else if(name==='leisure-interest'){var v=node.getAttribute('data-interest');interests=interests.indexOf(v)===-1?interests.concat(v):interests.filter(function(x){return x!==v;});write('interests',interests);}else if(name==='leisure-fav'){var id=node.getAttribute('data-id'),favs=read('favorites',[]);if(!Array.isArray(favs))favs=[];favs=favs.indexOf(id)===-1?favs.concat(id):favs.filter(function(x){return x!==id;});write('favorites',favs);}return render();}
+  root.Leisure={open:open,action:action};
+})(window);
