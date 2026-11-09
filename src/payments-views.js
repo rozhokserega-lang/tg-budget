@@ -20,9 +20,9 @@
       ['payments', 'Платежи', 'Календарь обязательных расходов', '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4M17 3v4M3 10h18M10 14h5M10 17h4M12 12v7"/>'],
       ['reminders', 'Напоминания', 'Важные даты и события', '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4M12 2V1"/>'],
       ['tasks', 'Трекер задач', 'Дела и личные списки', '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="m6 8 1.5 1.5L10 7M13 8h5M6 14h3M13 14h5M6 18h3M13 18h5"/>'],
-      ['leisure', 'Развлечения и отдых', 'Скоро', '<path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4zM15 8v2M15 14v2"/>']
+      ['leisure', 'Развлечения и отдых', 'Идеи для вашего дня', '<path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4zM15 8v2M15 14v2"/>']
     ].map(function (m) {
-      return '<button class="module-card module-card--' + m[0] + '" type="button" data-action="module-open" data-module="' + m[0] + '"' + (m[0] === 'leisure' ? ' disabled' : '') + '><span class="module-card__icon" aria-hidden="true">' + moduleIcon(m[3]) + '</span><span class="module-card__body"><strong>' + m[1] + '</strong><span class="module-card__description">' + m[2] + '</span></span><span class="module-card__chevron" aria-hidden="true">' + chevron + '</span></button>';
+      return '<button class="module-card module-card--' + m[0] + '" type="button" data-action="module-open" data-module="' + m[0] + '"' + '' + '><span class="module-card__icon" aria-hidden="true">' + moduleIcon(m[3]) + '</span><span class="module-card__body"><strong>' + m[1] + '</strong><span class="module-card__description">' + m[2] + '</span></span><span class="module-card__chevron" aria-hidden="true">' + chevron + '</span></button>';
     }).join('') + '</div></section>';
   }
   function placeholder(name) { return '<section class="payments">' + button('modules-home', '← Модули') + '<h1>' + e(name) + '</h1><p>Модуль готовится к подключению.</p></section>'; }
