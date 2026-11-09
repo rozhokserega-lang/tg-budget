@@ -69,3 +69,9 @@
 ### Leisure UI: A–D mix
 - src/leisure.js, styles/leisure.css, tests/leisure.test.cjs, index.html assets, docs/leisure.md. Новые локальные view/filter/deck/calendar состояния; API без изменений. Категорийные SVG-сцены подписаны «Иллюстрация». D — честная координатная схема, без имитации улиц/платных tiles, external Yandex link.
 - Leisure6/6 PASS. Cloud Browser localhost не увидел приложение: invalid bearer token; CUA завершён. Visual Telegram smoke нужен.
+
+### Entertainment UX improvements
+- Ветка feature/entertainment-ux-improvements; последнее ТЗ требует только PR, не merge. Изменены src/leisure.js, styles/leisure.css, styles/payments.css, index.html, tests/leisure.test.cjs; backend requirements в docs/entertainment-backend-requirements.md.
+- Реальный публичный каталог: все страницы до nextCursor=null, dedupe,5min memory cache, guard account/city, local text search350ms с частичным DOM. Избранное по прежнему серверному saved. Подборки до5, фактические количества.
+- Поддерживаются9категорий; остальные типы и prefs бюджет/тип/дети заблокированы отсутствием атрибутов/API. БД/functions не менялись.
+- Leisure9/9 PASS; полный набор229/230, старый task-sort проверен на origin/main (FAIL). JS syntax/diff OK. Chromium system executable падает socket EPERM; Telegram visual/auth smoke остаётся.

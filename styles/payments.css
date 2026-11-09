@@ -19,7 +19,7 @@
 .module-card--payments{--module-color:var(--c-accent)}
 .module-card--reminders{--module-color:var(--c-warning)}
 .module-card--tasks{--module-color:var(--c-income)}
-.module-card--leisure{--module-color:var(--c-hint)}
+.module-card--leisure{--module-color:var(--c-accent)}
 .module-card__chevron{display:none;flex-shrink:0;color:var(--c-hint)}
 .module-card__chevron svg{display:block;width:20px;height:20px}
 .module-card:disabled{opacity:.5;cursor:default}
