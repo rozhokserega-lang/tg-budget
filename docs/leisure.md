@@ -62,7 +62,7 @@ Snapshot: `{preferences: null | {city_id,city,categories,radius_km,origin_lat,or
 
 ## Запуск после отдельного разрешения
 
-В backend PR добавлены настоящие `supabase/functions/leisure`, миграция `20261109120000_leisure.sql` и конфигурация функции. Для ревью доступен идентичный пакет в публичном PR. Не применять SQL повторно под другим именем миграции: выбрать один путь.
+В backend PR добавлены настоящие `supabase/functions/leisure`, миграция `20261109121747_leisure.sql` и конфигурация функции. Для ревью доступен идентичный пакет в публичном PR. Не применять SQL повторно под другим именем миграции: выбрать один путь.
 
 1. После ревью применить миграцию к существующему Supabase. Она аддитивна, сохраняет финансы и при повторном применении проходит проверки. BOT_TOKEN/SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY уже используются функциями, новые платные секреты не нужны.
 2. Развернуть `leisure` с verify_jwt=false из полного backend-репозитория. Проверка initData остаётся обязательной внутри функции.
@@ -94,3 +94,16 @@ Snapshot: `{preferences: null | {city_id,city,categories,radius_km,origin_lat,or
 Импортёр переключён на FileProcessor/KeyFilter libosmium перед Python callbacks и файловый индекс координат. Геометрические зависимости читаются до фильтра, поэтому пути и полигоны не теряют узлы. Повторный Kaliningrad test дал те же 961 OSM ID; у одного полигона изменилась представительная точка менее чем на метр. Добавлен Python integration test на маленьком OSM-файле: геометрия, дедупликация, private/foreign/unnamed/outside исключения, PASS. Команда: `python -m unittest discover -s backend/leisure/tests -p '*_test.py'` с установленными requirements.txt.
 
 Production пока не изменён. GET `/functions/v1/leisure` вернул NOT_FOUND. В среде нет Supabase/DATABASE_URL/SSH credentials и login CLI. По просьбе пользователя выполнен `codex mcp add supabase --url …`: отказ записи `/home/agent/.codex/config.toml`, Read-only file system. `codex mcp list` — пусто; login — No MCP server named supabase. Подключение MCP и авторизация не состоялись. Доступ через подключаемый Supabase доступен для подключения пользователем; секреты в чат не нужны. Потребуется также доступ к существующему хосту для регулярного offline worker. До подключения доступны только локальный импорт и подготовленные PR.
+
+
+## Production: 9 ноября, после подключения Supabase
+
+- Миграция leisure применена через Supabase MCP, фактическая версия в истории **20261109121747**. Имя файла в backend PR приведено к этой версии, чтобы не применять тот же DDL повторно.
+- Edge Function leisure v1 ACTIVE, verify_jwt=false с обязательной Telegram HMAC-проверкой внутри. Существующие функции не переразвёртывались.
+- Административно предзагружены справочная запись Воронежа и 1203 реальных POI из ранее проверенного PBF. Пользовательские preferences не создавались. Сейчас production-справочник содержит только Воронеж; полный GeoNames registry ещё нужно загрузить при настройке worker.
+- POST без initData реально вернул 401 UNAUTHORIZED. GET /leisure/catalog?city_id=472045 вернул ODbL-пагинацию по 200 записей.
+- На реальной БД выполнены rollback-тесты с существующими участниками без вывода их идентификаторов: 3 места, разнообразие, стабильность дня, independent saved patches, owner isolation, visited exclusion, radius — PASS. После rollback preferences/saved/days пусты, персональные данные не изменены.
+- Проверено: 1203 места / 1203 уникальных city-place связи, RLS на всех 8 новых таблицах, anon/authenticated не могут вызвать snapshot, anon не может читать saved.
+- Security advisor: только INFO RLS enabled no policy (40, включая 32 прежних); это соответствует архитектуре service_role-only, клиентских политик намеренно нет. https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
+- NOT RUN: авторизованный запрос из Telegram, UI на устройстве, межустройственная синхронизация end-to-end. Main и frontend публикация не изменялись.
+- Регулярный offline worker НЕ установлен: нет доступа к существующему серверу/SSH. Supabase MCP решает доступ к БД и функциям, но не предоставляет Linux-хост для PBF. Полный registry и cron остаются до предоставления доступа к хосту. Это одноразовый production bootstrap, не работающий регулярный импорт.

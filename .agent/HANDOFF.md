@@ -54,3 +54,9 @@
 - «Приступай» = разрешение пользователя на migration/deploy и импорт Воронежа; не на main merge. Не просить это разрешение повторно.
 - Real Central district PBF: Voronezh 1203 unique IDs / 9 категорий (категории и SHA в docs/leisure.md). Optimized importer FileProcessor + KeyFilter, sparse_file_array; Python fixture PASS, Kaliningrad same 961 IDs.
 - Клиент Supabase MCP не добавлен: codex config read-only, mcp list empty/login no server. Supabase plugin найден и предложен; ещё не подключён. Доступов Supabase/DB/SSH нет, production leisure NOT_FOUND. Следующий шаг после подключения — production схема → миграция → deploy → импорт → регулярный worker на доступном существующем хосте.
+
+### Production bootstrap выполнен
+- Supabase миграция leisure version20261109121747, Edge leisure v1 ACTIVE; функция сама проверяет Telegram HMAC.
+- В БД1203 real Voronezh POI,1203unique city-place links, справочник пока1city. Персональные данные не менялись, rollback tests реальной БД PASS; отсутствие авторизации401, catalog GET200; RLS/grants проверены.
+- Синхронизировать canonical backend migration filename с actual20261109121747 (старый20261109120000 не применять). Пакет tools/leisure/migrations/001 остаётся копией SQL для тестов.
+- Блокер только server/SSH для cron worker + full GeoNames registry; Telegram end-to-end не проверен, frontend main не публиковать без отдельного разрешения. Подробности docs/leisure.md.
