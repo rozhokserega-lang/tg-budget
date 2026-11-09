@@ -1624,7 +1624,7 @@
     }
     if (section === 'budget') content = limitsCard();
     if (section === 'interface') content = '<h2>' + e(T('Настройка главной страницы')) + '</h2><button type="button" class="btn btn--primary" data-action="home-edit">' + e(T('Порядок блоков')) + '</button><div class="home-category-sort"><span class="home-category-sort__label">' + e(T('Сортировка')) + '</span><select class="currency-row__select home-category-sort__select" data-home-category-sort aria-label="' + e(T('Сортировка категорий')) + '">' + ['default', 'amount'].map(function (mode) { return '<option value="' + mode + '"' + ((st.homeCategorySort || 'default') === mode ? ' selected' : '') + '>' + e(T(mode === 'amount' ? 'По сумме' : 'По умолчанию')) + '</option>'; }).join('') + '</select></div>';
-    if (section === 'appearance') content = themeCard() + coverCard() + languageCard() + currencyCard();
+    if (section === 'appearance') content = (root.Appearance ? root.Appearance.render() : '') + themeCard() + coverCard() + languageCard() + currencyCard();
 
     if (section === 'notifications') content = notificationsCard(notif);
     if (section === 'subscription') content = '<div class="card subscription-access"><div class="settings-row"><span class="settings-row__label">' + e(T('Доступ')) + '</span><span class="settings-row__value' + (left !== null && left < 0 ? ' amount--neg' : '') + '">' + e(planText) +

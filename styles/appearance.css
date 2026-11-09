@@ -1,0 +1,48 @@
+:root {
+  --app-bg-image: none;
+  --app-bg-dim: 0;
+  --app-bg-blur: 0px;
+  --app-card-opacity: 88%;
+  --app-bg-size: cover;
+  --app-bg-position: 50% 50%;
+  --app-bg-paint: radial-gradient(ellipse at 100% 0%, rgba(128,91,190,.065), transparent 37%);
+}
+[data-app-background='dark'], [data-bg-swatch='dark'] { --app-bg-paint: radial-gradient(ellipse at 20% 10%, #294461, transparent 70%), linear-gradient(140deg, #111d32, #0a1120); }
+[data-app-background='light'], [data-bg-swatch='light'] { --app-bg-paint: radial-gradient(ellipse at 20% 10%, #f5eaf4, transparent 70%), linear-gradient(140deg, #f5f2ee, #dce5e8); }
+[data-app-background='gradient'], [data-bg-swatch='gradient'] { --app-bg-paint: radial-gradient(ellipse at 0% 0%, #685383, transparent 65%), radial-gradient(ellipse at 100% 90%, #2c6765, transparent 75%), linear-gradient(150deg, #27243f, #162e3c); }
+[data-app-background='waves'], [data-bg-swatch='waves'] { --app-bg-paint: repeating-radial-gradient(ellipse at 0% 100%, #8176b01a 0 2px, transparent 3px 32px), linear-gradient(145deg, #252337, #141d2b); }
+[data-app-background='geometry'], [data-bg-swatch='geometry'] { --app-bg-paint: repeating-linear-gradient(60deg, #a6a0ce15 0 1px, transparent 1px 60px), repeating-linear-gradient(-60deg, #a6a0ce15 0 1px, transparent 1px 60px), linear-gradient(130deg, #222336, #182632); }
+[data-app-background='texture'], [data-bg-swatch='texture'] { --app-bg-paint: repeating-radial-gradient(circle at 17% 23%, #d9cfff12 0 .6px, transparent .8px 3px), linear-gradient(145deg, #292535, #181c28); }
+.app-background { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; height: 100lvh; pointer-events: none; z-index: 0; overflow: hidden; background: var(--c-bg); }
+.app-background__image, .appearance-preview__background { position: absolute; inset: -24px; background-color: var(--c-bg); background-image: var(--app-bg-paint); background-size: auto; background-position: center; background-repeat: no-repeat; filter: blur(var(--app-bg-blur)); }
+.app-background::after, .appearance-preview::after { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,var(--app-bg-dim)); pointer-events: none; }
+[data-app-background='custom'] .app-background__image, [data-app-background='custom'] .appearance-preview__background { background-image: var(--app-bg-image); background-size: var(--app-bg-size); background-position: var(--app-bg-position); }
+/* Keep the existing scroll containers and dock stacking contexts intact. */
+html[data-app-background] .app { position: relative; z-index: 1; background: transparent; }
+html[data-app-background]:not([data-app-background='default']) :is(.screen, .screen-viewport, .tasks, .reminders, .payments, .leisure-page) { background-color: transparent; }
+html[data-app-background] :is(.card, .module-card, .profile-menu, .profile-identity, .plans-overview, .months-list, .months-total, .tx, .plan, .task-card, .task-calendar, .task-group, .task-stats button:not([aria-pressed="true"]), .reminder-calendar, .reminder-event__card, .reminder-filters, .payment-card, .payment-calendar, .leisure-card, .leisure-location) {
+  background: color-mix(in srgb, var(--c-card) var(--app-card-opacity), transparent);
+}
+html[data-app-background]:not([data-app-background='default']) :is(.screen-header) { background-color: color-mix(in srgb, var(--c-bg) 94%, transparent); }
+/* Forms and dialogs retain solid surfaces for predictable contrast. */
+.appearance-preview { position: relative; isolation: isolate; overflow: hidden; border: 1px solid var(--c-border); border-radius: 24px; min-height: 270px; }
+.appearance-preview__content { position: relative; z-index: 1; display: grid; gap: 12px; padding: 24px; }
+.appearance-preview__content > .small { color: var(--c-text); background: var(--c-card); border-radius: 8px; padding: 5px 9px; justify-self: start; letter-spacing: .1em; font-size: 10px; }
+.appearance-preview__card { display: grid; gap: 8px; border: 1px solid var(--c-border); padding: 16px; border-radius: 16px; background: color-mix(in srgb, var(--c-card) var(--app-card-opacity), transparent); font-size: 12px; }
+.appearance-preview__card strong { font-size: 29px; letter-spacing: -.04em; }
+.appearance-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin: 18px 0; }
+.appearance-option { min-width: 0; min-height: 100px; padding: 5px 5px 8px; font-size: 11px; border: 2px solid transparent; border-radius: 15px; background: var(--c-card); }
+.appearance-option[aria-pressed='true'] { border-color: var(--c-accent); }
+.appearance-option:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 3px; }
+.appearance-swatch { display: block; height: 65px; border-radius: 9px; margin-bottom: 7px; background: var(--app-bg-paint), var(--c-bg); }
+[data-bg-swatch='default'] { --app-bg-paint: radial-gradient(ellipse at 100% 0%, rgba(128,91,190,.065), transparent 37%); }
+.appearance-swatch--custom { background-image: var(--app-bg-image); background-size: cover; }
+.appearance-controls { margin-top: 14px; }
+.appearance-control { display: grid; gap: 10px; padding: 12px 0; font-size: 13px; }
+.appearance-control > span { display: flex; justify-content: space-between; gap: 8px; }
+.appearance-control output { color: var(--c-accent); font-variant-numeric: tabular-nums; }
+.appearance-control input { width: 100%; height: 32px; accent-color: var(--c-accent); }
+.appearance-upload { position: relative; display: flex; overflow: hidden; cursor: pointer; }
+.appearance-upload input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.appearance-upload:focus-within { outline: 2px solid var(--c-accent); outline-offset: 3px; }
+.appearance [data-bg-reset] { width: 100%; margin: 14px 0 24px; white-space: normal; }

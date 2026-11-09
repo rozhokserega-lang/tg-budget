@@ -121,6 +121,17 @@
     });
   }
 
+  function syncSafeAreas() {
+    if (!tg) return;
+    var style = document.documentElement.style;
+    ['top', 'bottom'].forEach(function (edge) {
+      var safe = Number((tg.safeAreaInset || {})[edge]) || 0;
+      var content = Number((tg.contentSafeAreaInset || {})[edge]) || 0;
+      style.setProperty('--tg-safe-' + edge, Math.max(0, safe) + 'px');
+      style.setProperty('--tg-content-safe-' + edge, Math.max(0, content) + 'px');
+    });
+  }
+
   async function init() {
     await waitForSdk();
     if (!tg) {
@@ -134,6 +145,9 @@
       if (tg.setHeaderColor) tg.setHeaderColor('secondary_bg_color');
       if (tg.setBackgroundColor) tg.setBackgroundColor('secondary_bg_color');
       tg.onEvent('themeChanged', applyTheme);
+      syncSafeAreas();
+      tg.onEvent('safeAreaChanged', syncSafeAreas);
+      tg.onEvent('contentSafeAreaChanged', syncSafeAreas);
       tg.onEvent('backButtonClicked', function () {
         if (backHandler) backHandler();
       });

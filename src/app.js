@@ -4459,7 +4459,7 @@ document.addEventListener('click', function (ev) {
       if (!root.Tg.isInsideTelegram()) {
         console.info(T('Mini App открыт вне Telegram — демо-режим.'));
       }
-      return Promise.all([loadMember(), coversReady]);
+      return Promise.all([loadMember(), coversReady, root.Appearance ? root.Appearance.ready : Promise.resolve()]);
     }).then(function (result) {
       var me = result[0];
       hideLoader();

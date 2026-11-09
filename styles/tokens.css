@@ -44,8 +44,8 @@
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: calc(max(env(safe-area-inset-top, 0px), var(--tg-safe-top, 0px)) + var(--tg-content-safe-top, 0px));
+  --safe-bottom: calc(max(env(safe-area-inset-bottom, 0px), var(--tg-safe-bottom, 0px)) + var(--tg-content-safe-bottom, 0px));
   --tabs-height: 56px;
   --header-height: 56px;
 
