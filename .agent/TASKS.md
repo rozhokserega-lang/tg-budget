@@ -98,3 +98,6 @@
 
 - [x] Production migration leisure 20261109121747, deploy leisure v1, Voronezh1203 bootstrap, DB rollback security/functional tests.
 - [ ] Полный GeoNames registry + регулярный worker: нужен существующий server/SSH. Telegram end-to-end + публикация frontend после отдельного разрешения.
+
+- [x] 2026-11-09 Фон приложения: реализация, IDB/настройки, тесты и документация (feature/app-background-customization).
+- [ ] Фон: PR review и Telegram visual/gesture smoke; main merge только по отдельному разрешению.

@@ -75,3 +75,10 @@
 - Реальный публичный каталог: все страницы до nextCursor=null, dedupe,5min memory cache, guard account/city, local text search350ms с частичным DOM. Избранное по прежнему серверному saved. Подборки до5, фактические количества.
 - Поддерживаются9категорий; остальные типы и prefs бюджет/тип/дети заблокированы отсутствием атрибутов/API. БД/functions не менялись.
 - Leisure9/9 PASS; полный набор229/230, старый task-sort проверен на origin/main (FAIL). JS syntax/diff OK. Chromium system executable падает socket EPERM; Telegram visual/auth smoke остаётся.
+
+## 2026-11-09: персонализация фона
+- Ветка feature/app-background-customization, main не сливать по текущему ТЗ.
+- src/appearance.js + styles/appearance.css; интеграция index.html, src/views.js, src/app.js (ожидание восстановления), src/telegram.js/styles/tokens.css (safe areas); tests/appearance.test.cjs, docs/app-appearance.md.
+- IDB budget-assets/images/app-background; balance home-cover независим. Настройки budget.appearance JSON.
+- 237/238 Node, существующий task-sort на baseline тоже FAIL. Focused46/46; syntax/diff OK. Chromium socket EPERM: реальные визуальные/жестовые сценарии ещё не подтверждены.
+- Следующий шаг: PR без merge; ручной Android/iOS/Desktop smoke, включая клавиатуру и dock. См. docs/app-appearance.md.
