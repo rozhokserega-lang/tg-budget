@@ -87,3 +87,14 @@
 - [x] Calendar & Timeline, палитра приложения, неделя/месяц, фильтры и дата, стабильный FAB, частичный рендер; существующие формы/API сохранены.
 - [x] Регрессии reminders/modules-rest 19/19, syntax/diff; исходный сбой теста трекера подтверждён отдельно (см. HANDOFF).
 - [ ] Telegram visual smoke 320/360/390/430 px и production CRUD/complete.
+
+## Leisure — 9 ноября 2026
+
+- [x] Аудит PR #26 и настоящего backend, real PBF import, backend/frontend, security/DB tests.
+- [ ] Ревью PR и визуальный Telegram smoke; production migration/deploy и первый импорт после отдельного разрешения.
+
+- [x] Реальный импорт Воронежа: 1203 уникальных OSM POI, 9 категорий; оптимизированный streaming importer + Python integration test.
+- [ ] Разрешённые пользователем migration/deploy/import: ожидают подключения Supabase/доступа к хосту; CLI MCP config read-only. Main merge не разрешён.
+
+- [x] Production migration leisure 20261109121747, deploy leisure v1, Voronezh1203 bootstrap, DB rollback security/functional tests.
+- [ ] Полный GeoNames registry + регулярный worker: нужен существующий server/SSH. Telegram end-to-end + публикация frontend после отдельного разрешения.

@@ -41,3 +41,22 @@
 - Частичное обновление регионов сохраняет FAB/scroll/details; подтверждение показывает галочку после успеха, защищено busy/idempotency. Расписания и pause/resume/delete доступны из details и формы; paused исключены из активной просрочки.
 - Проверки: общий прогон 220/221; единственный сбой task module opens in app… (/value="manual" selected/) воспроизведён на исходном src/app.js main. Итоговый полный прогон после новых тестов: 223/224, тот же исходный сбой. Адресный прогон reminders/modules-rest: 19/19; JS syntax и diff check OK.
 - Chromium не запускается: socket() Operation not permitted. Визуальный/интерактивный Telegram smoke 320/360/390/430 px, safe area, реальный backend и reduced motion остаются непроверенными. Backend/API/DB не менялись.
+
+## Leisure — 9 ноября 2026
+
+- Публичная ветка feature/leisure-mvp, PR #26: src/leisure.js, app.js, styles/leisure.css, index.html; backend/leisure — deployable package; tests/leisure.test.cjs, docs/leisure.md, README.
+- Backend-схема проверена через GitHub в приватном tg-budget-app; новая функция зеркалируется в supabase/functions/leisure, SQL — 20261109120000_leisure.sql, config verify_jwt=false с HMAC внутри.
+- Проверки: 227/228 клиент (старый task-sort expectation, baseline также падает), 2/2 backend PGlite/HMAC, Deno новой функции и Python compile PASS. Geofabrik Kaliningrad real parse 961 POI, 9 категорий. Overpass 406. Chromium socket EPERM; visual/Telegram NOT RUN.
+- Main/production не трогали. Требуются отдельные разрешения на миграцию/deploy по backend AGENTS.md и на merge по пользователю. Региональные источники конфигурируются; города без импорта честно показывают ожидание. Полный отчёт/запуск: docs/leisure.md.
+
+### Запуск разрешён; доступ пока не подключён
+
+- «Приступай» = разрешение пользователя на migration/deploy и импорт Воронежа; не на main merge. Не просить это разрешение повторно.
+- Real Central district PBF: Voronezh 1203 unique IDs / 9 категорий (категории и SHA в docs/leisure.md). Optimized importer FileProcessor + KeyFilter, sparse_file_array; Python fixture PASS, Kaliningrad same 961 IDs.
+- Клиент Supabase MCP не добавлен: codex config read-only, mcp list empty/login no server. Supabase plugin найден и предложен; ещё не подключён. Доступов Supabase/DB/SSH нет, production leisure NOT_FOUND. Следующий шаг после подключения — production схема → миграция → deploy → импорт → регулярный worker на доступном существующем хосте.
+
+### Production bootstrap выполнен
+- Supabase миграция leisure version20261109121747, Edge leisure v1 ACTIVE; функция сама проверяет Telegram HMAC.
+- В БД1203 real Voronezh POI,1203unique city-place links, справочник пока1city. Персональные данные не менялись, rollback tests реальной БД PASS; отсутствие авторизации401, catalog GET200; RLS/grants проверены.
+- Синхронизировать canonical backend migration filename с actual20261109121747 (старый20261109120000 не применять). Пакет tools/leisure/migrations/001 остаётся копией SQL для тестов.
+- Блокер только server/SSH для cron worker + full GeoNames registry; Telegram end-to-end не проверен, frontend main не публиковать без отдельного разрешения. Подробности docs/leisure.md.

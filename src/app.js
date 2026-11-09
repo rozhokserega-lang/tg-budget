@@ -432,7 +432,7 @@
   function syncBackButton() {
     if (editingTx || paymentBusy) return root.Tg.backButton(function () {});
     if (!el.sheet.hidden && el.sheetBody.querySelector('.payment-form')) return root.Tg.backButton(closeSheet);
-    if (route.name === 'payments' || route.name === 'reminders' || route.name === 'tasks' || route.name === 'module-placeholder') return root.Tg.backButton(function () { openPlans(); });
+    if (route.name === 'payments' || route.name === 'reminders' || route.name === 'tasks' || route.name === 'leisure' || route.name === 'module-placeholder') return root.Tg.backButton(function () { openPlans(); });
     if (st.homeEdit) return root.Tg.backButton(cancelHomeEdit);
     if (route.name === 'add') return root.Tg.backButton(goHome);
     // Общая сводка — подэкран сводки или финансов: «Назад» возвращает туда же.
@@ -545,7 +545,7 @@
     // «Добавить» — не место, а действие: подсвечиваем вкладку, с которой пришли.
     var active = route.name === 'add' ? 'summary'
       : route.name === 'months' ? (route.from === 'tx' ? 'tx' : 'summary')
-      : (route.name === 'payments' || route.name === 'reminders' || route.name === 'tasks' || route.name === 'module-placeholder') ? 'plans'
+      : (route.name === 'payments' || route.name === 'reminders' || route.name === 'tasks' || route.name === 'leisure' || route.name === 'module-placeholder') ? 'plans'
       : route.name === 'limits' ? 'settings'
       : route.name;
     // Меню создаём один раз: перерисовка на каждом переходе вызывала мигание иконок.
@@ -617,6 +617,7 @@
   }
 
   function renderContent(html, preserve) {
+    if (route.name !== 'leisure' && root.Leisure) root.Leisure.close();
     var scroll = preserve && screenKey() === lastScreen ? el.screen.scrollTop : 0;
     var active = preserve && document.activeElement;
     var search = active && active.id === 'tx-search' ? active : null;
@@ -3441,6 +3442,7 @@ document.addEventListener('click', function (ev) {
     if (action === 'toggle-cat' && scrolled) return;
 
     if (action.indexOf('task-') === 0) { taskTracker().action(action, actionBtn); return; }
+    if (action.indexOf('leisure-') === 0) { root.Leisure.action(action, actionBtn); return; }
     if (action.indexOf('reminder-') === 0) { reminders().action(action, actionBtn); return; }
     if (action.indexOf('payment-') === 0) { payments().action(action, actionBtn); return; }
     if (action === 'modules-view') { changeModulesView(actionBtn.getAttribute('data-view')); return; }
@@ -3450,6 +3452,7 @@ document.addEventListener('click', function (ev) {
       if (moduleName === 'payments') payments().open();
       else if (moduleName === 'tasks') taskTracker().open();
       else if (moduleName === 'reminders') reminders().open();
+      else if (moduleName === 'leisure') { ++reqSeq; route = { name: 'leisure' }; root.Leisure.open(function (html) { if (route.name === 'leisure') render(html, true); }); }
       return;
     }
     switch (action) {
