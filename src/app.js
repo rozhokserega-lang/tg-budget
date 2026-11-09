@@ -617,6 +617,7 @@
   }
 
   function renderContent(html, preserve) {
+    if (route.name !== 'leisure' && root.Leisure) root.Leisure.close();
     var scroll = preserve && screenKey() === lastScreen ? el.screen.scrollTop : 0;
     var active = preserve && document.activeElement;
     var search = active && active.id === 'tx-search' ? active : null;
@@ -3441,7 +3442,7 @@ document.addEventListener('click', function (ev) {
     if (action === 'toggle-cat' && scrolled) return;
 
     if (action.indexOf('task-') === 0) { taskTracker().action(action, actionBtn); return; }
-    if (action.indexOf('leisure-') === 0) { render(root.Leisure.action(action, actionBtn), true); return; }
+    if (action.indexOf('leisure-') === 0) { root.Leisure.action(action, actionBtn); return; }
     if (action.indexOf('reminder-') === 0) { reminders().action(action, actionBtn); return; }
     if (action.indexOf('payment-') === 0) { payments().action(action, actionBtn); return; }
     if (action === 'modules-view') { changeModulesView(actionBtn.getAttribute('data-view')); return; }
@@ -3451,7 +3452,7 @@ document.addEventListener('click', function (ev) {
       if (moduleName === 'payments') payments().open();
       else if (moduleName === 'tasks') taskTracker().open();
       else if (moduleName === 'reminders') reminders().open();
-      else if (moduleName === 'leisure') { ++reqSeq; route = { name: 'leisure' }; render(root.Leisure.open(), true); }
+      else if (moduleName === 'leisure') { ++reqSeq; route = { name: 'leisure' }; root.Leisure.open(function (html) { if (route.name === 'leisure') render(html, true); }); }
       return;
     }
     switch (action) {

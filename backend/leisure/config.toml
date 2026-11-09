@@ -1,0 +1,4 @@
+project_id = "tg-budget-leisure"
+[functions.leisure]
+# JWT is intentionally disabled: custom Telegram HMAC validation in auth.ts.
+verify_jwt = false
