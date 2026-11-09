@@ -92,3 +92,6 @@
 
 - [x] Аудит PR #26 и настоящего backend, real PBF import, backend/frontend, security/DB tests.
 - [ ] Ревью PR и визуальный Telegram smoke; production migration/deploy и первый импорт после отдельного разрешения.
+
+- [x] Реальный импорт Воронежа: 1203 уникальных OSM POI, 9 категорий; оптимизированный streaming importer + Python integration test.
+- [ ] Разрешённые пользователем migration/deploy/import: ожидают подключения Supabase/доступа к хосту; CLI MCP config read-only. Main merge не разрешён.

@@ -48,3 +48,9 @@
 - Backend-схема проверена через GitHub в приватном tg-budget-app; новая функция зеркалируется в supabase/functions/leisure, SQL — 20261109120000_leisure.sql, config verify_jwt=false с HMAC внутри.
 - Проверки: 227/228 клиент (старый task-sort expectation, baseline также падает), 2/2 backend PGlite/HMAC, Deno новой функции и Python compile PASS. Geofabrik Kaliningrad real parse 961 POI, 9 категорий. Overpass 406. Chromium socket EPERM; visual/Telegram NOT RUN.
 - Main/production не трогали. Требуются отдельные разрешения на миграцию/deploy по backend AGENTS.md и на merge по пользователю. Региональные источники конфигурируются; города без импорта честно показывают ожидание. Полный отчёт/запуск: docs/leisure.md.
+
+### Запуск разрешён; доступ пока не подключён
+
+- «Приступай» = разрешение пользователя на migration/deploy и импорт Воронежа; не на main merge. Не просить это разрешение повторно.
+- Real Central district PBF: Voronezh 1203 unique IDs / 9 категорий (категории и SHA в docs/leisure.md). Optimized importer FileProcessor + KeyFilter, sparse_file_array; Python fixture PASS, Kaliningrad same 961 IDs.
+- Клиент Supabase MCP не добавлен: codex config read-only, mcp list empty/login no server. Supabase plugin найден и предложен; ещё не подключён. Доступов Supabase/DB/SSH нет, production leisure NOT_FOUND. Следующий шаг после подключения — production схема → миграция → deploy → импорт → регулярный worker на доступном существующем хосте.

@@ -84,7 +84,17 @@ def extract(path,city):
                 p=shape(json.loads(factory.create_multipolygon(a))).representative_point()
                 self.record(a,'way' if a.from_way() else 'relation',p.y,p.x,a.orig_id())
             except (RuntimeError,ValueError): pass
-    Handler().apply_file(str(path),locations=True,idx='flex_mem')
+    # libosmium filters before Python callbacks; disk-backed node locations bound RAM
+    # for district-sized files. Location/area assembly still sees the full input.
+    tags=['amenity','tourism','leisure','historic','place']
+    stream=(osmium.FileProcessor(str(path)).with_locations('sparse_file_array')
+            .with_areas(osmium.filter.KeyFilter(*tags))
+            .with_filter(osmium.filter.KeyFilter(*tags)))
+    handler=Handler()
+    for obj in stream:
+        if isinstance(obj,osmium.osm.Node): handler.node(obj)
+        elif isinstance(obj,osmium.osm.Way): handler.way(obj)
+        elif isinstance(obj,osmium.osm.Area): handler.area(obj)
     # Cross-OSM-element duplicates: same normalized name/category within 40m.
     out=[]; buckets={}
     for p in sorted(rows.values(),key=lambda p:p['id']):
