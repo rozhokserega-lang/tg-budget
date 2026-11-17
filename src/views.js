@@ -1471,7 +1471,7 @@
         '<span class="switch"><input type="checkbox" data-notif="' + key + '"' + (notif[key] ? ' checked' : '') + '>' +
         '<span class="switch__track"></span></span></label>';
     }
-    return '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Уведомления в Telegram')) + '</span></div>' +
+    return '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Уведомления')) + '</span></div>' +
       '<div class="card card--stack">' +
       toggle('payments', T('Напоминания о платежах'), T('За день до даты')) +
       toggle('limits', T('Лимиты категорий'), T('При 80 % и 100 % плана')) +
@@ -1519,7 +1519,7 @@
           '<div class="tariff__meta">' + e(T('{days} дней · {rate} ⭐/день', { days: t.days, rate: perDay })) + '</div></div>' +
           '<button type="button" class="btn btn--sm btn--primary" data-action="buy" data-buy="' + e(t.code) + '"' + (busy ? ' disabled' : '') + '>' + t.stars + ' ⭐</button></div>';
       }).join('') +
-      '<p class="small muted mt-8">' + e(T('Оплата проходит внутри Telegram. Продление начнётся после конца текущего доступа.')) + '</p>' +
+      '<p class="small muted mt-8">' + e(T('Оплата проходит в платёжной системе платформы. Продление начнётся после конца текущего доступа.')) + '</p>' +
       '</div></div>';
   }
 
@@ -1573,7 +1573,7 @@
       ['interface', 'Настройки интерфейса', 'Настройка главной страницы', '<path d="M4 6h16M4 12h16M4 18h16"/>'],
       ['appearance', 'Оформление и язык', 'Тема, обложка, язык и валюта', '<path d="M12 3a9 9 0 0 0 0 18h2a2 2 0 0 0 1-4 2 2 0 0 1 1-4h2a3 3 0 0 0 3-3 9 9 0 0 0-9-7z"/><path d="M7 10h.01M10 6h.01M15 7h.01"/>'],
 
-      ['notifications', 'Уведомления', 'Напоминания, лимиты и отчёты в Telegram', '<path d="M5 17h14l-2-4V9a5 5 0 0 0-10 0v4zM10 21h4M12 2v2"/>'],
+      ['notifications', 'Уведомления', 'Напоминания, лимиты и отчёты', '<path d="M5 17h14l-2-4V9a5 5 0 0 0-10 0v4zM10 21h4M12 2v2"/>'],
       ['about', 'О приложении и данные', 'Документы, обновление и управление данными', '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/>'],
     ];
     if (State.subscriptionsEnabled()) {
@@ -1634,11 +1634,11 @@
       '<button type="button" class="btn btn--sm btn--primary" data-action="export-csv"' + (st.exporting ? ' disabled' : '') + '>' + e(st.exporting ? T('Готовлю файл…') : T('Скачать')) + '</button></div>' +
       '<p class="small muted mt-8">' + e(T('Траты и доходы за последние 12 месяцев в одном файле.')) + '</p></div></div>' +
       '<div class="section"><div class="section__head"><span class="section__title">' + e(T('О приложении')) + '</span></div>' +
-      '<div class="card small muted">' + e(T('Данные видят только участники семьи. Telegram-бот принимает записи сообщением: «кофе 350», «+15000 подработка».')) + '</div></div>' +
+      '<div class="card small muted">' + e(T('Данные видят только участники семьи. Бот принимает записи сообщением: «кофе 350», «+15000 подработка».')) + '</div></div>' +
       legalCard(st.deleting) +
       (Api.isDemo()
         ? '<div class="section"><div class="section__head"><span class="section__title">' + e(T('Демо-режим')) + '</span></div>' +
-          '<div class="card"><p class="small muted">' + e(T('Приложение открыто вне Telegram, данные вымышленные и хранятся в памяти страницы.')) + '</p>' +
+          '<div class="card"><p class="small muted">' + e(T('Приложение открыто вне платформы, данные вымышленные и хранятся в памяти страницы.')) + '</p>' +
           '<button type="button" class="btn btn--ghost mt-8" data-action="demo-reset">' + e(T('Сбросить демо-данные')) + '</button></div></div>'
         : '') +
       '<div class="actions"><button type="button" class="btn btn--full" data-action="refresh">' + e(T('Обновить')) + '</button></div>';

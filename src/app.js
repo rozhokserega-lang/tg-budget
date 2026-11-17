@@ -677,7 +677,7 @@
       opts = {
         icon: '🔒',
         title: T('Нужен доступ из бота'),
-        text: T('Откройте приложение кнопкой «Открыть бюджет» в Telegram-боте.'),
+        text: T('Откройте приложение кнопкой «Открыть бюджет» у бота.'),
         retry: false,
       };
     } else if (code === 'no_config') {
@@ -1371,7 +1371,7 @@
       if (!tg || !tg.openInvoice) {
         st.buying = false;
         render(Views.renderSettings(route.section));
-        toast(T('Оплата доступна только в Telegram'));
+        toast(T('Оплата пока недоступна'));
         return;
       }
       tg.openInvoice(res.url, function (status) {
@@ -2753,7 +2753,7 @@
       if (opened) return;
     }
     if (root.Tg && typeof root.Tg.isInsideTelegram === 'function' && root.Tg.isInsideTelegram()) {
-      toast(T('Сканер QR недоступен. Обновите Telegram или распознайте QR с фото.'));
+      toast(T('Сканер QR недоступен. Распознайте QR с фото.'));
       return;
     }
 
@@ -4457,7 +4457,7 @@ document.addEventListener('click', function (ev) {
     root.Tg.init().then(function () {
       refreshHomeScreenStatus();
       if (!root.Tg.isInsideTelegram()) {
-        console.info(T('Mini App открыт вне Telegram — демо-режим.'));
+        console.info(T('Mini App открыт вне платформы — демо-режим.'));
       }
       return Promise.all([loadMember(), coversReady, root.Appearance ? root.Appearance.ready : Promise.resolve()]);
     }).then(function (result) {
